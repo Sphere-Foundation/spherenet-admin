@@ -41,6 +41,8 @@ enum ValidatorWhitelistAction {
         start_epoch: Option<u64>,
         #[arg(long)]
         end_epoch: Option<u64>,
+        #[arg(long)]
+        keypair: String,
     },
     /// Remove a validator from the whitelist
     Remove { vote_account: String },
@@ -50,6 +52,13 @@ enum ValidatorWhitelistAction {
     AcceptAuthority,
     /// Cancel pending authority transfer
     CancelAuthority,
+    /// Request an airdrop for an account
+    Airdrop {
+        #[arg(long)]
+        keypair: String,
+        #[arg(long, default_value = "1.0")]
+        amount: f64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -74,6 +83,13 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
             ValidatorWhitelistAction::List => vw::list()?,
+            ValidatorWhitelistAction::Add {
+                vote_account,
+                start_epoch,
+                end_epoch,
+                keypair,
+            } => vw::add(vote_account, start_epoch, end_epoch, keypair)?,
+            ValidatorWhitelistAction::Airdrop { keypair, amount } => vw::airdrop(keypair, amount)?,
             _ => println!("Command not yet implemented"),
         },
         Commands::ProgramWhitelist { action } => match action {

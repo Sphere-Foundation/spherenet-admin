@@ -5184,6 +5184,7 @@ dependencies = [
  "solana-client",
  "solana-sdk",
  "spherenet-program-whitelist-interface",
+ "spherenet-validator-whitelist-client",
  "spherenet-validator-whitelist-interface",
 ]
 
@@ -5201,6 +5202,17 @@ dependencies = [
  "solana-instruction",
  "solana-program",
  "solana-pubkey",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "spherenet-validator-whitelist-client"
+version = "0.1.1"
+dependencies = [
+ "borsh 1.5.7",
+ "num-derive",
+ "num-traits",
+ "solana-program",
  "thiserror 2.0.17",
 ]
 

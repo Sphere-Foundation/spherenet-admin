@@ -10,3 +10,4 @@ solana-client = { version = "2.2.1" }
 solana-sdk = { version = "2.2.1" }
 spherenet-program-whitelist-interface = { version = "=0.1.2", features = [ "solana-p" ] }
 spherenet-validator-whitelist-interface = { version = "=0.1.1", features = [ "solana-p" ] }
+spherenet-validator-whitelist-client = { path = "../validator-whitelist/clients/rust" }
