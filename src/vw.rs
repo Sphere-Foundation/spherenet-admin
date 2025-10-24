@@ -1,8 +1,9 @@
+use crate::consts::RPC_URL;
 use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair, Signer},
+    signature::{read_keypair_file, Signer},
     system_program,
     transaction::Transaction,
 };
@@ -11,8 +12,6 @@ use spherenet_validator_whitelist_interface::{
     account_solana, program_solana,
     state::{account::ValidatorWhitelistAccount, load, whitelist_entry::ValidatorWhitelistEntry},
 };
-
-const RPC_URL: &str = "http://127.0.0.1:8899";
 
 pub fn list() -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
@@ -178,6 +177,7 @@ pub fn add(
 }
 
 pub fn airdrop(keypair_path: String, amount: f64) -> Result<()> {
+    // Connect to testnet
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Load keypair

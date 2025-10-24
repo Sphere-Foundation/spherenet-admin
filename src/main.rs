@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use eyre::Result;
 
+mod consts;
 mod pw;
 mod vw;
 

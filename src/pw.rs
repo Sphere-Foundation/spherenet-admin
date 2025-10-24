@@ -1,3 +1,4 @@
+use crate::consts::RPC_URL;
 use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
@@ -8,8 +9,7 @@ use spherenet_program_whitelist_interface::{
 
 pub fn list() -> Result<()> {
     // Connect to testnet
-    let rpc_url = "https://api.testnet.sphere.net";
-    let rpc_client = RpcClient::new(rpc_url);
+    let rpc_client = RpcClient::new(RPC_URL);
 
     // Get the program whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
