@@ -1,59 +1,103 @@
-use std::str::FromStr;
+use clap::{Parser, Subcommand};
+use eyre::Result;
 
-use solana_client::rpc_client::RpcClient;
-use solana_sdk::pubkey::Pubkey;
-use spherenet_validator_whitelist_interface::{
-    account_solana, program_solana,
-    state::{account::ValidatorWhitelistAccount, load, whitelist_entry::ValidatorWhitelistEntry},
-};
+mod consts;
+mod pw;
+mod vw;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to your local Solana node
-    let rpc_url = "https://api.testnet.sphere.net";
-    let rpc_client = RpcClient::new(rpc_url);
+#[derive(Parser)]
+#[command(name = "spherenet-admin")]
+#[command(about = "SphereNet administration CLI", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
 
-    // Replace this with your actual account pubkey
-    let account_pubkey = Pubkey::from(account_solana::id().to_bytes());
+#[derive(Subcommand)]
+enum Commands {
+    /// Validator whitelist commands
+    #[command(name = "vw")]
+    ValidatorWhitelist {
+        #[command(subcommand)]
+        action: ValidatorWhitelistAction,
+    },
+    /// Program whitelist commands
+    #[command(name = "pw")]
+    ProgramWhitelist {
+        #[command(subcommand)]
+        action: ProgramWhitelistAction,
+    },
+}
 
-    println!("\nFetching account data for: {}", account_pubkey);
+#[derive(Subcommand)]
+enum ValidatorWhitelistAction {
+    /// List all whitelisted validators
+    List,
+    /// Show authority account
+    Auth,
+    /// Add a validator to the whitelist
+    Add {
+        vote_account: String,
+        #[arg(long)]
+        start_epoch: Option<u64>,
+        #[arg(long)]
+        end_epoch: Option<u64>,
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Remove a validator from the whitelist
+    Remove { vote_account: String },
+    /// Propose a new authority
+    ProposeAuthority { new_authority: String },
+    /// Accept pending authority transfer
+    AcceptAuthority,
+    /// Cancel pending authority transfer
+    CancelAuthority,
+    /// Request an airdrop for an account
+    Airdrop {
+        #[arg(long)]
+        keypair: String,
+        #[arg(long, default_value = "1.0")]
+        amount: f64,
+    },
+}
 
-    // Get the account data
-    let account = rpc_client.get_account(&account_pubkey)?;
+#[derive(Subcommand)]
+enum ProgramWhitelistAction {
+    /// List all whitelisted programs
+    List,
+    /// Show authority account
+    Auth,
+    /// Add a program to the whitelist
+    Add { program_id: String },
+    /// Remove a program from the whitelist
+    Remove { program_id: String },
+    /// Propose a new authority
+    ProposeAuthority { new_authority: String },
+    /// Accept pending authority transfer
+    AcceptAuthority,
+}
 
-    println!("Account data size: {} bytes", account.data.len());
+fn main() -> Result<()> {
+    let cli = Cli::parse();
 
-    // Deserialize the data
-    let whitelist = unsafe { load::<ValidatorWhitelistAccount>(&account.data) }.unwrap();
-
-    // Print in a human-readable format
-    println!("\nValidator Whitelist:");
-    println!("  Authority: {}", Pubkey::from(whitelist.authority));
-    println!(
-        "  Pending Authority: {}",
-        Pubkey::from(whitelist.pending_authority)
-    );
-    println!(
-        "  Validator Amount: {}",
-        u32::from_le_bytes(whitelist.validator_amount)
-    );
-
-    let vote_account_pubkey = Pubkey::from_str("EoJCeP12QGb1PcG4AMrT5bQYJsRb7iwDvnKaaLgdtXvs")?;
-    let entry_pubkey = Pubkey::find_program_address(
-        &[vote_account_pubkey.to_bytes().as_ref()],
-        &Pubkey::from(program_solana::id().to_bytes()),
-    )
-    .0;
-    let entry_account = rpc_client.get_account(&entry_pubkey)?;
-    let entry_data = unsafe { load::<ValidatorWhitelistEntry>(&entry_account.data) }.unwrap();
-
-    println!("Entry data size: {} bytes", entry_account.data.len());
-    println!("\nEntry data:");
-    println!("  Vote Account: {}", Pubkey::from(entry_data.pubkey));
-    println!(
-        "  Start Epoch: {}",
-        u64::from_le_bytes(entry_data.start_epoch)
-    );
-    println!("  End Epoch: {}", u64::from_le_bytes(entry_data.end_epoch));
+    match cli.command {
+        Commands::ValidatorWhitelist { action } => match action {
+            ValidatorWhitelistAction::List => vw::list()?,
+            ValidatorWhitelistAction::Add {
+                vote_account,
+                start_epoch,
+                end_epoch,
+                keypair,
+            } => vw::add(vote_account, start_epoch, end_epoch, keypair)?,
+            ValidatorWhitelistAction::Airdrop { keypair, amount } => vw::airdrop(keypair, amount)?,
+            _ => println!("Command not yet implemented"),
+        },
+        Commands::ProgramWhitelist { action } => match action {
+            ProgramWhitelistAction::List => pw::list()?,
+            _ => println!("Command not yet implemented"),
+        },
+    }
 
     Ok(())
 }
