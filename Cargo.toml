@@ -9,8 +9,5 @@ eyre = { version = "0.6" }
 solana-client = { version = "2.2.1" }
 solana-sdk = { version = "2.2.1" }
 spherenet-program-whitelist-interface = { version = "=0.1.2", features = [ "solana-p" ] }
-spherenet-validator-whitelist-interface = { version = "=0.1.1", features = [ "solana-p" ] }
-spherenet-validator-whitelist-client = { path = "../validator-whitelist/clients/rust" }
-
-# Fixes need for `+nightly` during build, `base64ct 1.8.0` requires Rust 1.85
-# base64ct = "~1.7"
+spherenet-validator-whitelist-interface = { version = "=0.1.2", features = [ "solana-p" ] }
+spherenet-validator-whitelist-client = { version = "=0.1.2" }

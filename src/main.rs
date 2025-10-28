@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use eyre::Result;
 
+mod airdrop;
 mod consts;
 mod pw;
 mod vw;
@@ -27,14 +28,19 @@ enum Commands {
         #[command(subcommand)]
         action: ProgramWhitelistAction,
     },
+    /// Request an airdrop for an account
+    Airdrop {
+        #[arg(long)]
+        keypair: String,
+        #[arg(long, default_value = "1.0")]
+        amount: f64,
+    },
 }
 
 #[derive(Subcommand)]
 enum ValidatorWhitelistAction {
     /// List all whitelisted validators
     List,
-    /// Show authority account
-    Auth,
     /// Add a validator to the whitelist
     Add {
         vote_account: String,
@@ -46,19 +52,44 @@ enum ValidatorWhitelistAction {
         keypair: String,
     },
     /// Remove a validator from the whitelist
-    Remove { vote_account: String },
-    /// Propose a new authority
-    ProposeAuthority { new_authority: String },
-    /// Accept pending authority transfer
-    AcceptAuthority,
-    /// Cancel pending authority transfer
-    CancelAuthority,
-    /// Request an airdrop for an account
-    Airdrop {
+    Remove {
+        vote_account: String,
         #[arg(long)]
         keypair: String,
-        #[arg(long, default_value = "1.0")]
-        amount: f64,
+    },
+    /// Update a validator's start epoch
+    UpdateStartEpoch {
+        vote_account: String,
+        #[arg(long)]
+        epoch: u64,
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Update a validator's end epoch
+    UpdateEndEpoch {
+        vote_account: String,
+        #[arg(long)]
+        epoch: u64,
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Show authority account
+    Auth,
+    /// Propose a new authority
+    ProposeAuthority {
+        new_authority: String,
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Accept pending authority transfer
+    AcceptAuthority {
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Cancel pending authority transfer
+    CancelAuthority {
+        #[arg(long)]
+        keypair: String,
     },
 }
 
@@ -66,12 +97,12 @@ enum ValidatorWhitelistAction {
 enum ProgramWhitelistAction {
     /// List all whitelisted programs
     List,
-    /// Show authority account
-    Auth,
     /// Add a program to the whitelist
     Add { program_id: String },
     /// Remove a program from the whitelist
     Remove { program_id: String },
+    /// Show authority account
+    Auth,
     /// Propose a new authority
     ProposeAuthority { new_authority: String },
     /// Accept pending authority transfer
@@ -83,20 +114,47 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
-            ValidatorWhitelistAction::List => vw::list()?,
+            // Whitelist commands
+            ValidatorWhitelistAction::List => vw::whitelist::list()?,
             ValidatorWhitelistAction::Add {
                 vote_account,
                 start_epoch,
                 end_epoch,
                 keypair,
-            } => vw::add(vote_account, start_epoch, end_epoch, keypair)?,
-            ValidatorWhitelistAction::Airdrop { keypair, amount } => vw::airdrop(keypair, amount)?,
-            _ => println!("Command not yet implemented"),
+            } => vw::whitelist::add(vote_account, start_epoch, end_epoch, keypair)?,
+            ValidatorWhitelistAction::Remove {
+                vote_account,
+                keypair,
+            } => vw::whitelist::remove(vote_account, keypair)?,
+            ValidatorWhitelistAction::UpdateStartEpoch {
+                vote_account,
+                epoch,
+                keypair,
+            } => vw::whitelist::update_start_epoch(vote_account, epoch, keypair)?,
+            ValidatorWhitelistAction::UpdateEndEpoch {
+                vote_account,
+                epoch,
+                keypair,
+            } => vw::whitelist::update_end_epoch(vote_account, epoch, keypair)?,
+            // Authority commands
+            ValidatorWhitelistAction::Auth => vw::authority::auth()?,
+            ValidatorWhitelistAction::ProposeAuthority {
+                new_authority,
+                keypair,
+            } => vw::authority::propose_authority(new_authority, keypair)?,
+            ValidatorWhitelistAction::AcceptAuthority { keypair } => {
+                vw::authority::accept_authority(keypair)?
+            }
+            ValidatorWhitelistAction::CancelAuthority { keypair } => {
+                vw::authority::cancel_authority(keypair)?
+            }
         },
         Commands::ProgramWhitelist { action } => match action {
-            ProgramWhitelistAction::List => pw::list()?,
+            ProgramWhitelistAction::List => pw::whitelist::list()?,
+            ProgramWhitelistAction::Auth => pw::authority::auth()?,
             _ => println!("Command not yet implemented"),
         },
+        Commands::Airdrop { keypair, amount } => airdrop::airdrop(keypair, amount)?,
     }
 
     Ok(())

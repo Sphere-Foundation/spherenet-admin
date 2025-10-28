@@ -33,7 +33,7 @@ echo "Authority ($AUTHORITY_PUBKEY) balance: $BALANCE SOL"
 if (( $(echo "$BALANCE < 1" | bc -l) )); then
     echo "Balance low, requesting airdrop..."
     cd "$ADMIN_CLI_DIR"
-    cargo run --quiet -- vw airdrop --keypair "$AUTHORITY_KEYPAIR"
+    cargo run --quiet -- airdrop --keypair "$AUTHORITY_KEYPAIR"
     echo "Airdrop successful"
 else
     echo "Balance sufficient, skipping airdrop"
