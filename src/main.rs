@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use eyre::Result;
 
+mod airdrop;
 mod consts;
 mod pw;
 mod vw;
@@ -26,6 +27,13 @@ enum Commands {
     ProgramWhitelist {
         #[command(subcommand)]
         action: ProgramWhitelistAction,
+    },
+    /// Request an airdrop for an account
+    Airdrop {
+        #[arg(long)]
+        keypair: String,
+        #[arg(long, default_value = "1.0")]
+        amount: f64,
     },
 }
 
@@ -53,13 +61,6 @@ enum ValidatorWhitelistAction {
     AcceptAuthority,
     /// Cancel pending authority transfer
     CancelAuthority,
-    /// Request an airdrop for an account
-    Airdrop {
-        #[arg(long)]
-        keypair: String,
-        #[arg(long, default_value = "1.0")]
-        amount: f64,
-    },
 }
 
 #[derive(Subcommand)]
@@ -90,13 +91,13 @@ fn main() -> Result<()> {
                 end_epoch,
                 keypair,
             } => vw::add(vote_account, start_epoch, end_epoch, keypair)?,
-            ValidatorWhitelistAction::Airdrop { keypair, amount } => vw::airdrop(keypair, amount)?,
             _ => println!("Command not yet implemented"),
         },
         Commands::ProgramWhitelist { action } => match action {
             ProgramWhitelistAction::List => pw::list()?,
             _ => println!("Command not yet implemented"),
         },
+        Commands::Airdrop { keypair, amount } => airdrop::airdrop(keypair, amount)?,
     }
 
     Ok(())

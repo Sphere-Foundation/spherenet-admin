@@ -1,3 +1,6 @@
+use solana_sdk::pubkey::Pubkey;
+use std::sync::LazyLock;
+
 pub const RPC_URL: &str = "https://api.testnet.sphere.net";
-// pub const RPC_URL: &str = "http://84.32.32.158:8899";
-// pub const RPC_URL: &str = "http://127.0.0.1:8899";
+
+pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(|| Pubkey::default());
