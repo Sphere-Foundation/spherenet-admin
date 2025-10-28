@@ -76,11 +76,21 @@ enum ValidatorWhitelistAction {
         keypair: String,
     },
     /// Propose a new authority
-    ProposeAuthority { new_authority: String },
+    ProposeAuthority {
+        new_authority: String,
+        #[arg(long)]
+        keypair: String,
+    },
     /// Accept pending authority transfer
-    AcceptAuthority,
+    AcceptAuthority {
+        #[arg(long)]
+        keypair: String,
+    },
     /// Cancel pending authority transfer
-    CancelAuthority,
+    CancelAuthority {
+        #[arg(long)]
+        keypair: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -124,7 +134,16 @@ fn main() -> Result<()> {
                 epoch,
                 keypair,
             } => vw::update_end_epoch(vote_account, epoch, keypair)?,
-            _ => println!("Command not yet implemented"),
+            ValidatorWhitelistAction::ProposeAuthority {
+                new_authority,
+                keypair,
+            } => vw::propose_authority(new_authority, keypair)?,
+            ValidatorWhitelistAction::AcceptAuthority { keypair } => {
+                vw::accept_authority(keypair)?
+            }
+            ValidatorWhitelistAction::CancelAuthority { keypair } => {
+                vw::cancel_authority(keypair)?
+            }
         },
         Commands::ProgramWhitelist { action } => match action {
             ProgramWhitelistAction::List => pw::list()?,
