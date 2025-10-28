@@ -54,7 +54,27 @@ enum ValidatorWhitelistAction {
         keypair: String,
     },
     /// Remove a validator from the whitelist
-    Remove { vote_account: String },
+    Remove {
+        vote_account: String,
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Update a validator's start epoch
+    UpdateStartEpoch {
+        vote_account: String,
+        #[arg(long)]
+        epoch: u64,
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Update a validator's end epoch
+    UpdateEndEpoch {
+        vote_account: String,
+        #[arg(long)]
+        epoch: u64,
+        #[arg(long)]
+        keypair: String,
+    },
     /// Propose a new authority
     ProposeAuthority { new_authority: String },
     /// Accept pending authority transfer
@@ -67,8 +87,6 @@ enum ValidatorWhitelistAction {
 enum ProgramWhitelistAction {
     /// List all whitelisted programs
     List,
-    /// Show authority account
-    Auth,
     /// Add a program to the whitelist
     Add { program_id: String },
     /// Remove a program from the whitelist
@@ -85,12 +103,27 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
             ValidatorWhitelistAction::List => vw::list()?,
+            ValidatorWhitelistAction::Auth => vw::auth()?,
             ValidatorWhitelistAction::Add {
                 vote_account,
                 start_epoch,
                 end_epoch,
                 keypair,
             } => vw::add(vote_account, start_epoch, end_epoch, keypair)?,
+            ValidatorWhitelistAction::Remove {
+                vote_account,
+                keypair,
+            } => vw::remove(vote_account, keypair)?,
+            ValidatorWhitelistAction::UpdateStartEpoch {
+                vote_account,
+                epoch,
+                keypair,
+            } => vw::update_start_epoch(vote_account, epoch, keypair)?,
+            ValidatorWhitelistAction::UpdateEndEpoch {
+                vote_account,
+                epoch,
+                keypair,
+            } => vw::update_end_epoch(vote_account, epoch, keypair)?,
             _ => println!("Command not yet implemented"),
         },
         Commands::ProgramWhitelist { action } => match action {

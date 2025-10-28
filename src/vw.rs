@@ -6,7 +6,10 @@ use solana_sdk::{
     signature::{read_keypair_file, Signer},
     transaction::Transaction,
 };
-use spherenet_validator_whitelist_client::instructions::AddToWhitelistBuilder;
+use spherenet_validator_whitelist_client::instructions::{
+    AddToWhitelistBuilder, RemoveFromWhitelistBuilder, UpdateEndEpochBuilder,
+    UpdateStartEpochBuilder,
+};
 use spherenet_validator_whitelist_interface::{
     account_solana, program_solana,
     state::{account::ValidatorWhitelistAccount, load, whitelist_entry::ValidatorWhitelistEntry},
@@ -21,18 +24,6 @@ pub fn list() -> Result<()> {
     let whitelist = load::<ValidatorWhitelistAccount>(&account.data)
         .map_err(|e| eyre::eyre!("Failed to deserialize whitelist account: {:?}", e))?;
 
-    // Print authority info
-    println!("\nValidator Whitelist");
-    println!("  Authority:         {}", Pubkey::from(whitelist.authority));
-    println!(
-        "  Pending Authority: {}",
-        Pubkey::from(whitelist.pending_authority)
-    );
-    println!(
-        "  Validator Count:   {}",
-        u32::from_le_bytes(whitelist.validator_amount)
-    );
-
     // Get validator count
     let validator_count = u32::from_le_bytes(whitelist.validator_amount);
 
@@ -41,7 +32,7 @@ pub fn list() -> Result<()> {
         return Ok(());
     }
 
-    println!("\nWhitelisted Validators:");
+    println!("\nWhitelisted Validators ({}):", validator_count);
 
     // Use getProgramAccounts to find all validator whitelist entries
     let program_id = Pubkey::from(program_solana::id().to_bytes());
@@ -78,6 +69,32 @@ pub fn list() -> Result<()> {
     if found_count == 0 {
         println!("  No validator entries found");
     }
+
+    Ok(())
+}
+
+pub fn auth() -> Result<()> {
+    let rpc_client = RpcClient::new(RPC_URL);
+
+    // Get the validator whitelist account
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+    let account = rpc_client.get_account(&whitelist_pubkey)?;
+    let whitelist = load::<ValidatorWhitelistAccount>(&account.data)
+        .map_err(|e| eyre::eyre!("Failed to deserialize whitelist account: {:?}", e))?;
+
+    // Print authority info
+    println!("\nValidator Whitelist Authority");
+    println!("  Whitelist Account: {}", whitelist_pubkey);
+    println!("  Authority:         {}", Pubkey::from(whitelist.authority));
+    println!(
+        "  Pending Authority: {}",
+        Pubkey::from(whitelist.pending_authority)
+    );
+    println!(
+        "  Validator Count:   {}",
+        u32::from_le_bytes(whitelist.validator_amount)
+    );
+    println!();
 
     Ok(())
 }
@@ -171,6 +188,191 @@ pub fn add(
 
     println!("  Signature: {}", signature);
     println!("\nValidator added successfully!");
+
+    Ok(())
+}
+
+pub fn remove(vote_account: String, keypair_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(RPC_URL);
+
+    // Parse vote account pubkey
+    let vote_account_pubkey = vote_account
+        .parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
+
+    // Load authority keypair
+    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+        eyre::eyre!(
+            "Failed to load authority keypair from {}: {}",
+            keypair_path,
+            e
+        )
+    })?;
+
+    // Derive the whitelist entry PDA
+    let program_id = Pubkey::from(program_solana::id().to_bytes());
+    let (whitelist_entry_pda, _bump) =
+        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+
+    // Get the validator whitelist account
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+
+    println!("\nRemoving validator from whitelist:");
+    println!("  Vote Account:    {}", vote_account_pubkey);
+    println!("  Whitelist Entry: {}", whitelist_entry_pda);
+    println!("  Authority:       {}", authority_keypair.pubkey());
+
+    // Build the instruction
+    let instruction = RemoveFromWhitelistBuilder::new()
+        .payer(authority_keypair.pubkey())
+        .whitelist_authority(authority_keypair.pubkey())
+        .validator_whitelist(whitelist_pubkey)
+        .whitelist_entry(whitelist_entry_pda)
+        .vote_account_pubkey(vote_account_pubkey)
+        .instruction();
+
+    // Get recent blockhash and create transaction
+    let recent_blockhash = rpc_client.get_latest_blockhash()?;
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&authority_keypair.pubkey()),
+        &[&authority_keypair],
+        recent_blockhash,
+    );
+
+    // Send transaction
+    println!("\nSending transaction...");
+    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+
+    println!("  Signature: {}", signature);
+    println!("\nValidator removed successfully!");
+
+    Ok(())
+}
+
+pub fn update_start_epoch(vote_account: String, epoch: u64, keypair_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(RPC_URL);
+
+    // Parse vote account pubkey
+    let vote_account_pubkey = vote_account
+        .parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
+
+    // Load authority keypair
+    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+        eyre::eyre!(
+            "Failed to load authority keypair from {}: {}",
+            keypair_path,
+            e
+        )
+    })?;
+
+    // Derive the whitelist entry PDA
+    let program_id = Pubkey::from(program_solana::id().to_bytes());
+    let (whitelist_entry_pda, _bump) =
+        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+
+    // Get the validator whitelist account
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+
+    println!("\nUpdating validator start epoch:");
+    println!("  Vote Account:    {}", vote_account_pubkey);
+    println!("  Whitelist Entry: {}", whitelist_entry_pda);
+    println!("  New Start Epoch: {}", epoch);
+    println!("  Authority:       {}", authority_keypair.pubkey());
+
+    // Build the instruction
+    let instruction = UpdateStartEpochBuilder::new()
+        .payer(authority_keypair.pubkey())
+        .whitelist_authority(authority_keypair.pubkey())
+        .validator_whitelist(whitelist_pubkey)
+        .whitelist_entry(whitelist_entry_pda)
+        .new_start_epoch(epoch.to_le_bytes())
+        .vote_account_pubkey(vote_account_pubkey)
+        .instruction();
+
+    // Get recent blockhash and create transaction
+    let recent_blockhash = rpc_client.get_latest_blockhash()?;
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&authority_keypair.pubkey()),
+        &[&authority_keypair],
+        recent_blockhash,
+    );
+
+    // Send transaction
+    println!("\nSending transaction...");
+    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+
+    println!("  Signature: {}", signature);
+    println!("\nStart epoch updated successfully!");
+
+    Ok(())
+}
+
+pub fn update_end_epoch(vote_account: String, epoch: u64, keypair_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(RPC_URL);
+
+    // Parse vote account pubkey
+    let vote_account_pubkey = vote_account
+        .parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
+
+    // Load authority keypair
+    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+        eyre::eyre!(
+            "Failed to load authority keypair from {}: {}",
+            keypair_path,
+            e
+        )
+    })?;
+
+    // Derive the whitelist entry PDA
+    let program_id = Pubkey::from(program_solana::id().to_bytes());
+    let (whitelist_entry_pda, _bump) =
+        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+
+    // Get the validator whitelist account
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+
+    println!("\nUpdating validator end epoch:");
+    println!("  Vote Account:    {}", vote_account_pubkey);
+    println!("  Whitelist Entry: {}", whitelist_entry_pda);
+    println!(
+        "  New End Epoch:   {}",
+        if epoch == u64::MAX {
+            "∞".to_string()
+        } else {
+            epoch.to_string()
+        }
+    );
+    println!("  Authority:       {}", authority_keypair.pubkey());
+
+    // Build the instruction
+    let instruction = UpdateEndEpochBuilder::new()
+        .payer(authority_keypair.pubkey())
+        .whitelist_authority(authority_keypair.pubkey())
+        .validator_whitelist(whitelist_pubkey)
+        .whitelist_entry(whitelist_entry_pda)
+        .new_end_epoch(epoch.to_le_bytes())
+        .vote_account_pubkey(vote_account_pubkey)
+        .instruction();
+
+    // Get recent blockhash and create transaction
+    let recent_blockhash = rpc_client.get_latest_blockhash()?;
+    let transaction = Transaction::new_signed_with_payer(
+        &[instruction],
+        Some(&authority_keypair.pubkey()),
+        &[&authority_keypair],
+        recent_blockhash,
+    );
+
+    // Send transaction
+    println!("\nSending transaction...");
+    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+
+    println!("  Signature: {}", signature);
+    println!("\nEnd epoch updated successfully!");
 
     Ok(())
 }
