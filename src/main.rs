@@ -41,8 +41,6 @@ enum Commands {
 enum ValidatorWhitelistAction {
     /// List all whitelisted validators
     List,
-    /// Show authority account
-    Auth,
     /// Add a validator to the whitelist
     Add {
         vote_account: String,
@@ -75,6 +73,8 @@ enum ValidatorWhitelistAction {
         #[arg(long)]
         keypair: String,
     },
+    /// Show authority account
+    Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
@@ -101,6 +101,8 @@ enum ProgramWhitelistAction {
     Add { program_id: String },
     /// Remove a program from the whitelist
     Remove { program_id: String },
+    /// Show authority account
+    Auth,
     /// Propose a new authority
     ProposeAuthority { new_authority: String },
     /// Accept pending authority transfer
@@ -112,41 +114,44 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
-            ValidatorWhitelistAction::List => vw::list()?,
-            ValidatorWhitelistAction::Auth => vw::auth()?,
+            // Whitelist commands
+            ValidatorWhitelistAction::List => vw::whitelist::list()?,
             ValidatorWhitelistAction::Add {
                 vote_account,
                 start_epoch,
                 end_epoch,
                 keypair,
-            } => vw::add(vote_account, start_epoch, end_epoch, keypair)?,
+            } => vw::whitelist::add(vote_account, start_epoch, end_epoch, keypair)?,
             ValidatorWhitelistAction::Remove {
                 vote_account,
                 keypair,
-            } => vw::remove(vote_account, keypair)?,
+            } => vw::whitelist::remove(vote_account, keypair)?,
             ValidatorWhitelistAction::UpdateStartEpoch {
                 vote_account,
                 epoch,
                 keypair,
-            } => vw::update_start_epoch(vote_account, epoch, keypair)?,
+            } => vw::whitelist::update_start_epoch(vote_account, epoch, keypair)?,
             ValidatorWhitelistAction::UpdateEndEpoch {
                 vote_account,
                 epoch,
                 keypair,
-            } => vw::update_end_epoch(vote_account, epoch, keypair)?,
+            } => vw::whitelist::update_end_epoch(vote_account, epoch, keypair)?,
+            // Authority commands
+            ValidatorWhitelistAction::Auth => vw::authority::auth()?,
             ValidatorWhitelistAction::ProposeAuthority {
                 new_authority,
                 keypair,
-            } => vw::propose_authority(new_authority, keypair)?,
+            } => vw::authority::propose_authority(new_authority, keypair)?,
             ValidatorWhitelistAction::AcceptAuthority { keypair } => {
-                vw::accept_authority(keypair)?
+                vw::authority::accept_authority(keypair)?
             }
             ValidatorWhitelistAction::CancelAuthority { keypair } => {
-                vw::cancel_authority(keypair)?
+                vw::authority::cancel_authority(keypair)?
             }
         },
         Commands::ProgramWhitelist { action } => match action {
-            ProgramWhitelistAction::List => pw::list()?,
+            ProgramWhitelistAction::List => pw::whitelist::list()?,
+            ProgramWhitelistAction::Auth => pw::authority::auth()?,
             _ => println!("Command not yet implemented"),
         },
         Commands::Airdrop { keypair, amount } => airdrop::airdrop(keypair, amount)?,
