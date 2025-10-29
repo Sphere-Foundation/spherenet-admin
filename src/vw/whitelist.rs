@@ -1,4 +1,4 @@
-use crate::consts::{RPC_URL, SYSTEM_PROGRAM};
+use crate::consts::SYSTEM_PROGRAM;
 use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -15,8 +15,8 @@ use spherenet_validator_whitelist_interface::{
     state::{account::ValidatorWhitelistAccount, load, whitelist_entry::ValidatorWhitelistEntry},
 };
 
-pub fn list() -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn list(rpc_url: &str) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -74,12 +74,13 @@ pub fn list() -> Result<()> {
 }
 
 pub fn add(
+    rpc_url: &str,
     vote_account: String,
     start_epoch: Option<u64>,
     end_epoch: Option<u64>,
-    keypair_path: String,
+    authority_path: String,
 ) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
     let vote_account_pubkey = vote_account
@@ -87,10 +88,10 @@ pub fn add(
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
     // Load authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -166,8 +167,8 @@ pub fn add(
     Ok(())
 }
 
-pub fn remove(vote_account: String, keypair_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
     let vote_account_pubkey = vote_account
@@ -175,10 +176,10 @@ pub fn remove(vote_account: String, keypair_path: String) -> Result<()> {
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
     // Load authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -224,8 +225,8 @@ pub fn remove(vote_account: String, keypair_path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn update_start_epoch(vote_account: String, epoch: u64, keypair_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn update_start_epoch(rpc_url: &str, vote_account: String, epoch: u64, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
     let vote_account_pubkey = vote_account
@@ -233,10 +234,10 @@ pub fn update_start_epoch(vote_account: String, epoch: u64, keypair_path: String
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
     // Load authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -284,8 +285,8 @@ pub fn update_start_epoch(vote_account: String, epoch: u64, keypair_path: String
     Ok(())
 }
 
-pub fn update_end_epoch(vote_account: String, epoch: u64, keypair_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn update_end_epoch(rpc_url: &str, vote_account: String, epoch: u64, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
     let vote_account_pubkey = vote_account
@@ -293,10 +294,10 @@ pub fn update_end_epoch(vote_account: String, epoch: u64, keypair_path: String) 
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
     // Load authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;

@@ -1,4 +1,3 @@
-use crate::consts::RPC_URL;
 use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -15,8 +14,8 @@ use spherenet_validator_whitelist_interface::{
     state::{account::ValidatorWhitelistAccount, load},
 };
 
-pub fn auth() -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn auth(rpc_url: &str) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -41,8 +40,8 @@ pub fn auth() -> Result<()> {
     Ok(())
 }
 
-pub fn propose_authority(new_authority: String, keypair_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn propose_authority(rpc_url: &str, new_authority: String, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Parse new authority pubkey
     let new_authority_pubkey = new_authority
@@ -50,10 +49,10 @@ pub fn propose_authority(new_authority: String, keypair_path: String) -> Result<
         .map_err(|e| eyre::eyre!("Invalid new authority pubkey: {}", e))?;
 
     // Load current authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -95,14 +94,14 @@ pub fn propose_authority(new_authority: String, keypair_path: String) -> Result<
     Ok(())
 }
 
-pub fn accept_authority(keypair_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn accept_authority(rpc_url: &str, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Load new authority keypair
-    let new_authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let new_authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load new authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -141,14 +140,14 @@ pub fn accept_authority(keypair_path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn cancel_authority(keypair_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn cancel_authority(rpc_url: &str, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Load current authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;

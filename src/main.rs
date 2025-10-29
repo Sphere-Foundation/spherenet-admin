@@ -6,10 +6,16 @@ mod consts;
 mod pw;
 mod vw;
 
+use consts::RPC_URL;
+
 #[derive(Parser)]
 #[command(name = "spherenet-admin")]
 #[command(about = "SphereNet administration CLI", long_about = None)]
 struct Cli {
+    /// RPC URL to connect to
+    #[arg(long, global = true, default_value = RPC_URL)]
+    url: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -48,65 +54,85 @@ enum ValidatorWhitelistAction {
         start_epoch: Option<u64>,
         #[arg(long)]
         end_epoch: Option<u64>,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Remove a validator from the whitelist
     Remove {
         vote_account: String,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Update a validator's start epoch
     UpdateStartEpoch {
         vote_account: String,
         #[arg(long)]
         epoch: u64,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Update a validator's end epoch
     UpdateEndEpoch {
         vote_account: String,
         #[arg(long)]
         epoch: u64,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Show authority account
     Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Accept pending authority transfer
     AcceptAuthority {
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Cancel pending authority transfer
     CancelAuthority {
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
 }
 
 #[derive(Subcommand)]
 enum ProgramWhitelistAction {
-    /// List all whitelisted programs
+    /// List all whitelisted deployer authorities
     List,
-    /// Add a program to the whitelist
-    Add { program_id: String },
-    /// Remove a program from the whitelist
-    Remove { program_id: String },
+    /// Whitelist a deployer authority (who can deploy/upgrade programs)
+    Add {
+        program_authority: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
+    },
+    /// Remove a deployer authority from the whitelist
+    Remove {
+        program_authority: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
+    },
     /// Show authority account
     Auth,
     /// Propose a new authority
-    ProposeAuthority { new_authority: String },
+    ProposeAuthority {
+        new_authority: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
+    },
     /// Accept pending authority transfer
-    AcceptAuthority,
+    AcceptAuthority {
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
+    },
+    /// Cancel pending authority transfer
+    CancelAuthority {
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -115,46 +141,63 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
             // Whitelist commands
-            ValidatorWhitelistAction::List => vw::whitelist::list()?,
+            ValidatorWhitelistAction::List => vw::whitelist::list(&cli.url)?,
             ValidatorWhitelistAction::Add {
                 vote_account,
                 start_epoch,
                 end_epoch,
-                keypair,
-            } => vw::whitelist::add(vote_account, start_epoch, end_epoch, keypair)?,
+                authority,
+            } => vw::whitelist::add(&cli.url, vote_account, start_epoch, end_epoch, authority)?,
             ValidatorWhitelistAction::Remove {
                 vote_account,
-                keypair,
-            } => vw::whitelist::remove(vote_account, keypair)?,
+                authority,
+            } => vw::whitelist::remove(&cli.url, vote_account, authority)?,
             ValidatorWhitelistAction::UpdateStartEpoch {
                 vote_account,
                 epoch,
-                keypair,
-            } => vw::whitelist::update_start_epoch(vote_account, epoch, keypair)?,
+                authority,
+            } => vw::whitelist::update_start_epoch(&cli.url, vote_account, epoch, authority)?,
             ValidatorWhitelistAction::UpdateEndEpoch {
                 vote_account,
                 epoch,
-                keypair,
-            } => vw::whitelist::update_end_epoch(vote_account, epoch, keypair)?,
+                authority,
+            } => vw::whitelist::update_end_epoch(&cli.url, vote_account, epoch, authority)?,
             // Authority commands
-            ValidatorWhitelistAction::Auth => vw::authority::auth()?,
+            ValidatorWhitelistAction::Auth => vw::authority::auth(&cli.url)?,
             ValidatorWhitelistAction::ProposeAuthority {
                 new_authority,
-                keypair,
-            } => vw::authority::propose_authority(new_authority, keypair)?,
-            ValidatorWhitelistAction::AcceptAuthority { keypair } => {
-                vw::authority::accept_authority(keypair)?
+                authority,
+            } => vw::authority::propose_authority(&cli.url, new_authority, authority)?,
+            ValidatorWhitelistAction::AcceptAuthority { authority } => {
+                vw::authority::accept_authority(&cli.url, authority)?
             }
-            ValidatorWhitelistAction::CancelAuthority { keypair } => {
-                vw::authority::cancel_authority(keypair)?
+            ValidatorWhitelistAction::CancelAuthority { authority } => {
+                vw::authority::cancel_authority(&cli.url, authority)?
             }
         },
         Commands::ProgramWhitelist { action } => match action {
-            ProgramWhitelistAction::List => pw::whitelist::list()?,
-            ProgramWhitelistAction::Auth => pw::authority::auth()?,
-            _ => println!("Command not yet implemented"),
+            ProgramWhitelistAction::List => pw::whitelist::list(&cli.url)?,
+            ProgramWhitelistAction::Add {
+                program_authority,
+                authority,
+            } => pw::whitelist::add(&cli.url, program_authority, authority)?,
+            ProgramWhitelistAction::Remove {
+                program_authority,
+                authority,
+            } => pw::whitelist::remove(&cli.url, program_authority, authority)?,
+            ProgramWhitelistAction::Auth => pw::authority::auth(&cli.url)?,
+            ProgramWhitelistAction::ProposeAuthority {
+                new_authority,
+                authority,
+            } => pw::authority::propose_authority(&cli.url, new_authority, authority)?,
+            ProgramWhitelistAction::AcceptAuthority { authority } => {
+                pw::authority::accept_authority(&cli.url, authority)?
+            }
+            ProgramWhitelistAction::CancelAuthority { authority } => {
+                pw::authority::cancel_authority(&cli.url, authority)?
+            }
         },
-        Commands::Airdrop { keypair, amount } => airdrop::airdrop(keypair, amount)?,
+        Commands::Airdrop { keypair, amount } => airdrop::airdrop(&cli.url, keypair, amount)?,
     }
 
     Ok(())
