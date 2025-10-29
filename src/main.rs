@@ -95,18 +95,38 @@ enum ValidatorWhitelistAction {
 
 #[derive(Subcommand)]
 enum ProgramWhitelistAction {
-    /// List all whitelisted programs
+    /// List all whitelisted deployer authorities
     List,
-    /// Add a program to the whitelist
-    Add { program_id: String },
-    /// Remove a program from the whitelist
-    Remove { program_id: String },
+    /// Whitelist a deployer authority (who can deploy/upgrade programs)
+    Add {
+        program_authority: String,
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Remove a deployer authority from the whitelist
+    Remove {
+        program_authority: String,
+        #[arg(long)]
+        keypair: String,
+    },
     /// Show authority account
     Auth,
     /// Propose a new authority
-    ProposeAuthority { new_authority: String },
+    ProposeAuthority {
+        new_authority: String,
+        #[arg(long)]
+        keypair: String,
+    },
     /// Accept pending authority transfer
-    AcceptAuthority,
+    AcceptAuthority {
+        #[arg(long)]
+        keypair: String,
+    },
+    /// Cancel pending authority transfer
+    CancelAuthority {
+        #[arg(long)]
+        keypair: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -151,8 +171,25 @@ fn main() -> Result<()> {
         },
         Commands::ProgramWhitelist { action } => match action {
             ProgramWhitelistAction::List => pw::whitelist::list()?,
+            ProgramWhitelistAction::Add {
+                program_authority,
+                keypair,
+            } => pw::whitelist::add(program_authority, keypair)?,
+            ProgramWhitelistAction::Remove {
+                program_authority,
+                keypair,
+            } => pw::whitelist::remove(program_authority, keypair)?,
             ProgramWhitelistAction::Auth => pw::authority::auth()?,
-            _ => println!("Command not yet implemented"),
+            ProgramWhitelistAction::ProposeAuthority {
+                new_authority,
+                keypair,
+            } => pw::authority::propose_authority(new_authority, keypair)?,
+            ProgramWhitelistAction::AcceptAuthority { keypair } => {
+                pw::authority::accept_authority(keypair)?
+            }
+            ProgramWhitelistAction::CancelAuthority { keypair } => {
+                pw::authority::cancel_authority(keypair)?
+            }
         },
         Commands::Airdrop { keypair, amount } => airdrop::airdrop(keypair, amount)?,
     }
