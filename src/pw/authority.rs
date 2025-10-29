@@ -38,7 +38,7 @@ pub fn auth() -> Result<()> {
     Ok(())
 }
 
-pub fn propose_authority(new_authority: String, keypair_path: String) -> Result<()> {
+pub fn propose_authority(new_authority: String, authority_path: String) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Parse new authority pubkey
@@ -47,10 +47,10 @@ pub fn propose_authority(new_authority: String, keypair_path: String) -> Result<
         .map_err(|e| eyre::eyre!("Invalid new authority pubkey: {}", e))?;
 
     // Load current authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -91,14 +91,14 @@ pub fn propose_authority(new_authority: String, keypair_path: String) -> Result<
     Ok(())
 }
 
-pub fn accept_authority(keypair_path: String) -> Result<()> {
+pub fn accept_authority(authority_path: String) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Load new authority keypair
-    let new_authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let new_authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load new authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -136,14 +136,14 @@ pub fn accept_authority(keypair_path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn cancel_authority(keypair_path: String) -> Result<()> {
+pub fn cancel_authority(authority_path: String) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Load current authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;

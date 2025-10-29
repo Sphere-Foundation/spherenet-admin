@@ -51,7 +51,7 @@ pub fn list() -> Result<()> {
     Ok(())
 }
 
-pub fn add(program_authority: String, keypair_path: String) -> Result<()> {
+pub fn add(program_authority: String, authority_path: String) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Parse deployer authority (who can deploy/upgrade programs)
@@ -60,10 +60,10 @@ pub fn add(program_authority: String, keypair_path: String) -> Result<()> {
         .map_err(|e| eyre::eyre!("Invalid deployer authority: {}", e))?;
 
     // Load whitelist authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load whitelist authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -116,7 +116,7 @@ pub fn add(program_authority: String, keypair_path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn remove(program_authority: String, keypair_path: String) -> Result<()> {
+pub fn remove(program_authority: String, authority_path: String) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Parse deployer authority (who can deploy/upgrade programs)
@@ -125,10 +125,10 @@ pub fn remove(program_authority: String, keypair_path: String) -> Result<()> {
         .map_err(|e| eyre::eyre!("Invalid deployer authority: {}", e))?;
 
     // Load whitelist authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load whitelist authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;

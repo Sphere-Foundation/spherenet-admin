@@ -77,7 +77,7 @@ pub fn add(
     vote_account: String,
     start_epoch: Option<u64>,
     end_epoch: Option<u64>,
-    keypair_path: String,
+    authority_path: String,
 ) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
@@ -87,10 +87,10 @@ pub fn add(
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
     // Load authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -166,7 +166,7 @@ pub fn add(
     Ok(())
 }
 
-pub fn remove(vote_account: String, keypair_path: String) -> Result<()> {
+pub fn remove(vote_account: String, authority_path: String) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Parse vote account pubkey
@@ -175,10 +175,10 @@ pub fn remove(vote_account: String, keypair_path: String) -> Result<()> {
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
     // Load authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -224,7 +224,7 @@ pub fn remove(vote_account: String, keypair_path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn update_start_epoch(vote_account: String, epoch: u64, keypair_path: String) -> Result<()> {
+pub fn update_start_epoch(vote_account: String, epoch: u64, authority_path: String) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Parse vote account pubkey
@@ -233,10 +233,10 @@ pub fn update_start_epoch(vote_account: String, epoch: u64, keypair_path: String
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
     // Load authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;
@@ -284,7 +284,7 @@ pub fn update_start_epoch(vote_account: String, epoch: u64, keypair_path: String
     Ok(())
 }
 
-pub fn update_end_epoch(vote_account: String, epoch: u64, keypair_path: String) -> Result<()> {
+pub fn update_end_epoch(vote_account: String, epoch: u64, authority_path: String) -> Result<()> {
     let rpc_client = RpcClient::new(RPC_URL);
 
     // Parse vote account pubkey
@@ -293,10 +293,10 @@ pub fn update_end_epoch(vote_account: String, epoch: u64, keypair_path: String) 
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
     // Load authority keypair
-    let authority_keypair = read_keypair_file(&keypair_path).map_err(|e| {
+    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to load authority keypair from {}: {}",
-            keypair_path,
+            authority_path,
             e
         )
     })?;

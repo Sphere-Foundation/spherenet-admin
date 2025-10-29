@@ -48,48 +48,48 @@ enum ValidatorWhitelistAction {
         start_epoch: Option<u64>,
         #[arg(long)]
         end_epoch: Option<u64>,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Remove a validator from the whitelist
     Remove {
         vote_account: String,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Update a validator's start epoch
     UpdateStartEpoch {
         vote_account: String,
         #[arg(long)]
         epoch: u64,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Update a validator's end epoch
     UpdateEndEpoch {
         vote_account: String,
         #[arg(long)]
         epoch: u64,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Show authority account
     Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Accept pending authority transfer
     AcceptAuthority {
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Cancel pending authority transfer
     CancelAuthority {
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
 }
 
@@ -100,32 +100,32 @@ enum ProgramWhitelistAction {
     /// Whitelist a deployer authority (who can deploy/upgrade programs)
     Add {
         program_authority: String,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Remove a deployer authority from the whitelist
     Remove {
         program_authority: String,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Show authority account
     Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Accept pending authority transfer
     AcceptAuthority {
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
     /// Cancel pending authority transfer
     CancelAuthority {
-        #[arg(long)]
-        keypair: String,
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
     },
 }
 
@@ -140,55 +140,55 @@ fn main() -> Result<()> {
                 vote_account,
                 start_epoch,
                 end_epoch,
-                keypair,
-            } => vw::whitelist::add(vote_account, start_epoch, end_epoch, keypair)?,
+                authority,
+            } => vw::whitelist::add(vote_account, start_epoch, end_epoch, authority)?,
             ValidatorWhitelistAction::Remove {
                 vote_account,
-                keypair,
-            } => vw::whitelist::remove(vote_account, keypair)?,
+                authority,
+            } => vw::whitelist::remove(vote_account, authority)?,
             ValidatorWhitelistAction::UpdateStartEpoch {
                 vote_account,
                 epoch,
-                keypair,
-            } => vw::whitelist::update_start_epoch(vote_account, epoch, keypair)?,
+                authority,
+            } => vw::whitelist::update_start_epoch(vote_account, epoch, authority)?,
             ValidatorWhitelistAction::UpdateEndEpoch {
                 vote_account,
                 epoch,
-                keypair,
-            } => vw::whitelist::update_end_epoch(vote_account, epoch, keypair)?,
+                authority,
+            } => vw::whitelist::update_end_epoch(vote_account, epoch, authority)?,
             // Authority commands
             ValidatorWhitelistAction::Auth => vw::authority::auth()?,
             ValidatorWhitelistAction::ProposeAuthority {
                 new_authority,
-                keypair,
-            } => vw::authority::propose_authority(new_authority, keypair)?,
-            ValidatorWhitelistAction::AcceptAuthority { keypair } => {
-                vw::authority::accept_authority(keypair)?
+                authority,
+            } => vw::authority::propose_authority(new_authority, authority)?,
+            ValidatorWhitelistAction::AcceptAuthority { authority } => {
+                vw::authority::accept_authority(authority)?
             }
-            ValidatorWhitelistAction::CancelAuthority { keypair } => {
-                vw::authority::cancel_authority(keypair)?
+            ValidatorWhitelistAction::CancelAuthority { authority } => {
+                vw::authority::cancel_authority(authority)?
             }
         },
         Commands::ProgramWhitelist { action } => match action {
             ProgramWhitelistAction::List => pw::whitelist::list()?,
             ProgramWhitelistAction::Add {
                 program_authority,
-                keypair,
-            } => pw::whitelist::add(program_authority, keypair)?,
+                authority,
+            } => pw::whitelist::add(program_authority, authority)?,
             ProgramWhitelistAction::Remove {
                 program_authority,
-                keypair,
-            } => pw::whitelist::remove(program_authority, keypair)?,
+                authority,
+            } => pw::whitelist::remove(program_authority, authority)?,
             ProgramWhitelistAction::Auth => pw::authority::auth()?,
             ProgramWhitelistAction::ProposeAuthority {
                 new_authority,
-                keypair,
-            } => pw::authority::propose_authority(new_authority, keypair)?,
-            ProgramWhitelistAction::AcceptAuthority { keypair } => {
-                pw::authority::accept_authority(keypair)?
+                authority,
+            } => pw::authority::propose_authority(new_authority, authority)?,
+            ProgramWhitelistAction::AcceptAuthority { authority } => {
+                pw::authority::accept_authority(authority)?
             }
-            ProgramWhitelistAction::CancelAuthority { keypair } => {
-                pw::authority::cancel_authority(keypair)?
+            ProgramWhitelistAction::CancelAuthority { authority } => {
+                pw::authority::cancel_authority(authority)?
             }
         },
         Commands::Airdrop { keypair, amount } => airdrop::airdrop(keypair, amount)?,
