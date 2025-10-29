@@ -1,11 +1,9 @@
-use crate::consts::RPC_URL;
 use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::signature::{read_keypair_file, Signer};
 
-pub fn airdrop(keypair_path: String, amount: f64) -> Result<()> {
-    // Connect to testnet
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn airdrop(rpc_url: &str, keypair_path: String, amount: f64) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Load keypair
     let keypair = read_keypair_file(&keypair_path)

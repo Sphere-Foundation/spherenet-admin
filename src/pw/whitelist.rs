@@ -1,4 +1,4 @@
-use crate::consts::{RPC_URL, SYSTEM_PROGRAM};
+use crate::consts::SYSTEM_PROGRAM;
 use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -12,8 +12,8 @@ use spherenet_program_whitelist_interface::{
     state::{load, whitelist_entry::ProgramWhitelistEntry},
 };
 
-pub fn list() -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn list(rpc_url: &str) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Get the program whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -51,8 +51,8 @@ pub fn list() -> Result<()> {
     Ok(())
 }
 
-pub fn add(program_authority: String, authority_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Parse deployer authority (who can deploy/upgrade programs)
     let deployer_pubkey = program_authority
@@ -116,8 +116,8 @@ pub fn add(program_authority: String, authority_path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn remove(program_authority: String, authority_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Parse deployer authority (who can deploy/upgrade programs)
     let deployer_pubkey = program_authority

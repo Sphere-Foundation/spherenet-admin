@@ -1,4 +1,3 @@
-use crate::consts::RPC_URL;
 use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -15,9 +14,8 @@ use spherenet_program_whitelist_interface::{
     state::{account::ProgramWhitelistAccount, load},
 };
 
-pub fn auth() -> Result<()> {
-    // Connect to testnet
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn auth(rpc_url: &str) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Get the program whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -38,8 +36,8 @@ pub fn auth() -> Result<()> {
     Ok(())
 }
 
-pub fn propose_authority(new_authority: String, authority_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn propose_authority(rpc_url: &str, new_authority: String, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Parse new authority pubkey
     let new_authority_pubkey = new_authority
@@ -91,8 +89,8 @@ pub fn propose_authority(new_authority: String, authority_path: String) -> Resul
     Ok(())
 }
 
-pub fn accept_authority(authority_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn accept_authority(rpc_url: &str, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Load new authority keypair
     let new_authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
@@ -136,8 +134,8 @@ pub fn accept_authority(authority_path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn cancel_authority(authority_path: String) -> Result<()> {
-    let rpc_client = RpcClient::new(RPC_URL);
+pub fn cancel_authority(rpc_url: &str, authority_path: String) -> Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
 
     // Load current authority keypair
     let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {

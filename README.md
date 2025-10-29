@@ -13,7 +13,24 @@ This CLI provides administrative commands for managing both whitelists.
 
 ## Configuration
 
-The CLI connects to SphereNet testnet by default (`https://api.testnet.sphere.net`). To change the RPC URL, modify `src/consts.rs`.
+The CLI connects to SphereNet testnet by default (`https://api.testnet.sphere.net`).
+
+You can override the RPC endpoint using the global `--url` flag:
+
+```bash
+# Use local validator
+spherenet-admin --url http://localhost:8899 vw list
+
+# Use mainnet (when available)
+spherenet-admin --url https://api.mainnet.sphere.net pw list
+
+# Default to testnet
+spherenet-admin vw list
+```
+
+## Global Flags
+
+- `--url <RPC_URL>` - RPC endpoint to connect to (default: `https://api.testnet.sphere.net`)
 
 ## Commands
 
@@ -35,27 +52,27 @@ Shows all whitelisted validators with their vote accounts, start epochs, and end
 spherenet-admin vw add <VOTE_ACCOUNT> \
   --start-epoch <EPOCH> \
   --end-epoch <EPOCH> \
-  --keypair <PATH>
+  --auth <PATH>
 ```
 
 **Arguments:**
 - `<VOTE_ACCOUNT>` - Validator's vote account public key
 - `--start-epoch` - (Optional) Epoch when validator can start voting (default: current epoch)
 - `--end-epoch` - (Optional) Epoch when validator's term ends (default: u64::MAX)
-- `--keypair` - Path to whitelist authority keypair
+- `--auth` - Path to whitelist authority keypair (alias: `--authority`)
 
 **Example:**
 ```bash
 spherenet-admin vw add HqzWjPX... \
   --start-epoch 100 \
   --end-epoch 200 \
-  --keypair ./authority.json
+  --auth ./authority.json
 ```
 
 #### Remove Validator
 
 ```bash
-spherenet-admin vw remove <VOTE_ACCOUNT> --keypair <PATH>
+spherenet-admin vw remove <VOTE_ACCOUNT> --auth <PATH>
 ```
 
 **Note:** Cannot remove validators during their active term. Update the end epoch first, wait for the epoch boundary, then remove.
@@ -65,7 +82,7 @@ spherenet-admin vw remove <VOTE_ACCOUNT> --keypair <PATH>
 ```bash
 spherenet-admin vw update-start-epoch <VOTE_ACCOUNT> \
   --epoch <EPOCH> \
-  --keypair <PATH>
+  --auth <PATH>
 ```
 
 Updates when a validator can start voting.
@@ -75,7 +92,7 @@ Updates when a validator can start voting.
 ```bash
 spherenet-admin vw update-end-epoch <VOTE_ACCOUNT> \
   --epoch <EPOCH> \
-  --keypair <PATH>
+  --auth <PATH>
 ```
 
 Updates when a validator's term ends. Must be greater than current epoch.
@@ -93,15 +110,15 @@ Shows current whitelist authority, pending authority (if any), and whitelist acc
 ```bash
 # Step 1: Propose new authority
 spherenet-admin vw propose-authority <NEW_AUTHORITY_PUBKEY> \
-  --keypair <CURRENT_AUTHORITY_KEYPAIR>
+  --auth <CURRENT_AUTHORITY_KEYPAIR>
 
 # Step 2: Accept as new authority
 spherenet-admin vw accept-authority \
-  --keypair <NEW_AUTHORITY_KEYPAIR>
+  --auth <NEW_AUTHORITY_KEYPAIR>
 
 # Or cancel the transfer
 spherenet-admin vw cancel-authority \
-  --keypair <CURRENT_AUTHORITY_KEYPAIR>
+  --auth <CURRENT_AUTHORITY_KEYPAIR>
 ```
 
 Two-step authority transfer prevents accidental loss of control.
@@ -123,17 +140,17 @@ Shows all authorities that are allowed to deploy programs.
 #### Add Deployer Authority
 
 ```bash
-spherenet-admin pw add <DEPLOYER_AUTHORITY> --keypair <PATH>
+spherenet-admin pw add <DEPLOYER_AUTHORITY> --auth <PATH>
 ```
 
 **Arguments:**
 - `<DEPLOYER_AUTHORITY>` - Public key of the authority that can deploy programs
-- `--keypair` - Path to whitelist authority keypair
+- `--auth` - Path to whitelist authority keypair (alias: `--authority`)
 
 **Example:**
 ```bash
 spherenet-admin pw add 8AydpnGCywwzhVh4ZCUv7HWKodQgCk3Mic33ybGZ7Yjp \
-  --keypair ./authority.json
+  --auth ./authority.json
 ```
 
 **Note:** The program whitelist controls **WHO** can deploy programs (authorities), not **WHICH** programs can execute.
@@ -141,7 +158,7 @@ spherenet-admin pw add 8AydpnGCywwzhVh4ZCUv7HWKodQgCk3Mic33ybGZ7Yjp \
 #### Remove Deployer Authority
 
 ```bash
-spherenet-admin pw remove <DEPLOYER_AUTHORITY> --keypair <PATH>
+spherenet-admin pw remove <DEPLOYER_AUTHORITY> --auth <PATH>
 ```
 
 Removes an authority's permission to deploy/upgrade programs.
@@ -159,15 +176,15 @@ Shows current whitelist authority, pending authority (if any), and whitelist acc
 ```bash
 # Step 1: Propose new authority
 spherenet-admin pw propose-authority <NEW_AUTHORITY_PUBKEY> \
-  --keypair <CURRENT_AUTHORITY_KEYPAIR>
+  --auth <CURRENT_AUTHORITY_KEYPAIR>
 
 # Step 2: Accept as new authority
 spherenet-admin pw accept-authority \
-  --keypair <NEW_AUTHORITY_KEYPAIR>
+  --auth <NEW_AUTHORITY_KEYPAIR>
 
 # Or cancel the transfer
 spherenet-admin pw cancel-authority \
-  --keypair <CURRENT_AUTHORITY_KEYPAIR>
+  --auth <CURRENT_AUTHORITY_KEYPAIR>
 ```
 
 ---
