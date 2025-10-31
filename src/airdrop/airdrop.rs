@@ -11,13 +11,8 @@ pub fn airdrop(rpc_url: &str, keypair_path: String, amount: f64) -> eyre::Result
     let pubkey = keypair.pubkey();
 
     // Check current balance
-    let balance = rpc_client.get_balance(&pubkey)?;
     println!("\nRequesting airdrop:");
     println!("  Account:         {}", pubkey);
-    println!(
-        "  Current Balance: {} SOL",
-        balance as f64 / 1_000_000_000.0
-    );
     println!("  Airdrop Amount:  {} SOL", amount);
 
     // Request airdrop
