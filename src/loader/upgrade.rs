@@ -76,6 +76,54 @@ pub fn upgrade_program(
         .map_err(|e| eyre::eyre!("Failed to read program file {}: {}", program_so_path, e))?;
     println!("  New program size: {} bytes", program_data.len());
 
+    // Verify program data account is large enough for the new program (fail-fast)
+    println!("\n🔍 Checking program capacity...");
+    let (programdata_address, _) = Pubkey::find_program_address(
+        &[program_id.as_ref()],
+        &solana_sdk::bpf_loader_upgradeable::id(),
+    );
+
+    let programdata_account = rpc_client.get_account(&programdata_address).map_err(|e| {
+        eyre::eyre!(
+            "Failed to get ProgramData account {}: {}",
+            programdata_address,
+            e
+        )
+    })?;
+
+    // Parse ProgramData account to get max_data_len
+    // ProgramData layout: [account_type: 4 bytes][slot: 8 bytes][upgrade_authority: 32 bytes][actual_data...]
+    // For upgradeable programs, the max_data_len is the total account size minus the metadata overhead (45 bytes)
+    let programdata_metadata_len = 45; // Account type (4) + slot (8) + authority (32) + reserved (1)
+    let current_max_len = programdata_account
+        .data
+        .len()
+        .saturating_sub(programdata_metadata_len);
+
+    println!("  Current max capacity: {} bytes", current_max_len);
+    println!("  Required capacity:    {} bytes", program_data.len());
+
+    if program_data.len() > current_max_len {
+        let additional_bytes = program_data.len() - current_max_len;
+        return Err(eyre::eyre!(
+            "❌ Program data account is too small!\n\n\
+            Current capacity: {} bytes\n\
+            Required capacity: {} bytes\n\
+            Need {} more bytes\n\n\
+            Run this command to extend the program:\n\
+            solana program extend {} {} -k {} --url {}",
+            current_max_len,
+            program_data.len(),
+            additional_bytes,
+            program_id,
+            additional_bytes,
+            upgrade_authority_str,
+            url
+        ));
+    }
+
+    println!("  ✓ Program capacity sufficient");
+
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
     let whitelist_entry = require_whitelist_entry(&rpc_client, upgrade_authority)?;
 
