@@ -1,7 +1,6 @@
 pub mod deploy;
 pub mod upgrade;
 
-use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -33,7 +32,7 @@ pub fn write_buffer(
     buffer: &Pubkey,
     authority: &Pubkey,
     program_data: &[u8],
-) -> Result<()> {
+) -> eyre::Result<()> {
     let chunks: Vec<_> = program_data.chunks(MAX_WRITE_SIZE).collect();
     let total_chunks = chunks.len();
 

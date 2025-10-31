@@ -1,6 +1,5 @@
 use super::write_buffer;
 use crate::pw::whitelist::require_whitelist_entry;
-use eyre::{eyre, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -23,25 +22,35 @@ pub fn upgrade_program(
     upgrade_authority_str: String,
     payer_keypair_path: String,
     spill_address_str: Option<String>,
-) -> Result<()> {
+) -> eyre::Result<()> {
     println!("🔄 Upgrading program on SphereNet...");
 
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Load keypairs and parse addresses
-    let payer = read_keypair_file(&payer_keypair_path)
-        .map_err(|e| eyre!("Failed to read payer keypair from {}: {}", payer_keypair_path, e))?;
-    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str)
-        .map_err(|e| eyre!("Failed to read upgrade authority keypair from {}: {}", upgrade_authority_str, e))?;
+    let payer = read_keypair_file(&payer_keypair_path).map_err(|e| {
+        eyre::eyre!(
+            "Failed to read payer keypair from {}: {}",
+            payer_keypair_path,
+            e
+        )
+    })?;
+    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str).map_err(|e| {
+        eyre::eyre!(
+            "Failed to read upgrade authority keypair from {}: {}",
+            upgrade_authority_str,
+            e
+        )
+    })?;
     let upgrade_authority = upgrade_authority_keypair.pubkey();
     let program_id = Pubkey::from_str(&program_id_str)
-        .map_err(|e| eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
+        .map_err(|e| eyre::eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
 
     // Spill account defaults to payer if not specified
     let spill_address = if let Some(spill_str) = spill_address_str {
         Pubkey::from_str(&spill_str)
-            .map_err(|e| eyre!("Failed to parse spill address {}: {}", spill_str, e))?
+            .map_err(|e| eyre::eyre!("Failed to parse spill address {}: {}", spill_str, e))?
     } else {
         payer.pubkey()
     };
@@ -55,7 +64,7 @@ pub fn upgrade_program(
     match rpc_client.get_account(&program_id) {
         Ok(_) => println!("  ✓ Program exists"),
         Err(_) => {
-            return Err(eyre!(
+            return Err(eyre::eyre!(
                 "❌ Program {} does not exist! Use 'program deploy' to deploy a new program.",
                 program_id
             ));
@@ -64,7 +73,7 @@ pub fn upgrade_program(
 
     // Read program .so file
     let program_data = fs::read(&program_so_path)
-        .map_err(|e| eyre!("Failed to read program file {}: {}", program_so_path, e))?;
+        .map_err(|e| eyre::eyre!("Failed to read program file {}: {}", program_so_path, e))?;
     println!("  New program size: {} bytes", program_data.len());
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)

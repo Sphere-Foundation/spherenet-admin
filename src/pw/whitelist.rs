@@ -1,4 +1,3 @@
-use eyre::{eyre, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -34,7 +33,7 @@ pub fn derive_whitelist_entry(deployer_authority: &Pubkey) -> (Pubkey, u8) {
     )
 }
 
-pub fn list(rpc_url: &str) -> Result<()> {
+pub fn list(rpc_url: &str) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Get the program whitelist account
@@ -73,7 +72,7 @@ pub fn list(rpc_url: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> Result<()> {
+pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse deployer authority (who can deploy/upgrade programs)
@@ -129,7 +128,11 @@ pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> 
     Ok(())
 }
 
-pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) -> Result<()> {
+pub fn remove(
+    rpc_url: &str,
+    program_authority: String,
+    authority_path: String,
+) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse deployer authority (who can deploy/upgrade programs)
@@ -202,7 +205,7 @@ pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) 
 pub fn require_whitelist_entry(
     rpc_client: &RpcClient,
     upgrade_authority: Pubkey,
-) -> Result<Pubkey> {
+) -> eyre::Result<Pubkey> {
     println!("\n🔐 Verifying whitelist...");
 
     // Derive whitelist PDA
@@ -217,7 +220,7 @@ pub fn require_whitelist_entry(
             Ok(whitelist_entry_pda)
         }
         Err(_) => {
-            Err(eyre!(
+            Err(eyre::eyre!(
                 "❌ Upgrade authority {} is not whitelisted!\n   Run: spherenet-admin pw add {} --auth <AUTHORITY>",
                 upgrade_authority,
                 upgrade_authority

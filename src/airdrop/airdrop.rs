@@ -1,8 +1,7 @@
-use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::signature::{read_keypair_file, Signer};
 
-pub fn airdrop(rpc_url: &str, keypair_path: String, amount: f64) -> Result<()> {
+pub fn airdrop(rpc_url: &str, keypair_path: String, amount: f64) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Load keypair

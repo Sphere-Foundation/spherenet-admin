@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use eyre::Result;
 
 mod airdrop;
 mod loader;
@@ -189,7 +188,7 @@ enum ProgramAction {
     },
 }
 
-fn main() -> Result<()> {
+fn main() -> eyre::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {

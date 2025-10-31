@@ -1,4 +1,3 @@
-use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -14,7 +13,7 @@ use spherenet_program_whitelist_interface::{
     state::{account::ProgramWhitelistAccount, load},
 };
 
-pub fn auth(rpc_url: &str) -> Result<()> {
+pub fn auth(rpc_url: &str) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Get the program whitelist account
@@ -36,7 +35,11 @@ pub fn auth(rpc_url: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn propose_authority(rpc_url: &str, new_authority: String, authority_path: String) -> Result<()> {
+pub fn propose_authority(
+    rpc_url: &str,
+    new_authority: String,
+    authority_path: String,
+) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse new authority pubkey
@@ -89,7 +92,7 @@ pub fn propose_authority(rpc_url: &str, new_authority: String, authority_path: S
     Ok(())
 }
 
-pub fn accept_authority(rpc_url: &str, authority_path: String) -> Result<()> {
+pub fn accept_authority(rpc_url: &str, authority_path: String) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Load new authority keypair
@@ -134,7 +137,7 @@ pub fn accept_authority(rpc_url: &str, authority_path: String) -> Result<()> {
     Ok(())
 }
 
-pub fn cancel_authority(rpc_url: &str, authority_path: String) -> Result<()> {
+pub fn cancel_authority(rpc_url: &str, authority_path: String) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Load current authority keypair

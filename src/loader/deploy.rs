@@ -1,6 +1,5 @@
 use super::write_buffer;
 use crate::pw::whitelist::require_whitelist_entry;
-use eyre::{eyre, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -22,20 +21,35 @@ pub fn deploy(
     upgrade_authority_str: String,
     payer_keypair_path: String,
     max_data_len: Option<usize>,
-) -> Result<()> {
+) -> eyre::Result<()> {
     println!("🚀 Deploying program to SphereNet...");
 
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Load keypairs
-    let payer = read_keypair_file(&payer_keypair_path)
-        .map_err(|e| eyre!("Failed to read payer keypair from {}: {}", payer_keypair_path, e))?;
-    let program_keypair = read_keypair_file(&program_keypair_path)
-        .map_err(|e| eyre!("Failed to read program keypair from {}: {}", program_keypair_path, e))?;
+    let payer = read_keypair_file(&payer_keypair_path).map_err(|e| {
+        eyre::eyre!(
+            "Failed to read payer keypair from {}: {}",
+            payer_keypair_path,
+            e
+        )
+    })?;
+    let program_keypair = read_keypair_file(&program_keypair_path).map_err(|e| {
+        eyre::eyre!(
+            "Failed to read program keypair from {}: {}",
+            program_keypair_path,
+            e
+        )
+    })?;
     let program_id = program_keypair.pubkey();
-    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str)
-        .map_err(|e| eyre!("Failed to read upgrade authority keypair from {}: {}", upgrade_authority_str, e))?;
+    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str).map_err(|e| {
+        eyre::eyre!(
+            "Failed to read upgrade authority keypair from {}: {}",
+            upgrade_authority_str,
+            e
+        )
+    })?;
     let upgrade_authority = upgrade_authority_keypair.pubkey();
 
     println!("  Program ID: {}", program_id);
@@ -44,13 +58,13 @@ pub fn deploy(
 
     // Read program .so file
     let program_data = fs::read(&program_so_path)
-        .map_err(|e| eyre!("Failed to read program file {}: {}", program_so_path, e))?;
+        .map_err(|e| eyre::eyre!("Failed to read program file {}: {}", program_so_path, e))?;
     println!("  Program size: {} bytes", program_data.len());
 
     // Determine max data length
     let max_data_len = max_data_len.unwrap_or(program_data.len());
     if max_data_len < program_data.len() {
-        return Err(eyre!(
+        return Err(eyre::eyre!(
             "max_data_len ({}) must be at least program size ({})",
             max_data_len,
             program_data.len()

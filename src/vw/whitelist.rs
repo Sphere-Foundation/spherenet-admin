@@ -1,4 +1,3 @@
-use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -33,7 +32,7 @@ pub fn derive_whitelist_entry(vote_account: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(&[vote_account.as_ref()], &program_id)
 }
 
-pub fn list(rpc_url: &str) -> Result<()> {
+pub fn list(rpc_url: &str) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Get the validator whitelist account
@@ -97,7 +96,7 @@ pub fn add(
     start_epoch: Option<u64>,
     end_epoch: Option<u64>,
     authority_path: String,
-) -> Result<()> {
+) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -183,7 +182,7 @@ pub fn add(
     Ok(())
 }
 
-pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> Result<()> {
+pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -244,7 +243,7 @@ pub fn update_start_epoch(
     vote_account: String,
     epoch: u64,
     authority_path: String,
-) -> Result<()> {
+) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -307,7 +306,7 @@ pub fn update_end_epoch(
     vote_account: String,
     epoch: u64,
     authority_path: String,
-) -> Result<()> {
+) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
