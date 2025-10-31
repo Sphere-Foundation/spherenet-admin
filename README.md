@@ -189,6 +189,90 @@ spherenet-admin pw cancel-authority \
 
 ---
 
+### Program Deployment (`program`)
+
+Deploy and upgrade programs on SphereNet with whitelist enforcement.
+
+#### Deploy Program
+
+```bash
+spherenet-admin program deploy \
+  --program-so <PATH> \
+  --program-keypair <PATH> \
+  --upgrade-authority <PATH> \
+  --payer <PATH>
+```
+
+**Arguments:**
+- `--program-so` - Path to compiled program binary (.so file)
+- `--program-keypair` - Path to program keypair (determines program ID)
+- `--upgrade-authority` - Path to upgrade authority keypair (must be whitelisted)
+- `--payer` - Path to payer keypair (funds buffer creation)
+
+**Example:**
+```bash
+spherenet-admin program deploy \
+  --program-so ./target/deploy/my_program.so \
+  --program-keypair ./target/deploy/my_program-keypair.json \
+  --upgrade-authority ./authority.json \
+  --payer ~/.config/solana/id.json
+```
+
+**Notes:**
+- Upgrade authority must be whitelisted via `spherenet-admin pw add` before deployment
+- Command validates whitelist before creating buffer to fail fast
+- Buffer creation costs ~0.13 SOL rent (returned on successful deploy)
+
+#### Upgrade Program
+
+```bash
+spherenet-admin program upgrade \
+  --program-id <PUBKEY> \
+  --program-so <PATH> \
+  --upgrade-authority <PATH> \
+  --payer <PATH> \
+  [--spill <PUBKEY>]
+```
+
+**Arguments:**
+- `--program-id` - Program ID to upgrade (as pubkey string)
+- `--program-so` - Path to new compiled program binary
+- `--upgrade-authority` - Path to upgrade authority keypair (must be whitelisted)
+- `--payer` - Path to payer keypair (funds buffer creation)
+- `--spill` - (Optional) Account to receive excess buffer rent (defaults to payer)
+
+**Example:**
+```bash
+spherenet-admin program upgrade \
+  --program-id 7vH9zQdPKjLKJNHh8AzPBpVYQBvzRUQoQ7vP7ENSNqzL \
+  --program-so ./target/deploy/my_program.so \
+  --upgrade-authority ./authority.json \
+  --payer ~/.config/solana/id.json
+```
+
+**Notes:**
+- Checks program capacity before creating buffer (use `solana program extend` if needed)
+- Fails with clear error message showing exact extend command if program too small
+- Upgrade authority must remain whitelisted (removing authority prevents upgrades)
+
+#### Helper Scripts
+
+Convenience scripts in `scripts/` directory use environment variables:
+
+```bash
+# Copy and configure environment
+cp scripts/.env.example scripts/.env
+# Edit .env with your paths
+
+# Deploy using env vars
+./scripts/testnet_program_deploy.sh
+
+# Upgrade using env vars
+./scripts/testnet_program_upgrade.sh
+```
+
+---
+
 ### Airdrop
 
 Request SOL airdrop (testnet only).
@@ -228,14 +312,25 @@ Both are generated from their respective interface definitions using Codama/Kino
 ```
 src/
 ├── main.rs       # CLI argument parsing and command routing
-├── consts.rs     # Network configuration (RPC URL, program IDs)
-├── airdrop.rs    # Airdrop functionality
+├── airdrop/
+│   ├── mod.rs        # Module exports
+│   └── airdrop.rs    # Airdrop implementation
 ├── vw/
 │   ├── mod.rs        # Validator whitelist module exports
 │   ├── whitelist.rs  # Validator whitelist commands
 │   └── authority.rs  # Validator authority management
-└── pw/
-    ├── mod.rs        # Program whitelist module exports
-    ├── whitelist.rs  # Program whitelist commands
-    └── authority.rs  # Program authority management
+├── pw/
+│   ├── mod.rs        # Program whitelist module exports
+│   ├── whitelist.rs  # Program whitelist commands
+│   └── authority.rs  # Program authority management
+└── loader/
+    ├── mod.rs        # Loader utilities (write_buffer helper)
+    ├── deploy.rs     # Program deployment implementation
+    └── upgrade.rs    # Program upgrade implementation
+
+scripts/
+├── .env.example                   # Environment variable template
+├── testnet_program_deploy.sh     # Deploy script with env vars
+├── testnet_program_upgrade.sh    # Upgrade script with env vars
+└── testnet_health_check.sh       # Network health monitoring
 ```

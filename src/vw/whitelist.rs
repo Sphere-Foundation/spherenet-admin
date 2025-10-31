@@ -1,5 +1,3 @@
-use crate::consts::SYSTEM_PROGRAM;
-use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -14,8 +12,27 @@ use spherenet_validator_whitelist_interface::{
     account_solana, program_solana,
     state::{account::ValidatorWhitelistAccount, load, whitelist_entry::ValidatorWhitelistEntry},
 };
+use std::sync::LazyLock;
 
-pub fn list(rpc_url: &str) -> Result<()> {
+pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(|| Pubkey::default());
+
+/// Derives the validator whitelist entry PDA for a vote account.
+///
+/// The PDA is derived using:
+/// - Seeds: `[vote_account]`
+/// - Program: validator whitelist program ID
+///
+/// # Arguments
+/// * `vote_account` - Pubkey of the validator's vote account
+///
+/// # Returns
+/// * `(Pubkey, u8)` - The derived PDA and bump seed
+pub fn derive_whitelist_entry(vote_account: &Pubkey) -> (Pubkey, u8) {
+    let program_id = Pubkey::from(program_solana::id().to_bytes());
+    Pubkey::find_program_address(&[vote_account.as_ref()], &program_id)
+}
+
+pub fn list(rpc_url: &str) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Get the validator whitelist account
@@ -79,7 +96,7 @@ pub fn add(
     start_epoch: Option<u64>,
     end_epoch: Option<u64>,
     authority_path: String,
-) -> Result<()> {
+) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -115,9 +132,7 @@ pub fn add(
     }
 
     // Derive the whitelist entry PDA
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let (whitelist_entry_pda, _bump) =
-        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -167,7 +182,7 @@ pub fn add(
     Ok(())
 }
 
-pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> Result<()> {
+pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -185,9 +200,7 @@ pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> Re
     })?;
 
     // Derive the whitelist entry PDA
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let (whitelist_entry_pda, _bump) =
-        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -225,7 +238,12 @@ pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> Re
     Ok(())
 }
 
-pub fn update_start_epoch(rpc_url: &str, vote_account: String, epoch: u64, authority_path: String) -> Result<()> {
+pub fn update_start_epoch(
+    rpc_url: &str,
+    vote_account: String,
+    epoch: u64,
+    authority_path: String,
+) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -243,9 +261,7 @@ pub fn update_start_epoch(rpc_url: &str, vote_account: String, epoch: u64, autho
     })?;
 
     // Derive the whitelist entry PDA
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let (whitelist_entry_pda, _bump) =
-        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -285,7 +301,12 @@ pub fn update_start_epoch(rpc_url: &str, vote_account: String, epoch: u64, autho
     Ok(())
 }
 
-pub fn update_end_epoch(rpc_url: &str, vote_account: String, epoch: u64, authority_path: String) -> Result<()> {
+pub fn update_end_epoch(
+    rpc_url: &str,
+    vote_account: String,
+    epoch: u64,
+    authority_path: String,
+) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -303,9 +324,7 @@ pub fn update_end_epoch(rpc_url: &str, vote_account: String, epoch: u64, authori
     })?;
 
     // Derive the whitelist entry PDA
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let (whitelist_entry_pda, _bump) =
-        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());

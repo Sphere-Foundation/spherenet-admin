@@ -1,12 +1,12 @@
 use clap::{Parser, Subcommand};
-use eyre::Result;
 
 mod airdrop;
-mod consts;
+mod loader;
 mod pw;
 mod vw;
 
-use consts::RPC_URL;
+/// Default RPC_URL
+pub const RPC_URL: &str = "https://api.testnet.sphere.net";
 
 #[derive(Parser)]
 #[command(name = "spherenet-admin")]
@@ -33,6 +33,11 @@ enum Commands {
     ProgramWhitelist {
         #[command(subcommand)]
         action: ProgramWhitelistAction,
+    },
+    /// Program deployment commands
+    Program {
+        #[command(subcommand)]
+        action: ProgramAction,
     },
     /// Request an airdrop for an account
     Airdrop {
@@ -135,7 +140,55 @@ enum ProgramWhitelistAction {
     },
 }
 
-fn main() -> Result<()> {
+#[derive(Subcommand)]
+enum ProgramAction {
+    /// Deploy a program to SphereNet
+    Deploy {
+        /// Path to the program .so file
+        #[arg(long)]
+        program_so: String,
+
+        /// Path to the program keypair (the program ID will be derived from this)
+        #[arg(long)]
+        program_keypair: String,
+
+        /// Path to upgrade authority keypair (must sign deployment)
+        #[arg(long)]
+        upgrade_authority: String,
+
+        /// Payer keypair path (defaults to solana config default keypair)
+        #[arg(long)]
+        payer: String,
+
+        /// Maximum program data length (optional, defaults to program size)
+        #[arg(long)]
+        max_data_len: Option<usize>,
+    },
+    /// Upgrade an existing program on SphereNet
+    Upgrade {
+        /// Program ID of the existing program to upgrade
+        #[arg(long)]
+        program_id: String,
+
+        /// Path to the new program .so file
+        #[arg(long)]
+        program_so: String,
+
+        /// Path to upgrade authority keypair (must match program's current authority)
+        #[arg(long)]
+        upgrade_authority: String,
+
+        /// Payer keypair path
+        #[arg(long)]
+        payer: String,
+
+        /// Spill account (where excess buffer rent is returned, defaults to payer)
+        #[arg(long)]
+        spill: Option<String>,
+    },
+}
+
+fn main() -> eyre::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
@@ -197,7 +250,39 @@ fn main() -> Result<()> {
                 pw::authority::cancel_authority(&cli.url, authority)?
             }
         },
-        Commands::Airdrop { keypair, amount } => airdrop::airdrop(&cli.url, keypair, amount)?,
+        Commands::Program { action } => match action {
+            ProgramAction::Deploy {
+                program_so,
+                program_keypair,
+                upgrade_authority,
+                payer,
+                max_data_len,
+            } => loader::deploy::deploy(
+                &cli.url,
+                program_so,
+                program_keypair,
+                upgrade_authority,
+                payer,
+                max_data_len,
+            )?,
+            ProgramAction::Upgrade {
+                program_id,
+                program_so,
+                upgrade_authority,
+                payer,
+                spill,
+            } => loader::upgrade::upgrade_program(
+                &cli.url,
+                program_id,
+                program_so,
+                upgrade_authority,
+                payer,
+                spill,
+            )?,
+        },
+        Commands::Airdrop { keypair, amount } => {
+            airdrop::airdrop::airdrop(&cli.url, keypair, amount)?
+        }
     }
 
     Ok(())
