@@ -225,7 +225,12 @@ pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> Re
     Ok(())
 }
 
-pub fn update_start_epoch(rpc_url: &str, vote_account: String, epoch: u64, authority_path: String) -> Result<()> {
+pub fn update_start_epoch(
+    rpc_url: &str,
+    vote_account: String,
+    epoch: u64,
+    authority_path: String,
+) -> Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -285,7 +290,12 @@ pub fn update_start_epoch(rpc_url: &str, vote_account: String, epoch: u64, autho
     Ok(())
 }
 
-pub fn update_end_epoch(rpc_url: &str, vote_account: String, epoch: u64, authority_path: String) -> Result<()> {
+pub fn update_end_epoch(
+    rpc_url: &str,
+    vote_account: String,
+    epoch: u64,
+    authority_path: String,
+) -> Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey

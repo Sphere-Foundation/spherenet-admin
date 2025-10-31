@@ -3,6 +3,7 @@ use eyre::Result;
 
 mod airdrop;
 mod consts;
+mod loader;
 mod pw;
 mod vw;
 
@@ -33,6 +34,11 @@ enum Commands {
     ProgramWhitelist {
         #[command(subcommand)]
         action: ProgramWhitelistAction,
+    },
+    /// Program deployment commands
+    Program {
+        #[command(subcommand)]
+        action: ProgramAction,
     },
     /// Request an airdrop for an account
     Airdrop {
@@ -135,6 +141,32 @@ enum ProgramWhitelistAction {
     },
 }
 
+#[derive(Subcommand)]
+enum ProgramAction {
+    /// Deploy a program to SphereNet
+    Deploy {
+        /// Path to the program .so file
+        #[arg(long)]
+        program_so: String,
+
+        /// Path to the program keypair (the program ID will be derived from this)
+        #[arg(long)]
+        program_keypair: String,
+
+        /// Path to upgrade authority keypair (must sign deployment)
+        #[arg(long)]
+        upgrade_authority: String,
+
+        /// Payer keypair path (defaults to solana config default keypair)
+        #[arg(long)]
+        payer: String,
+
+        /// Maximum program data length (optional, defaults to program size)
+        #[arg(long)]
+        max_data_len: Option<usize>,
+    },
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -196,6 +228,22 @@ fn main() -> Result<()> {
             ProgramWhitelistAction::CancelAuthority { authority } => {
                 pw::authority::cancel_authority(&cli.url, authority)?
             }
+        },
+        Commands::Program { action } => match action {
+            ProgramAction::Deploy {
+                program_so,
+                program_keypair,
+                upgrade_authority,
+                payer,
+                max_data_len,
+            } => loader::deploy::deploy(
+                &cli.url,
+                program_so,
+                program_keypair,
+                upgrade_authority,
+                payer,
+                max_data_len,
+            )?,
         },
         Commands::Airdrop { keypair, amount } => airdrop::airdrop(&cli.url, keypair, amount)?,
     }

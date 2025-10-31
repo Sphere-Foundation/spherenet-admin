@@ -4257,16 +4257,16 @@ dependencies = [
 
 [[package]]
 name = "solana-pubkey"
-version = "2.2.1"
+version = "2.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40db1ff5a0f8aea2c158d78ab5f2cf897848964251d1df42fef78efd3c85b863"
+checksum = "9b62adb9c3261a052ca1f999398c388f1daf558a1b492f60a6d9e64857db4ff1"
 dependencies = [
  "borsh 0.10.4",
  "borsh 1.5.7",
- "bs58",
  "bytemuck",
  "bytemuck_derive",
  "curve25519-dalek 4.1.3",
+ "five8",
  "five8_const",
  "getrandom 0.2.16",
  "js-sys",
@@ -5181,12 +5181,14 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "eyre",
+ "serde_json",
  "solana-client",
  "solana-sdk",
  "spherenet-program-whitelist-client",
  "spherenet-program-whitelist-interface",
  "spherenet-validator-whitelist-client",
  "spherenet-validator-whitelist-interface",
+ "spherenet-whitelisted-loader-v3-interface",
 ]
 
 [[package]]
@@ -5248,6 +5250,21 @@ dependencies = [
  "solana-program",
  "solana-pubkey",
  "thiserror 2.0.17",
+]
+
+[[package]]
+name = "spherenet-whitelisted-loader-v3-interface"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adb8ae92997e4882d53062c3c83d652d30ec9ee3ff71d62578762d4bd3959627"
+dependencies = [
+ "serde",
+ "serde_bytes",
+ "serde_derive",
+ "solana-instruction",
+ "solana-pubkey",
+ "solana-sdk-ids",
+ "solana-system-interface",
 ]
 
 [[package]]
