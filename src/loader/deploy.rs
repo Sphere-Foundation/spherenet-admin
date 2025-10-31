@@ -1,5 +1,5 @@
 use super::write_buffer;
-use crate::pw::whitelist::verify_whitelist_authority;
+use crate::pw::whitelist::require_whitelist_entry;
 use eyre::{eyre, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -58,7 +58,7 @@ pub fn deploy(
     }
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
-    let whitelist_entry = verify_whitelist_authority(&rpc_client, upgrade_authority)?;
+    let whitelist_entry = require_whitelist_entry(&rpc_client, upgrade_authority)?;
 
     // Create and write buffer
     println!("\n📝 Creating buffer account...");

@@ -14,6 +14,26 @@ use std::sync::LazyLock;
 
 pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(|| Pubkey::default());
 
+/// Derives the program whitelist entry PDA for a deployer authority.
+///
+/// The PDA is derived using:
+/// - Seeds: `[program_whitelist_account_id, deployer_authority]`
+/// - Program: program whitelist program ID
+///
+/// # Arguments
+/// * `deployer_authority` - Pubkey of the authority who can deploy/upgrade programs
+///
+/// # Returns
+/// * `(Pubkey, u8)` - The derived PDA and bump seed
+pub fn derive_whitelist_entry(deployer_authority: &Pubkey) -> (Pubkey, u8) {
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+    let program_id = Pubkey::from(program_solana::id().to_bytes());
+    Pubkey::find_program_address(
+        &[whitelist_pubkey.as_ref(), deployer_authority.as_ref()],
+        &program_id,
+    )
+}
+
 pub fn list(rpc_url: &str) -> Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -70,15 +90,8 @@ pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> 
         )
     })?;
 
-    // Get the program whitelist account
-    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-
-    // Derive the whitelist entry PDA using solana_sdk (not pinocchio)
-    let (whitelist_entry_pda, _bump) = Pubkey::find_program_address(
-        &[whitelist_pubkey.as_ref(), deployer_pubkey.as_ref()],
-        &program_id,
-    );
+    // Derive the whitelist entry PDA
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deployer_pubkey);
 
     println!("\nWhitelisting deployer authority:");
     println!("  Deployer Authority:  {}", deployer_pubkey);
@@ -86,6 +99,7 @@ pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> 
     println!("  Whitelist Authority: {}", authority_keypair.pubkey());
 
     // Build the instruction
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let instruction = AddEntryBuilder::new()
         .whitelist_account(whitelist_pubkey)
         .whitelist_authority(authority_keypair.pubkey())
@@ -132,15 +146,8 @@ pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) 
         )
     })?;
 
-    // Get the program whitelist account
-    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-
-    // Derive the whitelist entry PDA using solana_sdk (not pinocchio)
-    let (whitelist_entry_pda, _bump) = Pubkey::find_program_address(
-        &[whitelist_pubkey.as_ref(), deployer_pubkey.as_ref()],
-        &program_id,
-    );
+    // Derive the whitelist entry PDA
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deployer_pubkey);
 
     println!("\nRemoving deployer authority from whitelist:");
     println!("  Deployer Authority:  {}", deployer_pubkey);
@@ -148,6 +155,7 @@ pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) 
     println!("  Whitelist Authority: {}", authority_keypair.pubkey());
 
     // Build the instruction
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let instruction = RemoveEntryBuilder::new()
         .whitelist_account(whitelist_pubkey)
         .whitelist_authority(authority_keypair.pubkey())
@@ -177,14 +185,12 @@ pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) 
     Ok(())
 }
 
-/// Verifies that the upgrade authority is whitelisted before spending any lamports.
+/// Requires that the upgrade authority is whitelisted, returning the whitelist entry PDA.
 ///
-/// This function performs a "fail-fast" check by:
+/// This function performs a "fail-fast" check before spending any lamports by:
 /// 1. Deriving the whitelist PDA from the upgrade authority pubkey
 /// 2. Querying the RPC to verify the whitelist entry account exists
-///
-/// Returns the whitelist PDA address if verification succeeds, allowing it to be
-/// included in deploy/upgrade instructions (at account index 8 for deploy, 7 for upgrade).
+/// 3. Returning the PDA for use in deploy/upgrade instructions (account index 8 for deploy, 7 for upgrade)
 ///
 /// # Arguments
 /// * `rpc_client` - RPC client for querying account state
@@ -193,26 +199,22 @@ pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) 
 /// # Returns
 /// * `Ok(Pubkey)` - The whitelist entry PDA if authority is whitelisted
 /// * `Err` - If authority is not whitelisted, with instructions to add them
-pub fn verify_whitelist_authority(
+pub fn require_whitelist_entry(
     rpc_client: &RpcClient,
     upgrade_authority: Pubkey,
 ) -> Result<Pubkey> {
     println!("\n🔐 Verifying whitelist...");
-    let program_whitelist_program_id = Pubkey::new_from_array(program_solana::id().to_bytes());
 
-    // Derive whitelist PDA: seeds = [program_whitelist_account_id, upgrade_authority]
-    let (whitelist_entry, _bump) = Pubkey::find_program_address(
-        &[&account_solana::id().to_bytes(), upgrade_authority.as_ref()],
-        &program_whitelist_program_id,
-    );
+    // Derive whitelist PDA
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&upgrade_authority);
 
-    println!("  Whitelist entry PDA: {}", whitelist_entry);
+    println!("  Whitelist entry PDA: {}", whitelist_entry_pda);
 
     // Verify whitelist entry account exists on-chain
-    match rpc_client.get_account(&whitelist_entry) {
+    match rpc_client.get_account(&whitelist_entry_pda) {
         Ok(_) => {
             println!("  ✓ Upgrade authority is whitelisted");
-            Ok(whitelist_entry)
+            Ok(whitelist_entry_pda)
         }
         Err(_) => {
             Err(eyre!(

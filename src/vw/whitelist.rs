@@ -17,6 +17,22 @@ use std::sync::LazyLock;
 
 pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(|| Pubkey::default());
 
+/// Derives the validator whitelist entry PDA for a vote account.
+///
+/// The PDA is derived using:
+/// - Seeds: `[vote_account]`
+/// - Program: validator whitelist program ID
+///
+/// # Arguments
+/// * `vote_account` - Pubkey of the validator's vote account
+///
+/// # Returns
+/// * `(Pubkey, u8)` - The derived PDA and bump seed
+pub fn derive_whitelist_entry(vote_account: &Pubkey) -> (Pubkey, u8) {
+    let program_id = Pubkey::from(program_solana::id().to_bytes());
+    Pubkey::find_program_address(&[vote_account.as_ref()], &program_id)
+}
+
 pub fn list(rpc_url: &str) -> Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -117,9 +133,7 @@ pub fn add(
     }
 
     // Derive the whitelist entry PDA
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let (whitelist_entry_pda, _bump) =
-        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -187,9 +201,7 @@ pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> Re
     })?;
 
     // Derive the whitelist entry PDA
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let (whitelist_entry_pda, _bump) =
-        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -250,9 +262,7 @@ pub fn update_start_epoch(
     })?;
 
     // Derive the whitelist entry PDA
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let (whitelist_entry_pda, _bump) =
-        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
@@ -315,9 +325,7 @@ pub fn update_end_epoch(
     })?;
 
     // Derive the whitelist entry PDA
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let (whitelist_entry_pda, _bump) =
-        Pubkey::find_program_address(&[vote_account_pubkey.as_ref()], &program_id);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
