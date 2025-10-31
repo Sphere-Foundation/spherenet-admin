@@ -45,8 +45,8 @@ pub fn list(rpc_url: &str) -> Result<()> {
 
     for deployer in entries {
         println!("  Deployer Authority: {}", deployer);
-        println!();
     }
+    println!();
 
     Ok(())
 }
@@ -74,10 +74,7 @@ pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> 
 
     // Derive the whitelist entry PDA using solana_sdk (not pinocchio)
     let (whitelist_entry_pda, _bump) = Pubkey::find_program_address(
-        &[
-            whitelist_pubkey.as_ref(),
-            deployer_pubkey.as_ref(),
-        ],
+        &[whitelist_pubkey.as_ref(), deployer_pubkey.as_ref()],
         &program_id,
     );
 
@@ -139,10 +136,7 @@ pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) 
 
     // Derive the whitelist entry PDA using solana_sdk (not pinocchio)
     let (whitelist_entry_pda, _bump) = Pubkey::find_program_address(
-        &[
-            whitelist_pubkey.as_ref(),
-            deployer_pubkey.as_ref(),
-        ],
+        &[whitelist_pubkey.as_ref(), deployer_pubkey.as_ref()],
         &program_id,
     );
 

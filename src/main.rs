@@ -165,6 +165,28 @@ enum ProgramAction {
         #[arg(long)]
         max_data_len: Option<usize>,
     },
+    /// Upgrade an existing program on SphereNet
+    Upgrade {
+        /// Program ID of the existing program to upgrade
+        #[arg(long)]
+        program_id: String,
+
+        /// Path to the new program .so file
+        #[arg(long)]
+        program_so: String,
+
+        /// Path to upgrade authority keypair (must match program's current authority)
+        #[arg(long)]
+        upgrade_authority: String,
+
+        /// Payer keypair path
+        #[arg(long)]
+        payer: String,
+
+        /// Spill account (where excess buffer rent is returned, defaults to payer)
+        #[arg(long)]
+        spill: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -243,6 +265,20 @@ fn main() -> Result<()> {
                 upgrade_authority,
                 payer,
                 max_data_len,
+            )?,
+            ProgramAction::Upgrade {
+                program_id,
+                program_so,
+                upgrade_authority,
+                payer,
+                spill,
+            } => loader::upgrade::upgrade_program(
+                &cli.url,
+                program_id,
+                program_so,
+                upgrade_authority,
+                payer,
+                spill,
             )?,
         },
         Commands::Airdrop { keypair, amount } => airdrop::airdrop(&cli.url, keypair, amount)?,

@@ -3,55 +3,66 @@ use eyre::{eyre, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
+    pubkey::Pubkey,
     signature::{Keypair, Signer},
     transaction::Transaction,
 };
 #[allow(deprecated)]
 use spherenet_whitelisted_loader_v3_interface::{
-    instruction::{create_buffer, deploy_with_max_program_len},
+    instruction::{create_buffer, upgrade},
     state::UpgradeableLoaderState,
 };
-use std::fs;
+use std::{fs, str::FromStr};
 
-/// Deploy a program to SphereNet
-pub fn deploy(
+/// Upgrade an existing program on SphereNet
+pub fn upgrade_program(
     url: &str,
+    program_id_str: String,
     program_so_path: String,
-    program_keypair_path: String,
     upgrade_authority_str: String,
     payer_keypair_path: String,
-    max_data_len: Option<usize>,
+    spill_address_str: Option<String>,
 ) -> Result<()> {
-    println!("🚀 Deploying program to SphereNet...");
+    println!("🔄 Upgrading program on SphereNet...");
 
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
-    // Load keypairs
+    // Load keypairs and parse addresses
     let payer = load_keypair(&payer_keypair_path)?;
-    let program_keypair = load_keypair(&program_keypair_path)?;
-    let program_id = program_keypair.pubkey();
     let upgrade_authority_keypair = load_keypair(&upgrade_authority_str)?;
     let upgrade_authority = upgrade_authority_keypair.pubkey();
+    let program_id = Pubkey::from_str(&program_id_str)
+        .map_err(|e| eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
+
+    // Spill account defaults to payer if not specified
+    let spill_address = if let Some(spill_str) = spill_address_str {
+        Pubkey::from_str(&spill_str)
+            .map_err(|e| eyre!("Failed to parse spill address {}: {}", spill_str, e))?
+    } else {
+        payer.pubkey()
+    };
 
     println!("  Program ID: {}", program_id);
     println!("  Payer: {}", payer.pubkey());
     println!("  Upgrade Authority: {}", upgrade_authority);
+    println!("  Spill Account: {}", spill_address);
+
+    // Verify program exists
+    match rpc_client.get_account(&program_id) {
+        Ok(_) => println!("  ✓ Program exists"),
+        Err(_) => {
+            return Err(eyre!(
+                "❌ Program {} does not exist! Use 'program deploy' to deploy a new program.",
+                program_id
+            ));
+        }
+    }
 
     // Read program .so file
     let program_data = fs::read(&program_so_path)
         .map_err(|e| eyre!("Failed to read program file {}: {}", program_so_path, e))?;
-    println!("  Program size: {} bytes", program_data.len());
-
-    // Determine max data length
-    let max_data_len = max_data_len.unwrap_or(program_data.len());
-    if max_data_len < program_data.len() {
-        return Err(eyre!(
-            "max_data_len ({}) must be at least program size ({})",
-            max_data_len,
-            program_data.len()
-        ));
-    }
+    println!("  New program size: {} bytes", program_data.len());
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
     let whitelist_entry = verify_whitelist_authority(&rpc_client, upgrade_authority)?;
@@ -67,7 +78,7 @@ pub fn deploy(
     println!("  Buffer rent: {} lamports", buffer_lamports);
 
     // Create and initialize buffer account with UPGRADE AUTHORITY as authority
-    // (required for deployment - buffer authority must match program's upgrade authority)
+    // (required for upgrade - buffer authority must match program's upgrade authority)
     let create_buffer_instructions = create_buffer(
         &payer.pubkey(),
         &buffer_pubkey,
@@ -97,30 +108,26 @@ pub fn deploy(
         &program_data,
     )?;
 
-    // Deploy program with whitelist validation
-    println!("\n🎯 Deploying program...");
-    let program_lamports = rpc_client
-        .get_minimum_balance_for_rent_exemption(UpgradeableLoaderState::size_of_program())?;
+    // Upgrade program with whitelist validation
+    println!("\n🎯 Upgrading program...");
 
     #[allow(deprecated)]
-    let deploy_instructions = deploy_with_max_program_len(
-        &payer.pubkey(),
+    let upgrade_ix = upgrade(
         &program_id,
         &buffer_pubkey,
         &upgrade_authority,
+        &spill_address,
         &whitelist_entry,
-        program_lamports,
-        max_data_len,
-    )?;
+    );
 
-    let mut transaction = Transaction::new_with_payer(&deploy_instructions, Some(&payer.pubkey()));
+    let mut transaction = Transaction::new_with_payer(&[upgrade_ix], Some(&payer.pubkey()));
     transaction.sign(
-        &[&payer, &program_keypair, &upgrade_authority_keypair],
+        &[&payer, &upgrade_authority_keypair],
         rpc_client.get_latest_blockhash()?,
     );
     rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("\n✅ Program deployed successfully!");
+    println!("\n✅ Program upgraded successfully!");
     println!("   Program ID: {}", program_id);
     println!("   Upgrade Authority: {}", upgrade_authority);
 
