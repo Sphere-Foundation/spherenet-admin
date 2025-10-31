@@ -1,9 +1,10 @@
-use super::{load_keypair, verify_whitelist_authority, write_buffer};
+use super::write_buffer;
+use crate::pw::whitelist::verify_whitelist_authority;
 use eyre::{eyre, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
-    signature::{Keypair, Signer},
+    signature::{read_keypair_file, Keypair, Signer},
     transaction::Transaction,
 };
 #[allow(deprecated)]
@@ -28,10 +29,13 @@ pub fn deploy(
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Load keypairs
-    let payer = load_keypair(&payer_keypair_path)?;
-    let program_keypair = load_keypair(&program_keypair_path)?;
+    let payer = read_keypair_file(&payer_keypair_path)
+        .map_err(|e| eyre!("Failed to read payer keypair from {}: {}", payer_keypair_path, e))?;
+    let program_keypair = read_keypair_file(&program_keypair_path)
+        .map_err(|e| eyre!("Failed to read program keypair from {}: {}", program_keypair_path, e))?;
     let program_id = program_keypair.pubkey();
-    let upgrade_authority_keypair = load_keypair(&upgrade_authority_str)?;
+    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str)
+        .map_err(|e| eyre!("Failed to read upgrade authority keypair from {}: {}", upgrade_authority_str, e))?;
     let upgrade_authority = upgrade_authority_keypair.pubkey();
 
     println!("  Program ID: {}", program_id);

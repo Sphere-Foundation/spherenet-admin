@@ -2,12 +2,12 @@ use clap::{Parser, Subcommand};
 use eyre::Result;
 
 mod airdrop;
-mod consts;
 mod loader;
 mod pw;
 mod vw;
 
-use consts::RPC_URL;
+/// Default RPC_URL
+pub const RPC_URL: &str = "https://api.testnet.sphere.net";
 
 #[derive(Parser)]
 #[command(name = "spherenet-admin")]
@@ -281,7 +281,9 @@ fn main() -> Result<()> {
                 spill,
             )?,
         },
-        Commands::Airdrop { keypair, amount } => airdrop::airdrop(&cli.url, keypair, amount)?,
+        Commands::Airdrop { keypair, amount } => {
+            airdrop::airdrop::airdrop(&cli.url, keypair, amount)?
+        }
     }
 
     Ok(())

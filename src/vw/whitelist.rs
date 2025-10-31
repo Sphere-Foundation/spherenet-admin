@@ -1,4 +1,3 @@
-use crate::consts::SYSTEM_PROGRAM;
 use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -14,6 +13,9 @@ use spherenet_validator_whitelist_interface::{
     account_solana, program_solana,
     state::{account::ValidatorWhitelistAccount, load, whitelist_entry::ValidatorWhitelistEntry},
 };
+use std::sync::LazyLock;
+
+pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(|| Pubkey::default());
 
 pub fn list(rpc_url: &str) -> Result<()> {
     let rpc_client = RpcClient::new(rpc_url);

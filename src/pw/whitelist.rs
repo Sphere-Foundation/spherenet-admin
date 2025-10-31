@@ -1,5 +1,4 @@
-use crate::consts::SYSTEM_PROGRAM;
-use eyre::Result;
+use eyre::{eyre, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -11,6 +10,9 @@ use spherenet_program_whitelist_interface::{
     account_solana, program_solana,
     state::{load, whitelist_entry::ProgramWhitelistEntry},
 };
+use std::sync::LazyLock;
+
+pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(|| Pubkey::default());
 
 pub fn list(rpc_url: &str) -> Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
@@ -173,4 +175,51 @@ pub fn remove(rpc_url: &str, program_authority: String, authority_path: String) 
     println!("This authority can no longer deploy or upgrade programs on the network.");
 
     Ok(())
+}
+
+/// Verifies that the upgrade authority is whitelisted before spending any lamports.
+///
+/// This function performs a "fail-fast" check by:
+/// 1. Deriving the whitelist PDA from the upgrade authority pubkey
+/// 2. Querying the RPC to verify the whitelist entry account exists
+///
+/// Returns the whitelist PDA address if verification succeeds, allowing it to be
+/// included in deploy/upgrade instructions (at account index 8 for deploy, 7 for upgrade).
+///
+/// # Arguments
+/// * `rpc_client` - RPC client for querying account state
+/// * `upgrade_authority` - Pubkey of the program's upgrade authority (must be whitelisted)
+///
+/// # Returns
+/// * `Ok(Pubkey)` - The whitelist entry PDA if authority is whitelisted
+/// * `Err` - If authority is not whitelisted, with instructions to add them
+pub fn verify_whitelist_authority(
+    rpc_client: &RpcClient,
+    upgrade_authority: Pubkey,
+) -> Result<Pubkey> {
+    println!("\n🔐 Verifying whitelist...");
+    let program_whitelist_program_id = Pubkey::new_from_array(program_solana::id().to_bytes());
+
+    // Derive whitelist PDA: seeds = [program_whitelist_account_id, upgrade_authority]
+    let (whitelist_entry, _bump) = Pubkey::find_program_address(
+        &[&account_solana::id().to_bytes(), upgrade_authority.as_ref()],
+        &program_whitelist_program_id,
+    );
+
+    println!("  Whitelist entry PDA: {}", whitelist_entry);
+
+    // Verify whitelist entry account exists on-chain
+    match rpc_client.get_account(&whitelist_entry) {
+        Ok(_) => {
+            println!("  ✓ Upgrade authority is whitelisted");
+            Ok(whitelist_entry)
+        }
+        Err(_) => {
+            Err(eyre!(
+                "❌ Upgrade authority {} is not whitelisted!\n   Run: spherenet-admin pw add {} --auth <AUTHORITY>",
+                upgrade_authority,
+                upgrade_authority
+            ))
+        }
+    }
 }
