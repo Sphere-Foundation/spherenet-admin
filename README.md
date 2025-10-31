@@ -312,14 +312,25 @@ Both are generated from their respective interface definitions using Codama/Kino
 ```
 src/
 ├── main.rs       # CLI argument parsing and command routing
-├── consts.rs     # Network configuration (RPC URL, program IDs)
-├── airdrop.rs    # Airdrop functionality
+├── airdrop/
+│   ├── mod.rs        # Module exports
+│   └── airdrop.rs    # Airdrop implementation
 ├── vw/
 │   ├── mod.rs        # Validator whitelist module exports
 │   ├── whitelist.rs  # Validator whitelist commands
 │   └── authority.rs  # Validator authority management
-└── pw/
-    ├── mod.rs        # Program whitelist module exports
-    ├── whitelist.rs  # Program whitelist commands
-    └── authority.rs  # Program authority management
+├── pw/
+│   ├── mod.rs        # Program whitelist module exports
+│   ├── whitelist.rs  # Program whitelist commands
+│   └── authority.rs  # Program authority management
+└── loader/
+    ├── mod.rs        # Loader utilities (write_buffer helper)
+    ├── deploy.rs     # Program deployment implementation
+    └── upgrade.rs    # Program upgrade implementation
+
+scripts/
+├── .env.example                   # Environment variable template
+├── testnet_program_deploy.sh     # Deploy script with env vars
+├── testnet_program_upgrade.sh    # Upgrade script with env vars
+└── testnet_health_check.sh       # Network health monitoring
 ```
