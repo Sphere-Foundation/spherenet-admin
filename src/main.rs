@@ -1,8 +1,10 @@
 use clap::{Parser, Subcommand};
 
 mod airdrop;
+mod authority;
 mod loader;
 mod pw;
+mod squads;
 mod vw;
 
 /// Default RPC_URL
@@ -38,6 +40,11 @@ enum Commands {
     Program {
         #[command(subcommand)]
         action: ProgramAction,
+    },
+    /// Multisig vault management commands
+    Multisig {
+        #[command(subcommand)]
+        action: MultisigAction,
     },
     /// Request an airdrop for an account
     Airdrop {
@@ -188,6 +195,54 @@ enum ProgramAction {
     },
 }
 
+#[derive(Subcommand)]
+enum MultisigAction {
+    /// Initialize Squads program config (one-time setup)
+    ProgramConfigInit {
+        /// Pubkey that will control the program config
+        #[arg(long)]
+        authority: String,
+
+        /// Pubkey where multisig creation fees are sent
+        #[arg(long)]
+        treasury: String,
+
+        /// Fee in lamports charged for creating a multisig
+        #[arg(long, default_value = "0")]
+        creation_fee: u64,
+
+        /// Path to INITIALIZER keypair (hardcoded in program)
+        #[arg(long)]
+        initializer: String,
+    },
+    /// Create a new multisig vault
+    Create {
+        /// Comma-separated list of member pubkeys
+        #[arg(long)]
+        members: String,
+
+        /// Number of approvals required (e.g., 2 for 2-of-3)
+        #[arg(long)]
+        threshold: u16,
+
+        /// Path to create key keypair (unique ID for this multisig)
+        #[arg(long)]
+        create_key: String,
+
+        /// Path to payer keypair
+        #[arg(long)]
+        payer: String,
+
+        /// Optional: time lock delay in seconds
+        #[arg(long)]
+        time_lock: Option<u32>,
+
+        /// Optional: description/memo
+        #[arg(long)]
+        memo: Option<String>,
+    },
+}
+
 fn main() -> eyre::Result<()> {
     let cli = Cli::parse();
 
@@ -278,6 +333,36 @@ fn main() -> eyre::Result<()> {
                 upgrade_authority,
                 payer,
                 spill,
+            )?,
+        },
+        Commands::Multisig { action } => match action {
+            MultisigAction::ProgramConfigInit {
+                authority,
+                treasury,
+                creation_fee,
+                initializer,
+            } => authority::multisig::program_config_init(
+                authority,
+                treasury,
+                creation_fee,
+                initializer,
+                &cli.url,
+            )?,
+            MultisigAction::Create {
+                members,
+                threshold,
+                create_key,
+                payer,
+                time_lock,
+                memo,
+            } => authority::multisig::create(
+                members,
+                threshold,
+                create_key,
+                payer,
+                &cli.url,
+                time_lock,
+                memo,
             )?,
         },
         Commands::Airdrop { keypair, amount } => {
