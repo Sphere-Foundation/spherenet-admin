@@ -21,6 +21,8 @@ pub const SYSTEM_PROGRAM_ID: &str = "11111111111111111111111111111111";
 pub const SEED_PREFIX: &[u8] = b"multisig";
 pub const SEED_MULTISIG: &[u8] = b"multisig";
 pub const SEED_PROGRAM_CONFIG: &[u8] = b"program_config";
+pub const SEED_TRANSACTION: &[u8] = b"transaction";
+pub const SEED_PROPOSAL: &[u8] = b"proposal";
 
 // ============================================================================
 // Type Definitions (from squads-multisig-program/src/state/multisig.rs)
@@ -57,6 +59,17 @@ pub enum Permission {
     Execute = 1 << 2,  // Can execute approved proposals
 }
 
+/// Arguments for program_config_init instruction
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct ProgramConfigInitArgs {
+    /// The authority that can configure the program config
+    pub authority: Pubkey,
+    /// The fee charged for creating a new multisig (in lamports)
+    pub multisig_creation_fee: u64,
+    /// The treasury where the creation fee is transferred to
+    pub treasury: Pubkey,
+}
+
 /// Arguments for multisig_create_v2 instruction
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct MultisigCreateArgsV2 {
@@ -68,15 +81,26 @@ pub struct MultisigCreateArgsV2 {
     pub memo: Option<String>,
 }
 
-/// Arguments for program_config_init instruction
+/// Arguments for vault_transaction_create instruction
 #[derive(BorshSerialize, BorshDeserialize)]
-pub struct ProgramConfigInitArgs {
-    /// The authority that can configure the program config
-    pub authority: Pubkey,
-    /// The fee charged for creating a new multisig (in lamports)
-    pub multisig_creation_fee: u64,
-    /// The treasury where the creation fee is transferred to
-    pub treasury: Pubkey,
+pub struct VaultTransactionCreateArgs {
+    /// Index of the vault this transaction belongs to
+    pub vault_index: u8,
+    /// Number of ephemeral signing PDAs required by the transaction
+    pub ephemeral_signers: u8,
+    /// Serialized transaction message (borsh-serialized TransactionMessage)
+    pub transaction_message: Vec<u8>,
+    /// Optional memo for the transaction
+    pub memo: Option<String>,
+}
+
+/// Arguments for proposal_create instruction
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct ProposalCreateArgs {
+    /// Index of the multisig transaction this proposal is associated with
+    pub transaction_index: u64,
+    /// Whether the proposal should be initialized with status `Draft`
+    pub draft: bool,
 }
 
 // ============================================================================
@@ -94,6 +118,13 @@ pub fn anchor_discriminator(namespace: &str, name: &str) -> [u8; 8] {
     disc
 }
 
+/// Derive program config PDA
+///
+/// seeds: [b"multisig", b"program_config"]
+pub fn get_program_config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(&[SEED_PREFIX, SEED_PROGRAM_CONFIG], program_id)
+}
+
 /// Derive multisig PDA from create_key
 ///
 /// seeds: [b"multisig", b"multisig", create_key]
@@ -104,9 +135,41 @@ pub fn get_multisig_pda(create_key: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8
     )
 }
 
-/// Derive program config PDA
+/// Derive vault transaction PDA
 ///
-/// seeds: [b"multisig", b"program_config"]
-pub fn get_program_config_pda(program_id: &Pubkey) -> (Pubkey, u8) {
-    Pubkey::find_program_address(&[SEED_PREFIX, SEED_PROGRAM_CONFIG], program_id)
+/// seeds: [b"multisig", multisig, b"transaction", transaction_index]
+pub fn get_vault_transaction_pda(
+    multisig: &Pubkey,
+    transaction_index: u64,
+    program_id: &Pubkey,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            multisig.as_ref(),
+            SEED_TRANSACTION,
+            &transaction_index.to_le_bytes(),
+        ],
+        program_id,
+    )
+}
+
+/// Derive proposal PDA
+///
+/// seeds: [b"multisig", multisig, b"transaction", transaction_index, b"proposal"]
+pub fn get_proposal_pda(
+    multisig: &Pubkey,
+    transaction_index: u64,
+    program_id: &Pubkey,
+) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            multisig.as_ref(),
+            SEED_TRANSACTION,
+            &transaction_index.to_le_bytes(),
+            SEED_PROPOSAL,
+        ],
+        program_id,
+    )
 }
