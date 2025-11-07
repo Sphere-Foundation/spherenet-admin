@@ -5,14 +5,108 @@
 
 use eyre::{bail, Result};
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::Signer,
-    transaction::Transaction,
-};
+use solana_sdk::{pubkey::Pubkey, signature::Signer, transaction::Transaction};
 use std::str::FromStr;
 
 use crate::squads::{self, Member, Permissions, ProgramConfigInitArgs};
+
+/// Initialize the Squads program config (one-time setup)
+///
+/// # Arguments
+/// * `authority` - Pubkey that will control the program config
+/// * `treasury` - Pubkey where multisig creation fees are sent
+/// * `creation_fee` - Fee in lamports charged for creating a multisig
+/// * `initializer_path` - Path to the INITIALIZER keypair (hardcoded in program)
+/// * `url` - RPC URL
+pub fn program_config_init(
+    authority: String,
+    treasury: String,
+    creation_fee: u64,
+    initializer_path: String,
+    url: &str,
+) -> Result<()> {
+    println!("Initializing Squads program config...");
+    println!();
+
+    // Parse pubkeys
+    let authority_pubkey = Pubkey::from_str(&authority)
+        .map_err(|e| eyre::eyre!("Invalid authority pubkey '{}': {}", authority, e))?;
+
+    let treasury_pubkey = Pubkey::from_str(&treasury)
+        .map_err(|e| eyre::eyre!("Invalid treasury pubkey '{}': {}", treasury, e))?;
+
+    // Show configuration
+    println!("Configuration:");
+    println!("  Authority: {}", authority_pubkey);
+    println!("  Treasury:  {}", treasury_pubkey);
+    println!(
+        "  Creation Fee: {} lamports ({:.6} SOL)",
+        creation_fee,
+        creation_fee as f64 / 1_000_000_000.0
+    );
+    println!();
+
+    // Load initializer keypair
+    let initializer = solana_sdk::signature::read_keypair_file(&initializer_path).map_err(|e| {
+        eyre::eyre!(
+            "Failed to read initializer key '{}': {}",
+            initializer_path,
+            e
+        )
+    })?;
+
+    println!("Initializer: {}", initializer.pubkey());
+    println!();
+
+    // Create RPC client
+    let rpc = RpcClient::new(url);
+
+    // Parse program ID
+    let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
+
+    // Derive program config PDA
+    let (program_config_pda, _) = squads::types::get_program_config_pda(&program_id);
+
+    // Build args
+    let args = ProgramConfigInitArgs {
+        authority: authority_pubkey,
+        multisig_creation_fee: creation_fee,
+        treasury: treasury_pubkey,
+    };
+
+    // Build instruction
+    let init_ix = squads::instructions::build_program_config_init_ix(
+        &program_id,
+        &program_config_pda,
+        &initializer.pubkey(),
+        args,
+    )?;
+
+    println!("Sending transaction...");
+
+    // Send transaction
+    let recent_blockhash = rpc.get_latest_blockhash()?;
+
+    let tx = Transaction::new_signed_with_payer(
+        &[init_ix],
+        Some(&initializer.pubkey()),
+        &[&initializer],
+        recent_blockhash,
+    );
+
+    let signature = rpc.send_and_confirm_transaction(&tx)?;
+
+    println!();
+    println!("✅ Program config initialized successfully!");
+    println!();
+    println!("   Program Config PDA: {}", program_config_pda);
+    println!("   Transaction: {}", signature);
+    println!();
+    println!("The Squads program is now ready to create multisig vaults.");
+    println!();
+
+    Ok(())
+}
 
 /// Create a new multisig vault
 ///
@@ -162,95 +256,6 @@ pub fn create(
         "  spherenet-admin pw add <DEPLOYER> --multisig-authority {} --signer <MEMBER_KEYPAIR>",
         multisig_pda
     );
-    println!();
-
-    Ok(())
-}
-
-/// Initialize the Squads program config (one-time setup)
-///
-/// # Arguments
-/// * `authority` - Pubkey that will control the program config
-/// * `treasury` - Pubkey where multisig creation fees are sent
-/// * `creation_fee` - Fee in lamports charged for creating a multisig
-/// * `initializer_path` - Path to the INITIALIZER keypair (hardcoded in program)
-/// * `url` - RPC URL
-pub fn program_config_init(
-    authority: String,
-    treasury: String,
-    creation_fee: u64,
-    initializer_path: String,
-    url: &str,
-) -> Result<()> {
-    println!("Initializing Squads program config...");
-    println!();
-
-    // Parse pubkeys
-    let authority_pubkey = Pubkey::from_str(&authority)
-        .map_err(|e| eyre::eyre!("Invalid authority pubkey '{}': {}", authority, e))?;
-
-    let treasury_pubkey = Pubkey::from_str(&treasury)
-        .map_err(|e| eyre::eyre!("Invalid treasury pubkey '{}': {}", treasury, e))?;
-
-    // Show configuration
-    println!("Configuration:");
-    println!("  Authority: {}", authority_pubkey);
-    println!("  Treasury:  {}", treasury_pubkey);
-    println!("  Creation Fee: {} lamports ({:.6} SOL)", creation_fee, creation_fee as f64 / 1_000_000_000.0);
-    println!();
-
-    // Load initializer keypair
-    let initializer = solana_sdk::signature::read_keypair_file(&initializer_path)
-        .map_err(|e| eyre::eyre!("Failed to read initializer key '{}': {}", initializer_path, e))?;
-
-    println!("Initializer: {}", initializer.pubkey());
-    println!();
-
-    // Create RPC client
-    let rpc = RpcClient::new(url);
-
-    // Parse program ID
-    let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
-
-    // Derive program config PDA
-    let (program_config_pda, _) = squads::types::get_program_config_pda(&program_id);
-
-    // Build args
-    let args = ProgramConfigInitArgs {
-        authority: authority_pubkey,
-        multisig_creation_fee: creation_fee,
-        treasury: treasury_pubkey,
-    };
-
-    // Build instruction
-    let init_ix = squads::instructions::build_program_config_init_ix(
-        &program_id,
-        &program_config_pda,
-        &initializer.pubkey(),
-        args,
-    )?;
-
-    println!("Sending transaction...");
-
-    // Send transaction
-    let recent_blockhash = rpc.get_latest_blockhash()?;
-
-    let tx = Transaction::new_signed_with_payer(
-        &[init_ix],
-        Some(&initializer.pubkey()),
-        &[&initializer],
-        recent_blockhash,
-    );
-
-    let signature = rpc.send_and_confirm_transaction(&tx)?;
-
-    println!();
-    println!("✅ Program config initialized successfully!");
-    println!();
-    println!("   Program Config PDA: {}", program_config_pda);
-    println!("   Transaction: {}", signature);
-    println!();
-    println!("The Squads program is now ready to create multisig vaults.");
     println!();
 
     Ok(())

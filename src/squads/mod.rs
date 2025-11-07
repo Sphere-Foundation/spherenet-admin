@@ -15,7 +15,9 @@
 //! **Structure:**
 //! - types.rs: Type definitions, constants, PDA helpers
 //! - instructions.rs: Instruction builders (create, approve, execute)
+//! - commands.rs: CLI commands for vault management
 
+pub mod commands;
 pub mod instructions;
 pub mod types;
 

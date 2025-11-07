@@ -1,3 +1,4 @@
+use crate::cli::Authority;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     pubkey::Pubkey,
@@ -95,7 +96,7 @@ pub fn add(
     vote_account: String,
     start_epoch: Option<u64>,
     end_epoch: Option<u64>,
-    authority_path: String,
+    authority: Authority,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -103,15 +104,6 @@ pub fn add(
     let vote_account_pubkey = vote_account
         .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
-
-    // Load authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
 
     // Get current epoch if start_epoch not provided
     let current_epoch = rpc_client.get_epoch_info()?.epoch;
@@ -149,12 +141,12 @@ pub fn add(
             end_epoch.to_string()
         }
     );
-    println!("  Authority:       {}", authority_keypair.pubkey());
+    println!("  Authority:       {}", authority.pubkey());
 
     // Build the instruction
     let instruction = AddToWhitelistBuilder::new()
-        .payer(authority_keypair.pubkey())
-        .whitelist_authority(authority_keypair.pubkey())
+        .payer(authority.pubkey())
+        .whitelist_authority(authority.pubkey())
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .validator_vote_account(vote_account_pubkey)
@@ -163,21 +155,9 @@ pub fn add(
         .end_epoch(end_epoch.to_le_bytes())
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
-    );
-
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nValidator added successfully!");
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!("Add validator {} to whitelist", vote_account_pubkey);
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     Ok(())
 }
