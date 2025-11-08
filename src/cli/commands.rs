@@ -50,6 +50,24 @@ pub enum Commands {
         #[arg(long, default_value = "1.0")]
         amount: f64,
     },
+    /// Transfer SOL from one account to another
+    Transfer {
+        /// Destination account pubkey
+        #[arg(long)]
+        destination: String,
+        /// Amount in SOL to transfer
+        #[arg(long)]
+        amount: f64,
+        /// Single-sig: path to source keypair (mutually exclusive with --vault)
+        #[arg(long, conflicts_with = "vault")]
+        from: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

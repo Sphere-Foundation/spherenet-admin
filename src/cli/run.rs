@@ -187,6 +187,16 @@ pub fn run() -> eyre::Result<()> {
         Commands::Airdrop { keypair, amount } => {
             utils::airdrop::airdrop(&cli.url, keypair, amount)?
         }
+        Commands::Transfer {
+            destination,
+            amount,
+            from,
+            vault,
+            multisig_authority,
+        } => {
+            let auth = Authority::from_cli_args(from, vault, multisig_authority)?;
+            utils::transfer::transfer(&cli.url, auth, destination, amount)?
+        }
     }
 
     Ok(())
