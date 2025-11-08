@@ -76,42 +76,84 @@ pub enum ValidatorWhitelistAction {
     /// Remove a validator from the whitelist
     Remove {
         vote_account: String,
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Update a validator's start epoch
     UpdateStartEpoch {
         vote_account: String,
         #[arg(long)]
         epoch: u64,
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Update a validator's end epoch
     UpdateEndEpoch {
         vote_account: String,
         #[arg(long)]
         epoch: u64,
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Show authority account
     Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Accept pending authority transfer
     AcceptAuthority {
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Cancel pending authority transfer
     CancelAuthority {
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
 }
 
@@ -122,32 +164,67 @@ pub enum ProgramWhitelistAction {
     /// Whitelist a deployer authority (who can deploy/upgrade programs)
     Add {
         program_authority: String,
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Remove a deployer authority from the whitelist
     Remove {
         program_authority: String,
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Show authority account
     Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Accept pending authority transfer
     AcceptAuthority {
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
     /// Cancel pending authority transfer
     CancelAuthority {
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --vault)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
     },
 }
 
@@ -185,9 +262,17 @@ pub enum ProgramAction {
         #[arg(long)]
         program_so: String,
 
-        /// Path to upgrade authority keypair (must match program's current authority)
-        #[arg(long)]
-        upgrade_authority: String,
+        /// Single-sig: path to upgrade authority keypair (mutually exclusive with --vault)
+        #[arg(long, conflicts_with = "vault")]
+        upgrade_authority: Option<String>,
+
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        vault: Option<String>,
+
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "vault")]
+        multisig_authority: Option<String>,
 
         /// Payer keypair path
         #[arg(long)]

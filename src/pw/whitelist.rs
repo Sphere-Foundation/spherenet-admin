@@ -1,9 +1,6 @@
+use crate::cli::Authority;
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Signer},
-    transaction::Transaction,
-};
+use solana_sdk::pubkey::Pubkey;
 use spherenet_program_whitelist_client::instructions::{AddEntryBuilder, RemoveEntryBuilder};
 use spherenet_program_whitelist_interface::{
     account_solana, program_solana,
@@ -72,7 +69,7 @@ pub fn list(rpc_url: &str) -> eyre::Result<()> {
     Ok(())
 }
 
-pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> eyre::Result<()> {
+pub fn add(rpc_url: &str, program_authority: String, authority: Authority) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse deployer authority (who can deploy/upgrade programs)
@@ -80,50 +77,30 @@ pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> 
         .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid deployer authority: {}", e))?;
 
-    // Load whitelist authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load whitelist authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
-
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deployer_pubkey);
 
     println!("\nWhitelisting deployer authority:");
     println!("  Deployer Authority:  {}", deployer_pubkey);
     println!("  Whitelist Entry PDA: {}", whitelist_entry_pda);
-    println!("  Whitelist Authority: {}", authority_keypair.pubkey());
+    println!("  Whitelist Authority: {}", authority.pubkey());
 
     // Build the instruction
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let instruction = AddEntryBuilder::new()
         .whitelist_account(whitelist_pubkey)
-        .whitelist_authority(authority_keypair.pubkey())
+        .whitelist_authority(authority.pubkey())
         .whitelist_entry_account(whitelist_entry_pda)
-        .payer(authority_keypair.pubkey())
+        .payer(authority.pubkey())
         .system_program(*SYSTEM_PROGRAM)
         .program_authority(deployer_pubkey)
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
-    );
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!("Whitelist deployer authority {}", deployer_pubkey);
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nDeployer authority whitelisted successfully!");
-    println!("This authority can now deploy and upgrade programs on the network.");
+    println!("\nThis authority can now deploy and upgrade programs on the network.");
 
     Ok(())
 }
@@ -131,7 +108,7 @@ pub fn add(rpc_url: &str, program_authority: String, authority_path: String) -> 
 pub fn remove(
     rpc_url: &str,
     program_authority: String,
-    authority_path: String,
+    authority: Authority,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -140,50 +117,30 @@ pub fn remove(
         .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid deployer authority: {}", e))?;
 
-    // Load whitelist authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load whitelist authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
-
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deployer_pubkey);
 
     println!("\nRemoving deployer authority from whitelist:");
     println!("  Deployer Authority:  {}", deployer_pubkey);
     println!("  Whitelist Entry PDA: {}", whitelist_entry_pda);
-    println!("  Whitelist Authority: {}", authority_keypair.pubkey());
+    println!("  Whitelist Authority: {}", authority.pubkey());
 
     // Build the instruction
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let instruction = RemoveEntryBuilder::new()
         .whitelist_account(whitelist_pubkey)
-        .whitelist_authority(authority_keypair.pubkey())
+        .whitelist_authority(authority.pubkey())
         .whitelist_entry_account(whitelist_entry_pda)
-        .destination_account(authority_keypair.pubkey()) // Reclaim lamports to authority
+        .destination_account(authority.pubkey()) // Reclaim lamports to authority
         .system_program(*SYSTEM_PROGRAM)
         .program_authority(deployer_pubkey)
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
-    );
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!("Remove deployer authority {} from whitelist", deployer_pubkey);
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nDeployer authority removed from whitelist successfully!");
-    println!("This authority can no longer deploy or upgrade programs on the network.");
+    println!("\nThis authority can no longer deploy or upgrade programs on the network.");
 
     Ok(())
 }

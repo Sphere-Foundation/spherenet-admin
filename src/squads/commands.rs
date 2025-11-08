@@ -3,7 +3,6 @@
 //! User-facing CLI commands for managing multisig vaults and proposals.
 //! Handles parsing, validation, user feedback, and formatting.
 
-use eyre::{bail, Result};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{pubkey::Pubkey, signature::Signer, transaction::Transaction};
 use std::str::FromStr;
@@ -24,7 +23,7 @@ pub fn program_config_init(
     creation_fee: u64,
     initializer_path: String,
     url: &str,
-) -> Result<()> {
+) -> eyre::Result<()> {
     println!("Initializing Squads program config...");
     println!();
 
@@ -126,7 +125,7 @@ pub fn create(
     url: &str,
     time_lock: Option<u32>,
     memo: Option<String>,
-) -> Result<()> {
+) -> eyre::Result<()> {
     println!("Creating Squads v4 multisig vault...");
     println!();
 
@@ -138,18 +137,18 @@ pub fn create(
             Pubkey::from_str(trimmed)
                 .map_err(|e| eyre::eyre!("Invalid pubkey '{}': {}", trimmed, e))
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect::<eyre::Result<Vec<_>>>()?;
 
     if member_pubkeys.is_empty() {
-        bail!("At least one member is required");
+        eyre::bail!("At least one member is required");
     }
 
     // Validate threshold
     if threshold == 0 {
-        bail!("Threshold must be at least 1");
+        eyre::bail!("Threshold must be at least 1");
     }
     if threshold as usize > member_pubkeys.len() {
-        bail!(
+        eyre::bail!(
             "Threshold ({}) cannot exceed number of members ({})",
             threshold,
             member_pubkeys.len()
@@ -197,7 +196,7 @@ pub fn create(
     // Parse treasury from account data
     // ProgramConfig layout: discriminator(8) + authority(32) + multisig_creation_fee(8) + treasury(32)
     if program_config_account.data.len() < 80 {
-        bail!("Invalid program_config account data");
+        eyre::bail!("Invalid program_config account data");
     }
     let treasury_bytes: [u8; 32] = program_config_account.data[48..80].try_into()?;
     let treasury = Pubkey::new_from_array(treasury_bytes);

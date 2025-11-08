@@ -5,7 +5,6 @@
 
 use super::types::*;
 use borsh::BorshSerialize;
-use eyre::Result;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
@@ -20,7 +19,7 @@ pub fn build_program_config_init_ix(
     program_config: &Pubkey,
     initializer: &Pubkey,
     args: ProgramConfigInitArgs,
-) -> Result<Instruction> {
+) -> eyre::Result<Instruction> {
     // Anchor discriminator for "program_config_init"
     let discriminator = anchor_discriminator("global", "program_config_init");
 
@@ -57,7 +56,7 @@ pub fn build_multisig_create_v2_ix(
     create_key: &Pubkey,
     creator: &Pubkey,
     args: MultisigCreateArgsV2,
-) -> Result<Instruction> {
+) -> eyre::Result<Instruction> {
     // Anchor discriminator for "multisig_create_v2"
     let discriminator = anchor_discriminator("global", "multisig_create_v2");
 
@@ -97,7 +96,7 @@ pub fn build_vault_transaction_create_ix(
     creator: &Pubkey,
     rent_payer: &Pubkey,
     args: VaultTransactionCreateArgs,
-) -> Result<Instruction> {
+) -> eyre::Result<Instruction> {
     // Anchor discriminator for "vault_transaction_create"
     let discriminator = anchor_discriminator("global", "vault_transaction_create");
 
@@ -135,7 +134,7 @@ pub fn build_proposal_create_ix(
     creator: &Pubkey,
     rent_payer: &Pubkey,
     args: ProposalCreateArgs,
-) -> Result<Instruction> {
+) -> eyre::Result<Instruction> {
     // Anchor discriminator for "proposal_create"
     let discriminator = anchor_discriminator("global", "proposal_create");
 

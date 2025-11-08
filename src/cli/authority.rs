@@ -2,7 +2,6 @@
 //!
 //! Unified authority handling for single-sig and multi-sig execution.
 
-use eyre::Result;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::Instruction,
@@ -48,12 +47,12 @@ impl Authority {
         authority: Option<String>,
         vault: Option<String>,
         multisig_authority: Option<String>,
-    ) -> Result<Self> {
+    ) -> eyre::Result<Self> {
         match (authority, vault, multisig_authority) {
             (Some(authority_path), None, None) => {
                 // Single-sig mode
-                let keypair = solana_sdk::signature::read_keypair_file(&authority_path)
-                    .map_err(|e| {
+                let keypair =
+                    solana_sdk::signature::read_keypair_file(&authority_path).map_err(|e| {
                         eyre::eyre!(
                             "Failed to load authority keypair from {}: {}",
                             authority_path,
@@ -67,8 +66,8 @@ impl Authority {
                 let vault = vault_str
                     .parse::<Pubkey>()
                     .map_err(|e| eyre::eyre!("Invalid vault address '{}': {}", vault_str, e))?;
-                let signer = solana_sdk::signature::read_keypair_file(&signer_path)
-                    .map_err(|e| {
+                let signer =
+                    solana_sdk::signature::read_keypair_file(&signer_path).map_err(|e| {
                         eyre::eyre!(
                             "Failed to load multisig authority keypair from {}: {}",
                             signer_path,
@@ -106,7 +105,7 @@ impl Authority {
         rpc: &RpcClient,
         instruction: Instruction,
         description: &str,
-    ) -> Result<ExecutionResult> {
+    ) -> eyre::Result<ExecutionResult> {
         match self {
             Authority::SingleSig { keypair } => {
                 println!("Executing: {}", description);

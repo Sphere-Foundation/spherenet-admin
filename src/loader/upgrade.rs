@@ -1,5 +1,5 @@
 use super::write_buffer;
-use crate::pw::whitelist::require_whitelist_entry;
+use crate::{cli::Authority, pw::whitelist::require_whitelist_entry};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -19,7 +19,7 @@ pub fn upgrade_program(
     url: &str,
     program_id_str: String,
     program_so_path: String,
-    upgrade_authority_str: String,
+    upgrade_authority: Authority,
     payer_keypair_path: String,
     spill_address_str: Option<String>,
 ) -> eyre::Result<()> {
@@ -36,14 +36,6 @@ pub fn upgrade_program(
             e
         )
     })?;
-    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read upgrade authority keypair from {}: {}",
-            upgrade_authority_str,
-            e
-        )
-    })?;
-    let upgrade_authority = upgrade_authority_keypair.pubkey();
     let program_id = Pubkey::from_str(&program_id_str)
         .map_err(|e| eyre::eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
 
@@ -57,7 +49,7 @@ pub fn upgrade_program(
 
     println!("  Program ID: {}", program_id);
     println!("  Payer: {}", payer.pubkey());
-    println!("  Upgrade Authority: {}", upgrade_authority);
+    println!("  Upgrade Authority: {}", upgrade_authority.pubkey());
     println!("  Spill Account: {}", spill_address);
 
     // Verify program exists
@@ -111,13 +103,12 @@ pub fn upgrade_program(
             Required capacity: {} bytes\n\
             Need {} more bytes\n\n\
             Run this command to extend the program:\n\
-            solana program extend {} {} -k {} --url {}",
+            solana program extend {} {} -k <UPGRADE_AUTHORITY_KEYPAIR> --url {}",
             current_max_len,
             program_data.len(),
             additional_bytes,
             program_id,
             additional_bytes,
-            upgrade_authority_str,
             url
         ));
     }
@@ -125,7 +116,7 @@ pub fn upgrade_program(
     println!("  ✓ Program capacity sufficient");
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
-    let whitelist_entry = require_whitelist_entry(&rpc_client, upgrade_authority)?;
+    let whitelist_entry = require_whitelist_entry(&rpc_client, upgrade_authority.pubkey())?;
 
     // Create and write buffer
     println!("\n📝 Creating buffer account...");
@@ -137,12 +128,12 @@ pub fn upgrade_program(
     println!("  Buffer size: {} bytes", buffer_size);
     println!("  Buffer rent: {} lamports", buffer_lamports);
 
-    // Create and initialize buffer account with UPGRADE AUTHORITY as authority
-    // (required for upgrade - buffer authority must match program's upgrade authority)
+    // Create and initialize buffer account with PAYER as buffer authority
+    // (payer can write to buffer, then upgrade authority authorizes the upgrade)
     let create_buffer_instructions = create_buffer(
         &payer.pubkey(),
         &buffer_pubkey,
-        &upgrade_authority, // Must match the program's upgrade authority
+        &payer.pubkey(), // Payer is buffer authority for writes
         buffer_lamports,
         program_data.len(),
     )?;
@@ -157,14 +148,14 @@ pub fn upgrade_program(
 
     println!("  ✓ Buffer account created: {}", buffer_pubkey);
 
-    // Write program data to buffer in chunks (upgrade authority signs as buffer authority)
+    // Write program data to buffer in chunks (payer signs buffer writes)
     println!("\n📤 Writing program data to buffer...");
     write_buffer(
         &rpc_client,
         &payer,
-        &upgrade_authority_keypair,
+        &payer, // Payer signs buffer writes
         &buffer_pubkey,
-        &upgrade_authority,
+        &payer.pubkey(), // Buffer authority is payer
         &program_data,
     )?;
 
@@ -175,21 +166,18 @@ pub fn upgrade_program(
     let upgrade_ix = upgrade(
         &program_id,
         &buffer_pubkey,
-        &upgrade_authority,
+        &upgrade_authority.pubkey(), // Program's upgrade authority
         &spill_address,
         &whitelist_entry,
     );
 
-    let mut transaction = Transaction::new_with_payer(&[upgrade_ix], Some(&payer.pubkey()));
-    transaction.sign(
-        &[&payer, &upgrade_authority_keypair],
-        rpc_client.get_latest_blockhash()?,
-    );
-    rpc_client.send_and_confirm_transaction(&transaction)?;
+    // Execute upgrade through authority (single-sig or multi-sig)
+    let description = format!("Upgrade program {}", program_id);
+    upgrade_authority.execute_instruction(&rpc_client, upgrade_ix, &description)?;
 
     println!("\n✅ Program upgraded successfully!");
     println!("   Program ID: {}", program_id);
-    println!("   Upgrade Authority: {}", upgrade_authority);
+    println!("   Upgrade Authority: {}", upgrade_authority.pubkey());
 
     Ok(())
 }
