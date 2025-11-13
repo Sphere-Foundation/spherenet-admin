@@ -36,7 +36,10 @@ pub fn transfer(
     println!("  Amount:      {} SOL ({} lamports)", amount, lamports);
 
     // Build system transfer instruction
-    let instruction = system_instruction::transfer(&from.pubkey(), &destination, lamports);
+    // For multisig, we need the vault PDA (not the multisig PDA) as the "from" address
+    let from_pubkey = from.instruction_authority_pubkey()?;
+    println!("  Instruction 'from' address: {}", from_pubkey);
+    let instruction = system_instruction::transfer(&from_pubkey, &destination, lamports);
 
     // Execute instruction through authority (single-sig or multi-sig)
     let description = format!("Transfer {} SOL to {}", amount, destination);

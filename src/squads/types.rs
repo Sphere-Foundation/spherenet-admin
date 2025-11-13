@@ -6,6 +6,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha2::{Digest, Sha256};
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
+use std::io::{Read as IoRead, Write};
+use std::marker::PhantomData;
 
 // ============================================================================
 // Constants
@@ -23,6 +25,78 @@ pub const SEED_MULTISIG: &[u8] = b"multisig";
 pub const SEED_PROGRAM_CONFIG: &[u8] = b"program_config";
 pub const SEED_TRANSACTION: &[u8] = b"transaction";
 pub const SEED_PROPOSAL: &[u8] = b"proposal";
+pub const SEED_VAULT: &[u8] = b"vault";
+
+// ============================================================================
+// SmallVec (from squads-multisig-program/src/utils/small_vec.rs)
+// ============================================================================
+
+/// Concise serialization schema for vectors where the length can be represented
+/// by any type `L` (typically unsigned integer like `u8` or `u16`)
+#[derive(Clone, Debug, Default)]
+pub struct SmallVec<L, T>(Vec<T>, PhantomData<L>);
+
+impl<L, T> From<SmallVec<L, T>> for Vec<T> {
+    fn from(val: SmallVec<L, T>) -> Self {
+        val.0
+    }
+}
+
+impl<L, T> From<Vec<T>> for SmallVec<L, T> {
+    fn from(val: Vec<T>) -> Self {
+        Self(val, PhantomData)
+    }
+}
+
+impl<T: BorshSerialize> BorshSerialize for SmallVec<u8, T> {
+    fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        let len = u8::try_from(self.0.len()).map_err(|_| std::io::ErrorKind::InvalidInput)?;
+        writer.write_all(&len.to_le_bytes())?;
+        for item in &self.0 {
+            item.serialize(writer)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: BorshDeserialize> BorshDeserialize for SmallVec<u8, T> {
+    fn deserialize_reader<R: IoRead>(reader: &mut R) -> std::io::Result<Self> {
+        let mut len_bytes = [0u8; 1];
+        reader.read_exact(&mut len_bytes)?;
+        let len = u8::from_le_bytes(len_bytes) as usize;
+
+        let mut vec = Vec::with_capacity(len);
+        for _ in 0..len {
+            vec.push(T::deserialize_reader(reader)?);
+        }
+        Ok(Self(vec, PhantomData))
+    }
+}
+
+impl<T: BorshSerialize> BorshSerialize for SmallVec<u16, T> {
+    fn serialize<W: Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        let len = u16::try_from(self.0.len()).map_err(|_| std::io::ErrorKind::InvalidInput)?;
+        writer.write_all(&len.to_le_bytes())?;
+        for item in &self.0 {
+            item.serialize(writer)?;
+        }
+        Ok(())
+    }
+}
+
+impl<T: BorshDeserialize> BorshDeserialize for SmallVec<u16, T> {
+    fn deserialize_reader<R: IoRead>(reader: &mut R) -> std::io::Result<Self> {
+        let mut len_bytes = [0u8; 2];
+        reader.read_exact(&mut len_bytes)?;
+        let len = u16::from_le_bytes(len_bytes) as usize;
+
+        let mut vec = Vec::with_capacity(len);
+        for _ in 0..len {
+            vec.push(T::deserialize_reader(reader)?);
+        }
+        Ok(Self(vec, PhantomData))
+    }
+}
 
 // ============================================================================
 // Type Definitions (from squads-multisig-program/src/state/multisig.rs)
@@ -133,17 +207,57 @@ pub struct TransactionMessage {
     pub num_signers: u8,
     pub num_writable_signers: u8,
     pub num_writable_non_signers: u8,
+    pub account_keys: SmallVec<u8, Pubkey>,
+    pub instructions: SmallVec<u8, CompiledInstruction>,
+    pub address_table_lookups: SmallVec<u8, MessageAddressTableLookup>,
+}
+
+/// VaultTransaction account structure (simplified for reading)
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct VaultTransaction {
+    pub multisig: Pubkey,
+    pub creator: Pubkey,
+    pub index: u64,
+    pub bump: u8,
+    pub vault_index: u8,
+    pub vault_bump: u8,
+    pub ephemeral_signer_bumps: Vec<u8>,
+    pub message: VaultTransactionMessage,
+}
+
+/// VaultTransactionMessage (stored in VaultTransaction)
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct VaultTransactionMessage {
+    pub num_signers: u8,
+    pub num_writable_signers: u8,
+    pub num_writable_non_signers: u8,
     pub account_keys: Vec<Pubkey>,
-    pub instructions: Vec<CompiledInstruction>,
-    pub address_table_lookups: Vec<MessageAddressTableLookup>,
+    pub instructions: Vec<MultisigCompiledInstruction>,
+    pub address_table_lookups: Vec<MultisigMessageAddressTableLookup>,
+}
+
+/// Compiled instruction in VaultTransactionMessage
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct MultisigCompiledInstruction {
+    pub program_id_index: u8,
+    pub account_indexes: Vec<u8>,
+    pub data: Vec<u8>,
+}
+
+/// Address table lookup in VaultTransactionMessage
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct MultisigMessageAddressTableLookup {
+    pub account_key: Pubkey,
+    pub writable_indexes: Vec<u8>,
+    pub readonly_indexes: Vec<u8>,
 }
 
 /// Compiled instruction for TransactionMessage
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
 pub struct CompiledInstruction {
     pub program_id_index: u8,
-    pub account_indexes: Vec<u8>,
-    pub data: Vec<u8>,
+    pub account_indexes: SmallVec<u8, u8>,
+    pub data: SmallVec<u16, u8>,
 }
 
 /// Address table lookup for TransactionMessage
@@ -257,6 +371,21 @@ pub fn get_proposal_pda(
     )
 }
 
+/// Derive vault PDA from multisig
+///
+/// seeds: [b"multisig", multisig, b"vault", vault_index]
+pub fn get_vault_pda(multisig: &Pubkey, vault_index: u8, program_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[
+            SEED_PREFIX,
+            multisig.as_ref(),
+            SEED_VAULT,
+            &vault_index.to_le_bytes(),
+        ],
+        program_id,
+    )
+}
+
 /// Compile a Solana instruction into Squads TransactionMessage format
 ///
 /// This builds the TransactionMessage with the vault as the fee payer/signer.
@@ -264,6 +393,15 @@ pub fn compile_instruction_to_transaction_message(
     instruction: &Instruction,
     vault_pubkey: &Pubkey,
 ) -> TransactionMessage {
+    println!("DEBUG compile_instruction_to_transaction_message:");
+    println!("  vault_pubkey: {}", vault_pubkey);
+    println!("  instruction.program_id: {}", instruction.program_id);
+    println!("  instruction.accounts:");
+    for (i, acc) in instruction.accounts.iter().enumerate() {
+        println!("    [{}] {} (signer: {}, writable: {})",
+            i, acc.pubkey, acc.is_signer, acc.is_writable);
+    }
+
     // Collect all unique account keys
     let mut account_keys = Vec::new();
     let mut account_key_indexes = std::collections::HashMap::new();
@@ -343,20 +481,28 @@ pub fn compile_instruction_to_transaction_message(
 
     let compiled_instruction = CompiledInstruction {
         program_id_index,
-        account_indexes,
-        data: instruction.data.clone(),
+        account_indexes: account_indexes.into(),
+        data: instruction.data.clone().into(),
     };
 
     let num_signers = (writable_signers.len() + readonly_signers.len()) as u8;
     let num_writable_signers = writable_signers.len() as u8;
     let num_writable_non_signers = writable_non_signers.len() as u8;
 
+    println!("  Final ordered_keys:");
+    for (i, key) in ordered_keys.iter().enumerate() {
+        println!("    [{}] {}", i, key);
+    }
+    println!("  num_signers: {}", num_signers);
+    println!("  num_writable_signers: {}", num_writable_signers);
+    println!("  num_writable_non_signers: {}", num_writable_non_signers);
+
     TransactionMessage {
         num_signers,
         num_writable_signers,
         num_writable_non_signers,
-        account_keys: ordered_keys,
-        instructions: vec![compiled_instruction],
-        address_table_lookups: Vec::new(), // No lookups for simple transactions
+        account_keys: ordered_keys.into(),
+        instructions: vec![compiled_instruction].into(),
+        address_table_lookups: Vec::new().into(), // No lookups for simple transactions
     }
 }

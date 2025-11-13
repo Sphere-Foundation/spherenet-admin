@@ -162,7 +162,71 @@ pub fn build_proposal_create_ix(
     })
 }
 
-// TODO: Add more instruction builders as needed:
-// - build_proposal_approve_ix
-// - build_vault_transaction_execute_ix
-// - etc.
+/// Build proposal_approve instruction
+///
+/// Used to approve a proposal (vote with Vote::Approve).
+pub fn build_proposal_approve_ix(
+    program_id: &Pubkey,
+    multisig: &Pubkey,
+    proposal: &Pubkey,
+    member: &Pubkey,
+) -> eyre::Result<Instruction> {
+    // Anchor discriminator for "proposal_approve"
+    let discriminator = anchor_discriminator("global", "proposal_approve");
+
+    // ProposalVoteArgs { memo: Option<String> }
+    // For approve, we'll pass None for memo
+    let args_data: Vec<u8> = borsh::to_vec(&None::<String>)?;
+
+    // Serialize: [discriminator (8 bytes)] + [borsh-serialized args]
+    let mut data = Vec::new();
+    data.extend_from_slice(&discriminator);
+    data.extend_from_slice(&args_data);
+
+    let accounts = vec![
+        AccountMeta::new_readonly(*multisig, false),
+        AccountMeta::new(*member, true), // Signer
+        AccountMeta::new(*proposal, false),
+    ];
+
+    Ok(Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    })
+}
+
+/// Build vault_transaction_execute instruction
+///
+/// Used to execute an approved proposal's transaction.
+/// Note: remaining_accounts must be provided based on the transaction message.
+pub fn build_vault_transaction_execute_ix(
+    program_id: &Pubkey,
+    multisig: &Pubkey,
+    proposal: &Pubkey,
+    transaction: &Pubkey,
+    member: &Pubkey,
+    remaining_accounts: Vec<AccountMeta>,
+) -> eyre::Result<Instruction> {
+    // Anchor discriminator for "vault_transaction_execute"
+    let discriminator = anchor_discriminator("global", "vault_transaction_execute");
+
+    // No args for this instruction
+    let data = discriminator.to_vec();
+
+    let mut accounts = vec![
+        AccountMeta::new_readonly(*multisig, false),
+        AccountMeta::new(*proposal, false),
+        AccountMeta::new_readonly(*transaction, false),
+        AccountMeta::new_readonly(*member, true), // Signer
+    ];
+
+    // Add remaining accounts (the actual accounts referenced by the transaction)
+    accounts.extend(remaining_accounts);
+
+    Ok(Instruction {
+        program_id: *program_id,
+        accounts,
+        data,
+    })
+}

@@ -189,6 +189,16 @@ pub fn run() -> eyre::Result<()> {
             MultisigAction::Show { create_key } => {
                 squads::commands::show_multisig(create_key, &cli.url)?
             }
+            MultisigAction::Approve {
+                create_key,
+                transaction_index,
+                member,
+            } => squads::commands::approve_proposal(create_key, transaction_index, member, &cli.url)?,
+            MultisigAction::Execute {
+                create_key,
+                transaction_index,
+                member,
+            } => squads::commands::execute_proposal(create_key, transaction_index, member, &cli.url)?,
         },
         Commands::Airdrop { pubkey, amount } => {
             utils::airdrop::airdrop(&cli.url, pubkey, amount)?

@@ -362,4 +362,32 @@ pub enum MultisigAction {
         #[arg(long)]
         create_key: String,
     },
+    /// Approve a multisig proposal
+    Approve {
+        /// Path to create key keypair used during vault creation
+        #[arg(long)]
+        create_key: String,
+
+        /// Transaction index of the proposal to approve
+        #[arg(long)]
+        transaction_index: u64,
+
+        /// Path to member keypair who is approving
+        #[arg(long)]
+        member: String,
+    },
+    /// Execute an approved multisig proposal
+    Execute {
+        /// Path to create key keypair used during vault creation
+        #[arg(long)]
+        create_key: String,
+
+        /// Transaction index of the proposal to execute
+        #[arg(long)]
+        transaction_index: u64,
+
+        /// Path to member keypair who is executing
+        #[arg(long)]
+        member: String,
+    },
 }
