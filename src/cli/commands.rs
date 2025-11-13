@@ -45,8 +45,10 @@ pub enum Commands {
     },
     /// Request an airdrop for an account
     Airdrop {
+        /// Account pubkey to receive the airdrop
         #[arg(long)]
-        keypair: String,
+        pubkey: String,
+        /// Amount in SOL to airdrop
         #[arg(long, default_value = "1.0")]
         amount: f64,
     },
@@ -347,5 +349,17 @@ pub enum MultisigAction {
         /// Optional: description/memo
         #[arg(long)]
         memo: Option<String>,
+    },
+    /// Get vault address from create key
+    VaultAddress {
+        /// Path to create key keypair used during vault creation
+        #[arg(long)]
+        create_key: String,
+    },
+    /// Show multisig vault information (fetches on-chain data)
+    Show {
+        /// Path to create key keypair used during vault creation
+        #[arg(long)]
+        create_key: String,
     },
 }

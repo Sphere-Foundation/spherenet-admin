@@ -22,4 +22,4 @@ pub mod instructions;
 pub mod types;
 
 // Re-export commonly used types
-pub use types::{Member, Permissions, ProgramConfigInitArgs};
+pub use types::{Member, Multisig, Permissions, ProgramConfigInitArgs};

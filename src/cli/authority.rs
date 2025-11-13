@@ -2,6 +2,7 @@
 //!
 //! Unified authority handling for single-sig and multi-sig execution.
 
+use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::Instruction,
@@ -10,6 +11,7 @@ use solana_sdk::{
     signer::Signer,
     transaction::Transaction,
 };
+use std::str::FromStr;
 
 /// Result of executing an instruction through Authority
 #[derive(Debug)]
@@ -132,14 +134,88 @@ impl Authority {
                 println!("   Vault: {}", vault);
                 println!();
 
-                // TODO: Implement multisig proposal creation
-                // 1. Fetch multisig account to get next transaction_index
-                // 2. Serialize instruction into TransactionMessage
-                // 3. Create vault_transaction
-                // 4. Create proposal
-                // 5. Return proposal info
+                // Parse program ID
+                let program_id = Pubkey::from_str(squads::types::SQUADS_PROGRAM_ID)
+                    .map_err(|e| eyre::eyre!("Invalid SQUADS_PROGRAM_ID: {}", e))?;
 
-                todo!("Implement multisig proposal creation")
+                // Fetch multisig account to get next transaction_index
+                let multisig_account = rpc.get_account(vault).map_err(|e| {
+                    eyre::eyre!("Failed to fetch multisig account at {}: {}", vault, e)
+                })?;
+                let current_transaction_index = squads::types::parse_transaction_index(&multisig_account.data)?;
+                let next_transaction_index = current_transaction_index.checked_add(1)
+                    .ok_or_else(|| eyre::eyre!("Transaction index overflow"))?;
+
+                println!("   Transaction Index: {}", next_transaction_index);
+
+                // Derive PDAs (these functions handle the +1 internally)
+                let (vault_transaction_pda, _) =
+                    squads::types::get_vault_transaction_pda(vault, current_transaction_index, &program_id);
+                let (proposal_pda, _) =
+                    squads::types::get_proposal_pda(vault, current_transaction_index, &program_id);
+
+                // Compile instruction into Squads TransactionMessage format
+                let transaction_message = squads::types::compile_instruction_to_transaction_message(
+                    &instruction,
+                    vault,
+                );
+
+                // Serialize to bytes using Borsh
+                let transaction_message_bytes = borsh::to_vec(&transaction_message)
+                    .map_err(|e| eyre::eyre!("Failed to serialize transaction message: {}", e))?;
+
+                // Build vault_transaction_create instruction
+                let vault_tx_args = squads::types::VaultTransactionCreateArgs {
+                    vault_index: 0,           // Default vault
+                    ephemeral_signers: 0,     // No ephemeral signers
+                    transaction_message: transaction_message_bytes,
+                    memo: Some(description.to_string()),
+                };
+
+                let vault_tx_create_ix = squads::instructions::build_vault_transaction_create_ix(
+                    &program_id,
+                    vault,
+                    &vault_transaction_pda,
+                    &signer.pubkey(),
+                    &signer.pubkey(), // rent_payer
+                    vault_tx_args,
+                )?;
+
+                // Build proposal_create instruction
+                let proposal_args = squads::types::ProposalCreateArgs {
+                    transaction_index: next_transaction_index,
+                    draft: false, // Active proposal (ready for voting)
+                };
+
+                let proposal_create_ix = squads::instructions::build_proposal_create_ix(
+                    &program_id,
+                    vault,
+                    &proposal_pda,
+                    &signer.pubkey(),
+                    &signer.pubkey(), // rent_payer
+                    proposal_args,
+                )?;
+
+                // Send both instructions in one transaction
+                let recent_blockhash = rpc.get_latest_blockhash()?;
+                let tx = Transaction::new_signed_with_payer(
+                    &[vault_tx_create_ix, proposal_create_ix],
+                    Some(&signer.pubkey()),
+                    &[signer],
+                    recent_blockhash,
+                );
+
+                let signature = rpc.send_and_confirm_transaction(&tx)?;
+
+                println!("✅ Proposal created successfully!");
+                println!("   Signature: {}", signature);
+                println!("   Proposal:  {}", proposal_pda);
+                println!();
+
+                Ok(ExecutionResult::ProposalCreated {
+                    proposal: proposal_pda,
+                    transaction_index: next_transaction_index,
+                })
             }
         }
     }

@@ -183,9 +183,15 @@ pub fn run() -> eyre::Result<()> {
             } => squads::commands::create(
                 members, threshold, create_key, payer, &cli.url, time_lock, memo,
             )?,
+            MultisigAction::VaultAddress { create_key } => {
+                squads::commands::vault_address(create_key)?
+            }
+            MultisigAction::Show { create_key } => {
+                squads::commands::show_multisig(create_key, &cli.url)?
+            }
         },
-        Commands::Airdrop { keypair, amount } => {
-            utils::airdrop::airdrop(&cli.url, keypair, amount)?
+        Commands::Airdrop { pubkey, amount } => {
+            utils::airdrop::airdrop(&cli.url, pubkey, amount)?
         }
         Commands::Transfer {
             destination,

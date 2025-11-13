@@ -5,7 +5,7 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use sha2::{Digest, Sha256};
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 
 // ============================================================================
 // Constants
@@ -59,6 +59,30 @@ pub enum Permission {
     Execute = 1 << 2,  // Can execute approved proposals
 }
 
+/// Multisig account structure (from squads-multisig-program/src/state/multisig.rs)
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct Multisig {
+    /// Key that is used to seed the multisig PDA
+    pub create_key: Pubkey,
+    /// The authority that can change the multisig config
+    /// Set to Pubkey::default() for autonomous multisig
+    pub config_authority: Pubkey,
+    /// Threshold for signatures
+    pub threshold: u16,
+    /// How many seconds must pass between transaction voting settlement and execution
+    pub time_lock: u32,
+    /// Last transaction index (0 means no transactions created)
+    pub transaction_index: u64,
+    /// Last stale transaction index
+    pub stale_transaction_index: u64,
+    /// Rent reclamation address (None disables rent reclamation)
+    pub rent_collector: Option<Pubkey>,
+    /// Bump for the multisig PDA seed
+    pub bump: u8,
+    /// Members of the multisig
+    pub members: Vec<Member>,
+}
+
 /// Arguments for program_config_init instruction
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct ProgramConfigInitArgs {
@@ -103,6 +127,54 @@ pub struct ProposalCreateArgs {
     pub draft: bool,
 }
 
+/// Squads TransactionMessage format (for vault_transaction_create)
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct TransactionMessage {
+    pub num_signers: u8,
+    pub num_writable_signers: u8,
+    pub num_writable_non_signers: u8,
+    pub account_keys: Vec<Pubkey>,
+    pub instructions: Vec<CompiledInstruction>,
+    pub address_table_lookups: Vec<MessageAddressTableLookup>,
+}
+
+/// Compiled instruction for TransactionMessage
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct CompiledInstruction {
+    pub program_id_index: u8,
+    pub account_indexes: Vec<u8>,
+    pub data: Vec<u8>,
+}
+
+/// Address table lookup for TransactionMessage
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug)]
+pub struct MessageAddressTableLookup {
+    pub account_key: Pubkey,
+    pub writable_indexes: Vec<u8>,
+    pub readonly_indexes: Vec<u8>,
+}
+
+/// Parse transaction_index from a multisig account's data
+///
+/// Multisig layout:
+/// - discriminator(8)
+/// - create_key(32)
+/// - config_authority(32)
+/// - threshold(2)
+/// - time_lock(4)
+/// - transaction_index(8)  <- at offset 78
+/// - ...
+pub fn parse_transaction_index(account_data: &[u8]) -> eyre::Result<u64> {
+    const OFFSET: usize = 8 + 32 + 32 + 2 + 4; // 78
+    if account_data.len() < OFFSET + 8 {
+        return Err(eyre::eyre!("Invalid multisig account data (too short)"));
+    }
+    let tx_index_bytes: [u8; 8] = account_data[OFFSET..OFFSET + 8]
+        .try_into()
+        .map_err(|_| eyre::eyre!("Failed to parse transaction_index"))?;
+    Ok(u64::from_le_bytes(tx_index_bytes))
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -137,18 +209,24 @@ pub fn get_multisig_pda(create_key: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8
 
 /// Derive vault transaction PDA
 ///
-/// seeds: [b"multisig", multisig, b"transaction", transaction_index]
+/// seeds: [b"multisig", multisig, b"transaction", transaction_index + 1]
+///
+/// Note: The program uses `multisig.transaction_index.checked_add(1)` for the PDA,
+/// so we need to add 1 to the transaction_index when deriving the PDA.
 pub fn get_vault_transaction_pda(
     multisig: &Pubkey,
     transaction_index: u64,
     program_id: &Pubkey,
 ) -> (Pubkey, u8) {
+    let next_index = transaction_index
+        .checked_add(1)
+        .expect("transaction_index overflow");
     Pubkey::find_program_address(
         &[
             SEED_PREFIX,
             multisig.as_ref(),
             SEED_TRANSACTION,
-            &transaction_index.to_le_bytes(),
+            &next_index.to_le_bytes(),
         ],
         program_id,
     )
@@ -156,20 +234,129 @@ pub fn get_vault_transaction_pda(
 
 /// Derive proposal PDA
 ///
-/// seeds: [b"multisig", multisig, b"transaction", transaction_index, b"proposal"]
+/// seeds: [b"multisig", multisig, b"transaction", transaction_index + 1, b"proposal"]
+///
+/// Note: Like vault_transaction, proposals reference the NEXT transaction index.
 pub fn get_proposal_pda(
     multisig: &Pubkey,
     transaction_index: u64,
     program_id: &Pubkey,
 ) -> (Pubkey, u8) {
+    let next_index = transaction_index
+        .checked_add(1)
+        .expect("transaction_index overflow");
     Pubkey::find_program_address(
         &[
             SEED_PREFIX,
             multisig.as_ref(),
             SEED_TRANSACTION,
-            &transaction_index.to_le_bytes(),
+            &next_index.to_le_bytes(),
             SEED_PROPOSAL,
         ],
         program_id,
     )
+}
+
+/// Compile a Solana instruction into Squads TransactionMessage format
+///
+/// This builds the TransactionMessage with the vault as the fee payer/signer.
+pub fn compile_instruction_to_transaction_message(
+    instruction: &Instruction,
+    vault_pubkey: &Pubkey,
+) -> TransactionMessage {
+    // Collect all unique account keys
+    let mut account_keys = Vec::new();
+    let mut account_key_indexes = std::collections::HashMap::new();
+
+    // Add vault as first account (writable signer)
+    account_keys.push(*vault_pubkey);
+    account_key_indexes.insert(*vault_pubkey, 0u8);
+
+    // Add all accounts from the instruction
+    for account_meta in &instruction.accounts {
+        if !account_key_indexes.contains_key(&account_meta.pubkey) {
+            let index = account_keys.len() as u8;
+            account_keys.push(account_meta.pubkey);
+            account_key_indexes.insert(account_meta.pubkey, index);
+        }
+    }
+
+    // Add program ID if not already in account_keys
+    if !account_key_indexes.contains_key(&instruction.program_id) {
+        let index = account_keys.len() as u8;
+        account_keys.push(instruction.program_id);
+        account_key_indexes.insert(instruction.program_id, index);
+    }
+
+    // Reorder accounts: writable signers, readonly signers, writable non-signers, readonly non-signers
+    let mut writable_signers = vec![*vault_pubkey]; // Vault is always writable signer
+    let mut readonly_signers = Vec::new();
+    let mut writable_non_signers = Vec::new();
+    let mut readonly_non_signers = Vec::new();
+
+    for account_meta in &instruction.accounts {
+        if account_meta.pubkey == *vault_pubkey {
+            continue; // Already added as first account
+        }
+        if account_meta.is_signer {
+            if account_meta.is_writable {
+                writable_signers.push(account_meta.pubkey);
+            } else {
+                readonly_signers.push(account_meta.pubkey);
+            }
+        } else {
+            if account_meta.is_writable {
+                writable_non_signers.push(account_meta.pubkey);
+            } else {
+                readonly_non_signers.push(account_meta.pubkey);
+            }
+        }
+    }
+
+    // Add program ID to readonly non-signers if not already there
+    if instruction.program_id != *vault_pubkey
+        && !readonly_non_signers.contains(&instruction.program_id)
+    {
+        readonly_non_signers.push(instruction.program_id);
+    }
+
+    // Build final ordered account_keys
+    let mut ordered_keys = Vec::new();
+    ordered_keys.extend(&writable_signers);
+    ordered_keys.extend(&readonly_signers);
+    ordered_keys.extend(&writable_non_signers);
+    ordered_keys.extend(&readonly_non_signers);
+
+    // Build index map for ordered keys
+    let mut key_index_map = std::collections::HashMap::new();
+    for (i, key) in ordered_keys.iter().enumerate() {
+        key_index_map.insert(*key, i as u8);
+    }
+
+    // Compile the instruction
+    let program_id_index = *key_index_map.get(&instruction.program_id).unwrap();
+    let account_indexes: Vec<u8> = instruction
+        .accounts
+        .iter()
+        .map(|meta| *key_index_map.get(&meta.pubkey).unwrap())
+        .collect();
+
+    let compiled_instruction = CompiledInstruction {
+        program_id_index,
+        account_indexes,
+        data: instruction.data.clone(),
+    };
+
+    let num_signers = (writable_signers.len() + readonly_signers.len()) as u8;
+    let num_writable_signers = writable_signers.len() as u8;
+    let num_writable_non_signers = writable_non_signers.len() as u8;
+
+    TransactionMessage {
+        num_signers,
+        num_writable_signers,
+        num_writable_non_signers,
+        account_keys: ordered_keys,
+        instructions: vec![compiled_instruction],
+        address_table_lookups: Vec::new(), // No lookups for simple transactions
+    }
 }

@@ -2,12 +2,13 @@ use crate::cli::{authority::ExecutionResult, Authority};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig, native_token::LAMPORTS_PER_SOL, pubkey::Pubkey,
-    system_instruction,
 };
 use std::str::FromStr;
 
-/// Transfer SOL from one account to another
 #[allow(deprecated)]
+use solana_sdk::system_instruction;
+
+/// Transfer SOL from one account to another
 pub fn transfer(
     rpc_url: &str,
     from: Authority,

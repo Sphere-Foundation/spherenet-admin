@@ -7,5 +7,4 @@ pub mod commands;
 pub mod run;
 
 pub use authority::Authority;
-pub use commands::Cli;
 pub use run::run;
