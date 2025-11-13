@@ -2,6 +2,7 @@ use crate::cli::{authority::ExecutionResult, Authority};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig, native_token::LAMPORTS_PER_SOL, pubkey::Pubkey,
+    signature::Signer,
 };
 use std::str::FromStr;
 
@@ -30,15 +31,35 @@ pub fn transfer(
     // Convert SOL to lamports
     let lamports = (amount * LAMPORTS_PER_SOL as f64) as u64;
 
-    println!("\nTransferring SOL:");
-    println!("  From:        {}", from.pubkey());
-    println!("  Destination: {}", destination);
-    println!("  Amount:      {} SOL ({} lamports)", amount, lamports);
+    println!("\nTransferring {} SOL to {}", amount, destination);
+
+    // Display different info based on authority type
+    match &from {
+        crate::cli::Authority::SingleSig { keypair } => {
+            println!("  From:        {}", keypair.pubkey());
+        }
+        crate::cli::Authority::MultiSig { vault, signer } => {
+            println!("  Proposer:    {}", signer.pubkey());
+            println!("  Multisig:    {}", vault);
+
+            // Derive and show vault PDA (where funds will come from)
+            let program_id =
+                crate::squads::types::SQUADS_PROGRAM_ID.parse::<solana_sdk::pubkey::Pubkey>()?;
+            let (vault_pda, _) = crate::squads::types::get_vault_pda(&vault, 0, &program_id);
+
+            // Get vault balance
+            let vault_balance = rpc_client.get_balance(&vault_pda).unwrap_or(0);
+            let vault_balance_sol = vault_balance as f64 / LAMPORTS_PER_SOL as f64;
+
+            println!("  Vault PDA:   {}", vault_pda);
+            println!("    Balance:   {:.9} SOL", vault_balance_sol);
+        }
+    }
+    println!();
 
     // Build system transfer instruction
     // For multisig, we need the vault PDA (not the multisig PDA) as the "from" address
     let from_pubkey = from.instruction_authority_pubkey()?;
-    println!("  Instruction 'from' address: {}", from_pubkey);
     let instruction = system_instruction::transfer(&from_pubkey, &destination, lamports);
 
     // Execute instruction through authority (single-sig or multi-sig)

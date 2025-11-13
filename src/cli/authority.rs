@@ -146,8 +146,6 @@ impl Authority {
             }
             Authority::MultiSig { vault, signer } => {
                 println!("Creating proposal: {}", description);
-                println!("   Vault: {}", vault);
-                println!();
 
                 // Parse program ID
                 let program_id = Pubkey::from_str(squads::types::SQUADS_PROGRAM_ID)
@@ -169,11 +167,8 @@ impl Authority {
                 let (proposal_pda, _) =
                     squads::types::get_proposal_pda(vault, current_transaction_index, &program_id);
 
-                println!("   Creating VaultTransaction at: {}", vault_transaction_pda);
-
                 // Derive the actual vault PDA (where SOL is held and that signs transactions)
                 let (vault_pda, _) = squads::types::get_vault_pda(vault, 0, &program_id); // vault_index = 0
-                println!("   Using vault PDA: {}", vault_pda);
 
                 // Compile instruction into Squads TransactionMessage format
                 let transaction_message = squads::types::compile_instruction_to_transaction_message(
@@ -184,9 +179,6 @@ impl Authority {
                 // Serialize to bytes using Borsh
                 let transaction_message_bytes = borsh::to_vec(&transaction_message)
                     .map_err(|e| eyre::eyre!("Failed to serialize transaction message: {}", e))?;
-
-                println!("  Serialized transaction_message to {} bytes", transaction_message_bytes.len());
-                println!("  First 100 bytes (hex): {}", hex::encode(&transaction_message_bytes[..transaction_message_bytes.len().min(100)]));
 
                 // Build vault_transaction_create instruction
                 let vault_tx_args = squads::types::VaultTransactionCreateArgs {

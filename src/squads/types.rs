@@ -393,15 +393,6 @@ pub fn compile_instruction_to_transaction_message(
     instruction: &Instruction,
     vault_pubkey: &Pubkey,
 ) -> TransactionMessage {
-    println!("DEBUG compile_instruction_to_transaction_message:");
-    println!("  vault_pubkey: {}", vault_pubkey);
-    println!("  instruction.program_id: {}", instruction.program_id);
-    println!("  instruction.accounts:");
-    for (i, acc) in instruction.accounts.iter().enumerate() {
-        println!("    [{}] {} (signer: {}, writable: {})",
-            i, acc.pubkey, acc.is_signer, acc.is_writable);
-    }
-
     // Collect all unique account keys
     let mut account_keys = Vec::new();
     let mut account_key_indexes = std::collections::HashMap::new();
@@ -488,14 +479,6 @@ pub fn compile_instruction_to_transaction_message(
     let num_signers = (writable_signers.len() + readonly_signers.len()) as u8;
     let num_writable_signers = writable_signers.len() as u8;
     let num_writable_non_signers = writable_non_signers.len() as u8;
-
-    println!("  Final ordered_keys:");
-    for (i, key) in ordered_keys.iter().enumerate() {
-        println!("    [{}] {}", i, key);
-    }
-    println!("  num_signers: {}", num_signers);
-    println!("  num_writable_signers: {}", num_writable_signers);
-    println!("  num_writable_non_signers: {}", num_writable_non_signers);
 
     TransactionMessage {
         num_signers,

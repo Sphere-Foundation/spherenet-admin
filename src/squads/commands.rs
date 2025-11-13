@@ -291,16 +291,36 @@ pub fn vault_address(create_key_path: String) -> eyre::Result<()> {
 /// Show multisig information (fetches on-chain data)
 ///
 /// # Arguments
-/// * `create_key_path` - Path to the create key keypair used during vault creation
+/// * `create_key_path` - Optional path to the create key keypair used during vault creation
+/// * `multisig_str` - Optional multisig PDA address (must provide one of these)
 /// * `url` - RPC URL
-pub fn show_multisig(create_key_path: String, url: &str) -> eyre::Result<()> {
-    // 1. Load create key
-    let create_key = solana_sdk::signature::read_keypair_file(&create_key_path)
-        .map_err(|e| eyre::eyre!("Failed to read create key '{}': {}", create_key_path, e))?;
-
-    // 2. Derive multisig PDA
+pub fn show_multisig(
+    create_key_path: Option<String>,
+    multisig_str: Option<String>,
+    url: &str,
+) -> eyre::Result<()> {
     let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
-    let (multisig_pda, _bump) = squads::types::get_multisig_pda(&create_key.pubkey(), &program_id);
+
+    // Derive multisig PDA from either create_key or direct address
+    let multisig_pda = match (create_key_path, multisig_str) {
+        (Some(path), None) => {
+            // Load create key and derive PDA
+            let create_key = solana_sdk::signature::read_keypair_file(&path)
+                .map_err(|e| eyre::eyre!("Failed to read create key '{}': {}", path, e))?;
+            let (pda, _) = squads::types::get_multisig_pda(&create_key.pubkey(), &program_id);
+            pda
+        }
+        (None, Some(address)) => {
+            // Parse multisig PDA directly
+            address.parse::<Pubkey>()
+                .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", address, e))?
+        }
+        _ => {
+            return Err(eyre::eyre!(
+                "Must provide either --create-key OR --multisig"
+            ));
+        }
+    };
 
     // 3. Fetch account
     let rpc = RpcClient::new(url);
@@ -321,30 +341,36 @@ pub fn show_multisig(create_key_path: String, url: &str) -> eyre::Result<()> {
     let multisig_data = Multisig::deserialize_reader(&mut data_slice)
         .map_err(|e| eyre::eyre!("Failed to deserialize multisig account: {}", e))?;
 
-    // 5. Get SOL balance
-    let balance_lamports = rpc.get_balance(&multisig_pda)?;
-    let balance_sol = balance_lamports as f64 / 1_000_000_000.0;
+    // 5. Derive vault PDA (where funds are held)
+    let (vault_pda, _vault_bump) = squads::types::get_vault_pda(&multisig_pda, 0, &program_id);
+    let vault_balance_lamports = rpc.get_balance(&vault_pda).unwrap_or(0);
+    let vault_balance_sol = vault_balance_lamports as f64 / 1_000_000_000.0;
 
     // 6. Display information
     println!("\n╔═══════════════════════════════════════════════════════════════╗");
     println!("║               Multisig Vault Information                      ║");
     println!("╚═══════════════════════════════════════════════════════════════╝\n");
 
-    println!("Create Key:     {}", multisig_data.create_key);
-    println!("Vault (PDA):    {}", multisig_pda);
+    println!("Create Key:      {}", multisig_data.create_key);
+    println!("Multisig PDA:    {}", multisig_pda);
+    println!();
+    println!("Vault PDA:       {}", vault_pda);
+    println!(
+        "  Vault Balance: {:.9} SOL ({} lamports)",
+        vault_balance_sol, vault_balance_lamports
+    );
     println!();
     println!(
-        "Threshold:      {}/{}",
+        "Threshold:         {}/{}",
         multisig_data.threshold,
         multisig_data.members.len()
     );
-    println!("Next TX Index:  {}", multisig_data.transaction_index);
-    println!("Stale TX Index: {}", multisig_data.stale_transaction_index);
-    println!("Time Lock:      {} seconds", multisig_data.time_lock);
+    println!("Next TX Index:     {}", multisig_data.transaction_index);
     println!(
-        "SOL Balance:    {:.9} SOL ({} lamports)",
-        balance_sol, balance_lamports
+        "Stale TX Index:    {}",
+        multisig_data.stale_transaction_index
     );
+    println!("Time Lock:         {} seconds", multisig_data.time_lock);
     println!();
 
     println!("Config Authority:");
@@ -394,12 +420,12 @@ fn format_permissions(perms: &Permissions) -> String {
 /// Approve a multisig proposal
 ///
 /// # Arguments
-/// * `create_key_path` - Path to the create key used during vault creation
+/// * `multisig_str` - Multisig PDA address
 /// * `transaction_index` - Transaction index of the proposal to approve
 /// * `member_path` - Path to the member keypair who is approving
 /// * `url` - RPC URL
 pub fn approve_proposal(
-    create_key_path: String,
+    multisig_str: String,
     transaction_index: u64,
     member_path: String,
     url: &str,
@@ -408,16 +434,16 @@ pub fn approve_proposal(
     println!("  Transaction Index: {}", transaction_index);
     println!();
 
-    // Load keys
-    let create_key = solana_sdk::signature::read_keypair_file(&create_key_path)
-        .map_err(|e| eyre::eyre!("Failed to read create key: {}", e))?;
+    // Parse multisig PDA
+    let multisig_pda = multisig_str.parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", multisig_str, e))?;
 
+    // Load member key
     let member = solana_sdk::signature::read_keypair_file(&member_path)
         .map_err(|e| eyre::eyre!("Failed to read member key: {}", e))?;
 
     // Parse program ID and derive PDAs
     let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
-    let (multisig_pda, _) = squads::types::get_multisig_pda(&create_key.pubkey(), &program_id);
     let (proposal_pda, _) =
         squads::types::get_proposal_pda(&multisig_pda, transaction_index - 1, &program_id);
 
@@ -458,58 +484,40 @@ pub fn approve_proposal(
 /// Execute an approved multisig proposal
 ///
 /// # Arguments
-/// * `create_key_path` - Path to the create key used during vault creation  
+/// * `multisig_str` - Multisig PDA address
 /// * `transaction_index` - Transaction index of the proposal to execute
 /// * `member_path` - Path to the member keypair who is executing
 /// * `url` - RPC URL
 pub fn execute_proposal(
-    create_key_path: String,
+    multisig_str: String,
     transaction_index: u64,
     member_path: String,
     url: &str,
 ) -> eyre::Result<()> {
-    println!(
-        "
-Executing multisig proposal..."
-    );
+    println!("\nExecuting multisig proposal...");
     println!("  Transaction Index: {}", transaction_index);
     println!();
 
-    // Load keys
-    let create_key = solana_sdk::signature::read_keypair_file(&create_key_path)
-        .map_err(|e| eyre::eyre!("Failed to read create key: {}", e))?;
+    // Parse multisig PDA
+    let multisig_pda = multisig_str.parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", multisig_str, e))?;
 
+    // Load member key
     let member = solana_sdk::signature::read_keypair_file(&member_path)
         .map_err(|e| eyre::eyre!("Failed to read member key: {}", e))?;
 
     // Parse program ID and derive PDAs
     let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
-    let (multisig_pda, _) = squads::types::get_multisig_pda(&create_key.pubkey(), &program_id);
     let (proposal_pda, _) =
         squads::types::get_proposal_pda(&multisig_pda, transaction_index - 1, &program_id);
     let (vault_transaction_pda, _) =
         squads::types::get_vault_transaction_pda(&multisig_pda, transaction_index - 1, &program_id);
-
-    println!("  Vault:        {}", multisig_pda);
-    println!("  Proposal:     {}", proposal_pda);
-    println!("  Transaction:  {}", vault_transaction_pda);
-    println!("  Member:       {}", member.pubkey());
-    println!();
-    println!("  Fetching VaultTransaction from: {}", vault_transaction_pda);
-    println!();
 
     // Fetch and parse the vault transaction to get the exact accounts
     let rpc = RpcClient::new(url);
     let vault_tx_account = rpc
         .get_account(&vault_transaction_pda)
         .map_err(|e| eyre::eyre!("Failed to fetch vault transaction: {}", e))?;
-
-    println!("  Fetched account data length: {} bytes", vault_tx_account.data.len());
-    if vault_tx_account.data.len() >= 80 {
-        let creator_bytes: [u8; 32] = vault_tx_account.data[40..72].try_into().unwrap();
-        let creator_pubkey = Pubkey::from(creator_bytes);
-        println!("  Creator pubkey (bytes 40-72): {}", creator_pubkey);
-    }
 
     // Deserialize VaultTransaction (skip 8-byte Anchor discriminator)
     if vault_tx_account.data.len() < 8 {
@@ -519,10 +527,7 @@ Executing multisig proposal..."
     let vault_tx = squads::types::VaultTransaction::deserialize(&mut &data_slice[..])
         .map_err(|e| eyre::eyre!("Failed to deserialize vault transaction: {}", e))?;
 
-    // Derive vault PDA using find_program_address (canonical bump)
-    let (our_vault_pda, our_vault_bump) = squads::types::get_vault_pda(&multisig_pda, vault_tx.vault_index, &program_id);
-
-    // Derive vault PDA using stored bump (what the program uses)
+    // Derive vault PDA using stored bump (what the program uses for signing)
     let stored_vault_pda = Pubkey::create_program_address(
         &[
             squads::types::SEED_PREFIX,
@@ -532,25 +537,8 @@ Executing multisig proposal..."
             &[vault_tx.vault_bump],
         ],
         &program_id,
-    ).map_err(|e| eyre::eyre!("Failed to derive vault PDA with stored bump: {}", e))?;
-
-    println!("  Vault PDA derivation:");
-    println!("    Vault index:       {}", vault_tx.vault_index);
-    println!("    Our derived PDA:   {} (bump: {})", our_vault_pda, our_vault_bump);
-    println!("    Stored bump:       {}", vault_tx.vault_bump);
-    println!("    Stored PDA:        {}", stored_vault_pda);
-    println!("    PDAs match:        {}", our_vault_pda == stored_vault_pda);
-    println!();
-
-    println!("  Transaction message details:");
-    println!("    num_signers: {}", vault_tx.message.num_signers);
-    println!("    num_writable_signers: {}", vault_tx.message.num_writable_signers);
-    println!("    num_writable_non_signers: {}", vault_tx.message.num_writable_non_signers);
-    println!("  Account keys in transaction message:");
-    for (i, key) in vault_tx.message.account_keys.iter().enumerate() {
-        println!("    [{}] {}", i, key);
-    }
-    println!();
+    )
+    .map_err(|e| eyre::eyre!("Failed to derive vault PDA with stored bump: {}", e))?;
 
     // Build remaining_accounts from the message's account_keys
     // We need to determine which are writable/readonly based on the message headers
@@ -561,9 +549,7 @@ Executing multisig proposal..."
 
     // Determine if each account is a signer based on the message headers
     // PDAs (vault and ephemeral signers) cannot be marked as signers
-    let is_signer_index = |index: usize| -> bool {
-        index < vault_tx.message.num_signers as usize
-    };
+    let is_signer_index = |index: usize| -> bool { index < vault_tx.message.num_signers as usize };
 
     let mut remaining_accounts = Vec::new();
     for (i, key) in vault_tx.message.account_keys.iter().enumerate() {
@@ -587,15 +573,6 @@ Executing multisig proposal..."
         });
     }
 
-    println!("  Remaining accounts we're providing:");
-    for (i, acc) in remaining_accounts.iter().enumerate() {
-        println!(
-            "    [{}] {} (writable: {}, signer: {})",
-            i, acc.pubkey, acc.is_writable, acc.is_signer
-        );
-    }
-    println!();
-
     // Build execute instruction
     let execute_ix = squads::instructions::build_vault_transaction_execute_ix(
         &program_id,
@@ -616,11 +593,9 @@ Executing multisig proposal..."
         recent_blockhash,
     );
 
-    println!("Sending execution transaction...");
     let signature = rpc.send_and_confirm_transaction(&tx)?;
 
-    println!();
-    println!("✅ Proposal executed!");
+    println!("\n✅ Proposal executed!");
     println!("   Signature: {}", signature);
     println!();
 
