@@ -48,26 +48,48 @@ Shows all whitelisted validators with their vote accounts, start epochs, and end
 
 #### Add Validator
 
+**Single-Sig:**
 ```bash
 spherenet-admin vw add <VOTE_ACCOUNT> \
   --start-epoch <EPOCH> \
   --end-epoch <EPOCH> \
-  --auth <PATH>
+  --authority <PATH>
+```
+
+**Multi-Sig (creates proposal):**
+```bash
+spherenet-admin vw add <VOTE_ACCOUNT> \
+  --start-epoch <EPOCH> \
+  --end-epoch <EPOCH> \
+  --multisig <MULTISIG_PDA> \
+  --multisig-authority <PATH>
 ```
 
 **Arguments:**
 - `<VOTE_ACCOUNT>` - Validator's vote account public key
 - `--start-epoch` - (Optional) Epoch when validator can start voting (default: current epoch)
 - `--end-epoch` - (Optional) Epoch when validator's term ends (default: u64::MAX)
-- `--auth` - Path to whitelist authority keypair (alias: `--authority`)
+- `--authority` - Path to whitelist authority keypair (single-sig)
+- `--multisig` - Multisig PDA address (multi-sig, requires `--multisig-authority`)
+- `--multisig-authority` - Path to member keypair (multi-sig)
 
 **Example:**
 ```bash
+# Single-sig
 spherenet-admin vw add HqzWjPX... \
   --start-epoch 100 \
   --end-epoch 200 \
-  --auth ./authority.json
+  --authority ./authority.json
+
+# Multi-sig
+spherenet-admin vw add HqzWjPX... \
+  --start-epoch 100 \
+  --end-epoch 200 \
+  --multisig 5jV5k8rhrDv3NDTZ86uTdsgF1MSA642U1hagcvDPTz1t \
+  --multisig-authority ./member-0.json
 ```
+
+**Note:** All validator whitelist commands (add, remove, update epochs, propose/accept/cancel authority) support both single-sig and multi-sig modes.
 
 #### Remove Validator
 
@@ -139,21 +161,39 @@ Shows all authorities that are allowed to deploy programs.
 
 #### Add Deployer Authority
 
+**Single-Sig:**
 ```bash
-spherenet-admin pw add <DEPLOYER_AUTHORITY> --auth <PATH>
+spherenet-admin pw add <DEPLOYER_AUTHORITY> --authority <PATH>
+```
+
+**Multi-Sig (creates proposal):**
+```bash
+spherenet-admin pw add <DEPLOYER_AUTHORITY> \
+  --multisig <MULTISIG_PDA> \
+  --multisig-authority <PATH>
 ```
 
 **Arguments:**
 - `<DEPLOYER_AUTHORITY>` - Public key of the authority that can deploy programs
-- `--auth` - Path to whitelist authority keypair (alias: `--authority`)
+- `--authority` - Path to whitelist authority keypair (single-sig)
+- `--multisig` - Multisig PDA address (multi-sig, requires `--multisig-authority`)
+- `--multisig-authority` - Path to member keypair (multi-sig)
 
 **Example:**
 ```bash
+# Single-sig
 spherenet-admin pw add 8AydpnGCywwzhVh4ZCUv7HWKodQgCk3Mic33ybGZ7Yjp \
-  --auth ./authority.json
+  --authority ./authority.json
+
+# Multi-sig
+spherenet-admin pw add 8AydpnGCywwzhVh4ZCUv7HWKodQgCk3Mic33ybGZ7Yjp \
+  --multisig 5jV5k8rhrDv3NDTZ86uTdsgF1MSA642U1hagcvDPTz1t \
+  --multisig-authority ./member-0.json
 ```
 
-**Note:** The program whitelist controls **WHO** can deploy programs (authorities), not **WHICH** programs can execute.
+**Notes:**
+- The program whitelist controls **WHO** can deploy programs (authorities), not **WHICH** programs can execute
+- All program whitelist commands (add, remove, propose/accept/cancel authority) support both single-sig and multi-sig modes
 
 #### Remove Deployer Authority
 
@@ -225,6 +265,7 @@ spherenet-admin program deploy \
 
 #### Upgrade Program
 
+**Single-Sig:**
 ```bash
 spherenet-admin program upgrade \
   --program-id <PUBKEY> \
@@ -234,19 +275,41 @@ spherenet-admin program upgrade \
   [--spill <PUBKEY>]
 ```
 
+**Multi-Sig (creates proposal):**
+```bash
+spherenet-admin program upgrade \
+  --program-id <PUBKEY> \
+  --program-so <PATH> \
+  --multisig <MULTISIG_PDA> \
+  --multisig-authority <PATH> \
+  --payer <PATH> \
+  [--spill <PUBKEY>]
+```
+
 **Arguments:**
 - `--program-id` - Program ID to upgrade (as pubkey string)
 - `--program-so` - Path to new compiled program binary
-- `--upgrade-authority` - Path to upgrade authority keypair (must be whitelisted)
+- `--upgrade-authority` - Path to upgrade authority keypair (single-sig, must be whitelisted)
+- `--multisig` - Multisig PDA address (multi-sig, vault must be whitelisted)
+- `--multisig-authority` - Path to member keypair (multi-sig, proposes and pays)
 - `--payer` - Path to payer keypair (funds buffer creation)
 - `--spill` - (Optional) Account to receive excess buffer rent (defaults to payer)
 
 **Example:**
 ```bash
+# Single-sig
 spherenet-admin program upgrade \
   --program-id 7vH9zQdPKjLKJNHh8AzPBpVYQBvzRUQoQ7vP7ENSNqzL \
   --program-so ./target/deploy/my_program.so \
   --upgrade-authority ./authority.json \
+  --payer ~/.config/solana/id.json
+
+# Multi-sig
+spherenet-admin program upgrade \
+  --program-id 7vH9zQdPKjLKJNHh8AzPBpVYQBvzRUQoQ7vP7ENSNqzL \
+  --program-so ./target/deploy/my_program.so \
+  --multisig 5jV5k8rhrDv3NDTZ86uTdsgF1MSA642U1hagcvDPTz1t \
+  --multisig-authority ./member-0.json \
   --payer ~/.config/solana/id.json
 ```
 
@@ -254,6 +317,7 @@ spherenet-admin program upgrade \
 - Checks program capacity before creating buffer (use `solana program extend` if needed)
 - Fails with clear error message showing exact extend command if program too small
 - Upgrade authority must remain whitelisted (removing authority prevents upgrades)
+- For multi-sig: The multisig vault PDA must be whitelisted as a deployer authority
 
 #### Helper Scripts
 
@@ -273,23 +337,177 @@ cp scripts/.env.example scripts/.env
 
 ---
 
+### Multisig Management (`multisig`)
+
+Create and manage Squads v4 multisig vaults for decentralized control.
+
+#### Initialize Program Config (One-time Setup)
+
+```bash
+spherenet-admin multisig program-config-init \
+  --authority <PUBKEY> \
+  --treasury <PUBKEY> \
+  --creation-fee <LAMPORTS> \
+  --initializer <PATH>
+```
+
+**Arguments:**
+- `--authority` - Pubkey that will control the program config
+- `--treasury` - Pubkey where multisig creation fees are sent
+- `--creation-fee` - Fee in lamports for creating a multisig (default: 0)
+- `--initializer` - Path to INITIALIZER keypair (hardcoded in program)
+
+#### Create Multisig Vault
+
+```bash
+spherenet-admin multisig create \
+  --members <PUBKEY>,<PUBKEY>,<PUBKEY> \
+  --threshold <NUMBER> \
+  --create-key <PATH> \
+  --payer <PATH> \
+  [--time-lock <SECONDS>] \
+  [--memo <TEXT>]
+```
+
+**Arguments:**
+- `--members` - Comma-separated list of member pubkeys
+- `--threshold` - Number of approvals required (e.g., 2 for 2-of-3)
+- `--create-key` - Path to create key keypair (unique ID for this multisig)
+- `--payer` - Path to payer keypair
+- `--time-lock` - (Optional) Delay in seconds before proposals can execute
+- `--memo` - (Optional) Description of the multisig
+
+**Example:**
+```bash
+spherenet-admin multisig create \
+  --members 8AydpnGCywwzhVh4ZCUv7HWKodQgCk3Mic33ybGZ7Yjp,HqzWjPX...,5jV5k... \
+  --threshold 2 \
+  --create-key ./multisig-create-key.json \
+  --payer ~/.config/solana/id.json \
+  --memo "Treasury multisig 2-of-3"
+```
+
+#### Show Multisig Information
+
+```bash
+# Using create key
+spherenet-admin multisig show --create-key <PATH>
+
+# Using multisig PDA (if you don't have the create key)
+spherenet-admin multisig show --multisig <PUBKEY>
+```
+
+Displays:
+- Multisig PDA address
+- Vault PDA address (where funds are held)
+- Vault balance
+- Threshold and member list
+- Current transaction index
+
+#### Approve Proposal
+
+```bash
+spherenet-admin multisig approve \
+  --multisig <MULTISIG_PDA> \
+  --transaction-index <INDEX> \
+  --member <PATH>
+```
+
+**Arguments:**
+- `--multisig` - Multisig PDA address
+- `--transaction-index` - Transaction index to approve
+- `--member` - Path to member keypair who is approving
+
+#### Execute Proposal
+
+```bash
+spherenet-admin multisig execute \
+  --multisig <MULTISIG_PDA> \
+  --transaction-index <INDEX> \
+  --member <PATH>
+```
+
+**Arguments:**
+- `--multisig` - Multisig PDA address
+- `--transaction-index` - Transaction index to execute (must have enough approvals)
+- `--member` - Path to member keypair who is executing
+
+---
+
+### Transfer
+
+Transfer SOL between accounts with single-sig or multi-sig support.
+
+#### Single-Sig Transfer
+
+```bash
+spherenet-admin transfer \
+  --destination <PUBKEY> \
+  --amount <SOL> \
+  --from <PATH>
+```
+
+**Arguments:**
+- `--destination` - Destination account pubkey
+- `--amount` - Amount in SOL to transfer
+- `--from` - Path to source keypair
+
+**Example:**
+```bash
+spherenet-admin transfer \
+  --destination 8Y7NwzMQXD6EpRYMyFBp6Xkxt9wUPREneDktezi53r4s \
+  --amount 1.5 \
+  --from ~/.config/solana/id.json
+```
+
+#### Multi-Sig Transfer (Creates Proposal)
+
+```bash
+spherenet-admin transfer \
+  --destination <PUBKEY> \
+  --amount <SOL> \
+  --multisig <MULTISIG_PDA> \
+  --multisig-authority <PATH>
+```
+
+**Arguments:**
+- `--destination` - Destination account pubkey
+- `--amount` - Amount in SOL to transfer
+- `--multisig` - Multisig PDA address (vault holds the funds)
+- `--multisig-authority` - Path to member keypair (proposes and pays for proposal)
+
+**Example:**
+```bash
+spherenet-admin transfer \
+  --destination 8Y7NwzMQXD6EpRYMyFBp6Xkxt9wUPREneDktezi53r4s \
+  --amount 0.5 \
+  --multisig 5jV5k8rhrDv3NDTZ86uTdsgF1MSA642U1hagcvDPTz1t \
+  --multisig-authority ./member-0.json
+```
+
+Creates a proposal that members can approve and execute.
+
+---
+
 ### Airdrop
 
 Request SOL airdrop (testnet only).
 
 ```bash
 spherenet-admin airdrop \
-  --keypair <PATH> \
+  --pubkey <PUBKEY> \
   --amount <SOL_AMOUNT>
 ```
 
 **Arguments:**
-- `--keypair` - Path to keypair receiving the airdrop
+- `--pubkey` - Account pubkey to receive the airdrop
 - `--amount` - Amount of SOL (default: 1.0)
 
 **Example:**
 ```bash
-spherenet-admin airdrop --keypair ./test-wallet.json --amount 5.0
+spherenet-admin airdrop \
+  --pubkey 8Y7NwzMQXD6EpRYMyFBp6Xkxt9wUPREneDktezi53r4s \
+  --amount 5.0
 ```
 
 ## Architecture
@@ -300,21 +518,43 @@ The CLI uses generated instruction builders from:
 
 Both are generated from their respective interface definitions using Codama/Kinobi.
 
+### Multisig Architecture
+
+The CLI integrates with Squads v4 for multisig functionality. Key architectural concepts:
+
+- **Multisig PDA**: Control structure storing configuration (members, threshold, transaction index)
+  - Derived from: `[SEED_PREFIX, SEED_MULTISIG, create_key]`
+
+- **Vault PDA**: Where funds are actually held and that signs transactions
+  - Derived from: `[SEED_PREFIX, multisig_pda, SEED_VAULT, vault_index]`
+
+- **Authority Abstraction**: `Authority` enum provides unified interface for single-sig and multi-sig execution
+  - Single-sig: Executes instructions directly
+  - Multi-sig: Creates proposals that require member approvals
+
+- **SmallVec Serialization**: Custom implementation for Squads' variable-length vector format
+  - `SmallVec<u8, T>`: 1-byte length prefix
+  - `SmallVec<u16, T>`: 2-byte length prefix
+  - Required for proper transaction message serialization
+
 ## Network Information
 
 **Testnet:**
 - RPC: `https://api.testnet.sphere.net`
 - Validator Whitelist Program: `wLpnFMEvuP6hPE84AGrsmNr2Bo2uk69MC4kKWtrWHBN`
 - Program Whitelist Program: `PwLzPtX2e5PwNFQTrEY5DkkmRQ1t1x5vWcGzTnMgibR`
+- Squads v4 Program: `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf`
 
 ### Project Structure
 
 ```
 src/
-├── main.rs       # CLI argument parsing and command routing
-├── airdrop/
-│   ├── mod.rs        # Module exports
-│   └── airdrop.rs    # Airdrop implementation
+├── main.rs           # Entry point
+├── cli/
+│   ├── mod.rs        # CLI module exports
+│   ├── commands.rs   # CLAP command definitions
+│   ├── run.rs        # Command routing
+│   └── authority.rs  # Authority abstraction (single-sig & multi-sig)
 ├── vw/
 │   ├── mod.rs        # Validator whitelist module exports
 │   ├── whitelist.rs  # Validator whitelist commands
@@ -323,10 +563,19 @@ src/
 │   ├── mod.rs        # Program whitelist module exports
 │   ├── whitelist.rs  # Program whitelist commands
 │   └── authority.rs  # Program authority management
-└── loader/
-    ├── mod.rs        # Loader utilities (write_buffer helper)
-    ├── deploy.rs     # Program deployment implementation
-    └── upgrade.rs    # Program upgrade implementation
+├── loader/
+│   ├── mod.rs        # Loader utilities (write_buffer helper)
+│   ├── deploy.rs     # Program deployment implementation
+│   └── upgrade.rs    # Program upgrade implementation
+├── squads/
+│   ├── mod.rs        # Squads v4 integration module exports
+│   ├── types.rs      # Squads types, SmallVec, PDAs
+│   ├── instructions.rs  # Instruction builders
+│   └── commands.rs   # User-facing multisig commands
+└── utils/
+    ├── mod.rs        # Utility module exports
+    ├── airdrop.rs    # Airdrop implementation
+    └── transfer.rs   # Transfer implementation (single & multi-sig)
 
 scripts/
 ├── .env.example                   # Environment variable template

@@ -105,11 +105,7 @@ pub fn add(rpc_url: &str, program_authority: String, authority: Authority) -> ey
     Ok(())
 }
 
-pub fn remove(
-    rpc_url: &str,
-    program_authority: String,
-    authority: Authority,
-) -> eyre::Result<()> {
+pub fn remove(rpc_url: &str, program_authority: String, authority: Authority) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse deployer authority (who can deploy/upgrade programs)
@@ -137,7 +133,10 @@ pub fn remove(
         .instruction();
 
     // Execute instruction through authority (single-sig or multi-sig)
-    let description = format!("Remove deployer authority {} from whitelist", deployer_pubkey);
+    let description = format!(
+        "Remove deployer authority {} from whitelist",
+        deployer_pubkey
+    );
     authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     println!("\nThis authority can no longer deploy or upgrade programs on the network.");

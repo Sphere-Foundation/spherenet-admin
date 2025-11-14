@@ -154,7 +154,8 @@ pub fn run() -> eyre::Result<()> {
                 payer,
                 spill,
             } => {
-                let auth = Authority::from_cli_args(upgrade_authority, multisig, multisig_authority)?;
+                let auth =
+                    Authority::from_cli_args(upgrade_authority, multisig, multisig_authority)?;
                 loader::upgrade::upgrade_program(
                     &cli.url, program_id, program_so, auth, payer, spill,
                 )?
@@ -183,12 +184,10 @@ pub fn run() -> eyre::Result<()> {
             } => squads::commands::create(
                 members, threshold, create_key, payer, &cli.url, time_lock, memo,
             )?,
-            MultisigAction::VaultAddress { create_key } => {
-                squads::commands::vault_address(create_key)?
-            }
-            MultisigAction::Show { create_key, multisig } => {
-                squads::commands::show_multisig(create_key, multisig, &cli.url)?
-            }
+            MultisigAction::Show {
+                create_key,
+                multisig,
+            } => squads::commands::show_multisig(create_key, multisig, &cli.url)?,
             MultisigAction::Approve {
                 multisig,
                 transaction_index,
@@ -200,9 +199,7 @@ pub fn run() -> eyre::Result<()> {
                 member,
             } => squads::commands::execute_proposal(multisig, transaction_index, member, &cli.url)?,
         },
-        Commands::Airdrop { pubkey, amount } => {
-            utils::airdrop::airdrop(&cli.url, pubkey, amount)?
-        }
+        Commands::Airdrop { pubkey, amount } => utils::airdrop::airdrop(&cli.url, pubkey, amount)?,
         Commands::Transfer {
             destination,
             amount,

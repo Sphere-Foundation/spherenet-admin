@@ -3,15 +3,13 @@
 //! User-facing CLI commands for managing multisig vaults and proposals.
 //! Handles parsing, validation, user feedback, and formatting.
 
+use crate::squads::{self, Member, Multisig, Permissions, ProgramConfigInitArgs};
+use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::AccountMeta, pubkey::Pubkey, signature::Signer, transaction::Transaction,
 };
 use std::str::FromStr;
-
-use borsh::BorshDeserialize;
-
-use crate::squads::{self, Member, Multisig, Permissions, ProgramConfigInitArgs};
 
 /// Initialize the Squads program config (one-time setup)
 ///
@@ -264,30 +262,6 @@ pub fn create(
     Ok(())
 }
 
-/// Get vault address from create key
-///
-/// # Arguments
-/// * `create_key_path` - Path to the create key keypair used during vault creation
-pub fn vault_address(create_key_path: String) -> eyre::Result<()> {
-    // Load create key
-    let create_key = solana_sdk::signature::read_keypair_file(&create_key_path)
-        .map_err(|e| eyre::eyre!("Failed to read create key '{}': {}", create_key_path, e))?;
-
-    // Parse program ID
-    let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
-
-    // Derive multisig PDA
-    let (multisig_pda, bump) = squads::types::get_multisig_pda(&create_key.pubkey(), &program_id);
-
-    println!("\nVault Address:");
-    println!("  Create Key: {}", create_key.pubkey());
-    println!("  Vault:      {}", multisig_pda);
-    println!("  Bump:       {}", bump);
-    println!();
-
-    Ok(())
-}
-
 /// Show multisig information (fetches on-chain data)
 ///
 /// # Arguments
@@ -312,7 +286,8 @@ pub fn show_multisig(
         }
         (None, Some(address)) => {
             // Parse multisig PDA directly
-            address.parse::<Pubkey>()
+            address
+                .parse::<Pubkey>()
                 .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", address, e))?
         }
         _ => {
@@ -435,7 +410,8 @@ pub fn approve_proposal(
     println!();
 
     // Parse multisig PDA
-    let multisig_pda = multisig_str.parse::<Pubkey>()
+    let multisig_pda = multisig_str
+        .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", multisig_str, e))?;
 
     // Load member key
@@ -499,7 +475,8 @@ pub fn execute_proposal(
     println!();
 
     // Parse multisig PDA
-    let multisig_pda = multisig_str.parse::<Pubkey>()
+    let multisig_pda = multisig_str
+        .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", multisig_str, e))?;
 
     // Load member key

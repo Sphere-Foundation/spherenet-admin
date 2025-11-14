@@ -350,12 +350,6 @@ pub enum MultisigAction {
         #[arg(long)]
         memo: Option<String>,
     },
-    /// Get vault address from create key
-    VaultAddress {
-        /// Path to create key keypair used during vault creation
-        #[arg(long)]
-        create_key: String,
-    },
     /// Show multisig vault information (fetches on-chain data)
     Show {
         /// Path to create key keypair used during vault creation (mutually exclusive with --multisig)
