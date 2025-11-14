@@ -45,7 +45,7 @@ pub fn transfer(
             // Derive and show vault PDA (where funds will come from)
             let program_id =
                 crate::squads::types::SQUADS_PROGRAM_ID.parse::<solana_sdk::pubkey::Pubkey>()?;
-            let (vault_pda, _) = crate::squads::types::get_vault_pda(&vault, 0, &program_id);
+            let (vault_pda, _) = crate::squads::types::get_vault_pda(vault, 0, &program_id);
 
             // Get vault balance
             let vault_balance = rpc_client.get_balance(&vault_pda).unwrap_or(0);

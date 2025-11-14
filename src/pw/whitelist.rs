@@ -8,7 +8,7 @@ use spherenet_program_whitelist_interface::{
 };
 use std::sync::LazyLock;
 
-pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(|| Pubkey::default());
+pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(Pubkey::default);
 
 /// Derives the program whitelist entry PDA for a deployer authority.
 ///

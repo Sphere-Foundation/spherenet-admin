@@ -403,19 +403,19 @@ pub fn compile_instruction_to_transaction_message(
 
     // Add all accounts from the instruction
     for account_meta in &instruction.accounts {
-        if !account_key_indexes.contains_key(&account_meta.pubkey) {
+        account_key_indexes.entry(account_meta.pubkey).or_insert_with(|| {
             let index = account_keys.len() as u8;
             account_keys.push(account_meta.pubkey);
-            account_key_indexes.insert(account_meta.pubkey, index);
-        }
+            index
+        });
     }
 
     // Add program ID if not already in account_keys
-    if !account_key_indexes.contains_key(&instruction.program_id) {
+    account_key_indexes.entry(instruction.program_id).or_insert_with(|| {
         let index = account_keys.len() as u8;
         account_keys.push(instruction.program_id);
-        account_key_indexes.insert(instruction.program_id, index);
-    }
+        index
+    });
 
     // Reorder accounts: writable signers, readonly signers, writable non-signers, readonly non-signers
     let mut writable_signers = vec![*vault_pubkey]; // Vault is always writable signer
@@ -433,12 +433,10 @@ pub fn compile_instruction_to_transaction_message(
             } else {
                 readonly_signers.push(account_meta.pubkey);
             }
+        } else if account_meta.is_writable {
+            writable_non_signers.push(account_meta.pubkey);
         } else {
-            if account_meta.is_writable {
-                writable_non_signers.push(account_meta.pubkey);
-            } else {
-                readonly_non_signers.push(account_meta.pubkey);
-            }
+            readonly_non_signers.push(account_meta.pubkey);
         }
     }
 
