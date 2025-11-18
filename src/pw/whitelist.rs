@@ -81,15 +81,17 @@ pub fn add(rpc_url: &str, program_authority: String, authority: Authority) -> ey
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deployer_pubkey);
 
     println!("\nWhitelisting deployer authority:");
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("  Deployer Authority:  {}", deployer_pubkey);
     println!("  Whitelist Entry PDA: {}", whitelist_entry_pda);
-    println!("  Whitelist Authority: {}", authority.pubkey());
+    println!("  Whitelist Authority: {}", instruction_authority);
 
     // Build the instruction
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let instruction = AddEntryBuilder::new()
         .whitelist_account(whitelist_pubkey)
-        .whitelist_authority(authority.pubkey())
+        .whitelist_authority(instruction_authority)
         .whitelist_entry_account(whitelist_entry_pda)
         .payer(authority.pubkey())
         .system_program(*SYSTEM_PROGRAM)
@@ -116,16 +118,18 @@ pub fn remove(rpc_url: &str, program_authority: String, authority: Authority) ->
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deployer_pubkey);
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nRemoving deployer authority from whitelist:");
     println!("  Deployer Authority:  {}", deployer_pubkey);
     println!("  Whitelist Entry PDA: {}", whitelist_entry_pda);
-    println!("  Whitelist Authority: {}", authority.pubkey());
+    println!("  Whitelist Authority: {}", instruction_authority);
 
     // Build the instruction
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let instruction = RemoveEntryBuilder::new()
         .whitelist_account(whitelist_pubkey)
-        .whitelist_authority(authority.pubkey())
+        .whitelist_authority(instruction_authority)
         .whitelist_entry_account(whitelist_entry_pda)
         .destination_account(authority.pubkey()) // Reclaim lamports to authority
         .system_program(*SYSTEM_PROGRAM)

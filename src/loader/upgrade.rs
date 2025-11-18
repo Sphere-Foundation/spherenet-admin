@@ -47,9 +47,12 @@ pub fn upgrade_program(
         payer.pubkey()
     };
 
+    // Get instruction authority early for display and later use
+    let instruction_authority = upgrade_authority.instruction_authority_pubkey()?;
+
     println!("  Program ID: {}", program_id);
     println!("  Payer: {}", payer.pubkey());
-    println!("  Upgrade Authority: {}", upgrade_authority.pubkey());
+    println!("  Upgrade Authority: {}", instruction_authority);
     println!("  Spill Account: {}", spill_address);
 
     // Verify program exists
@@ -116,7 +119,7 @@ pub fn upgrade_program(
     println!("  ✓ Program capacity sufficient");
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
-    let whitelist_entry = require_whitelist_entry(&rpc_client, upgrade_authority.pubkey())?;
+    let whitelist_entry = require_whitelist_entry(&rpc_client, instruction_authority)?;
 
     // Create and write buffer
     println!("\n📝 Creating buffer account...");
@@ -166,7 +169,7 @@ pub fn upgrade_program(
     let upgrade_ix = upgrade(
         &program_id,
         &buffer_pubkey,
-        &upgrade_authority.pubkey(), // Program's upgrade authority
+        &instruction_authority, // Program's upgrade authority
         &spill_address,
         &whitelist_entry,
     );
@@ -177,7 +180,7 @@ pub fn upgrade_program(
 
     println!("\n✅ Program upgraded successfully!");
     println!("   Program ID: {}", program_id);
-    println!("   Upgrade Authority: {}", upgrade_authority.pubkey());
+    println!("   Upgrade Authority: {}", instruction_authority);
 
     Ok(())
 }

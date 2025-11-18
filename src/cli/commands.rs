@@ -84,7 +84,7 @@ pub enum ValidatorWhitelistAction {
         #[arg(long)]
         end_epoch: Option<u64>,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -97,7 +97,7 @@ pub enum ValidatorWhitelistAction {
     Remove {
         vote_account: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -112,7 +112,7 @@ pub enum ValidatorWhitelistAction {
         #[arg(long)]
         epoch: u64,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -127,7 +127,7 @@ pub enum ValidatorWhitelistAction {
         #[arg(long)]
         epoch: u64,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -142,7 +142,7 @@ pub enum ValidatorWhitelistAction {
     ProposeAuthority {
         new_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -154,7 +154,7 @@ pub enum ValidatorWhitelistAction {
     /// Accept pending authority transfer
     AcceptAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -166,7 +166,7 @@ pub enum ValidatorWhitelistAction {
     /// Cancel pending authority transfer
     CancelAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -185,7 +185,7 @@ pub enum ProgramWhitelistAction {
     Add {
         program_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -198,7 +198,7 @@ pub enum ProgramWhitelistAction {
     Remove {
         program_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -213,7 +213,7 @@ pub enum ProgramWhitelistAction {
     ProposeAuthority {
         new_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -225,7 +225,7 @@ pub enum ProgramWhitelistAction {
     /// Accept pending authority transfer
     AcceptAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]
@@ -237,7 +237,7 @@ pub enum ProgramWhitelistAction {
     /// Cancel pending authority transfer
     CancelAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "vault")]
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
         /// Multi-sig: vault address (requires --multisig-authority)
         #[arg(long, requires = "multisig_authority")]

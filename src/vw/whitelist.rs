@@ -137,12 +137,13 @@ pub fn add(
             end_epoch.to_string()
         }
     );
-    println!("  Authority:       {}", authority.pubkey());
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+    println!("  Authority:       {}", instruction_authority);
 
     // Build the instruction
     let instruction = AddToWhitelistBuilder::new()
         .payer(authority.pubkey())
-        .whitelist_authority(authority.pubkey())
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .validator_vote_account(vote_account_pubkey)
@@ -172,15 +173,17 @@ pub fn remove(rpc_url: &str, vote_account: String, authority: Authority) -> eyre
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nRemoving validator from whitelist:");
     println!("  Vote Account:    {}", vote_account_pubkey);
     println!("  Whitelist Entry: {}", whitelist_entry_pda);
-    println!("  Authority:       {}", authority.pubkey());
+    println!("  Authority:       {}", instruction_authority);
 
     // Build the instruction
     let instruction = RemoveFromWhitelistBuilder::new()
         .payer(authority.pubkey())
-        .whitelist_authority(authority.pubkey())
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .vote_account_pubkey(vote_account_pubkey)
@@ -212,16 +215,18 @@ pub fn update_start_epoch(
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nUpdating validator start epoch:");
     println!("  Vote Account:    {}", vote_account_pubkey);
     println!("  Whitelist Entry: {}", whitelist_entry_pda);
     println!("  New Start Epoch: {}", epoch);
-    println!("  Authority:       {}", authority.pubkey());
+    println!("  Authority:       {}", instruction_authority);
 
     // Build the instruction
     let instruction = UpdateStartEpochBuilder::new()
         .payer(authority.pubkey())
-        .whitelist_authority(authority.pubkey())
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .new_start_epoch(epoch.to_le_bytes())
@@ -268,12 +273,14 @@ pub fn update_end_epoch(
             epoch.to_string()
         }
     );
-    println!("  Authority:       {}", authority.pubkey());
+
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+    println!("  Authority:       {}", instruction_authority);
 
     // Build the instruction
     let instruction = UpdateEndEpochBuilder::new()
         .payer(authority.pubkey())
-        .whitelist_authority(authority.pubkey())
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .new_end_epoch(epoch.to_le_bytes())

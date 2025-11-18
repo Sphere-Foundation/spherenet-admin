@@ -79,7 +79,7 @@ impl Authority {
                 Ok(Authority::MultiSig { vault, signer })
             }
             _ => Err(eyre::eyre!(
-                "Must provide either --authority OR (--vault + --multisig-authority)"
+                "Must provide either --authority OR (--multisig + --multisig-authority)"
             )),
         }
     }
@@ -145,7 +145,7 @@ impl Authority {
                 Ok(ExecutionResult::Executed { signature })
             }
             Authority::MultiSig { vault, signer } => {
-                println!("Creating proposal: {}", description);
+                println!("\nCreating proposal: {}", description);
 
                 // Parse program ID
                 let program_id = Pubkey::from_str(squads::types::SQUADS_PROGRAM_ID)
@@ -223,10 +223,9 @@ impl Authority {
 
                 let signature = rpc.send_and_confirm_transaction(&tx)?;
 
-                println!("✅ Proposal created successfully!");
+                println!("\n✅ Proposal created successfully!");
                 println!("   Signature: {}", signature);
                 println!("   Proposal:  {}", proposal_pda);
-                println!();
 
                 Ok(ExecutionResult::ProposalCreated {
                     proposal: proposal_pda,

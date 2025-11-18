@@ -423,7 +423,7 @@ pub fn approve_proposal(
     let (proposal_pda, _) =
         squads::types::get_proposal_pda(&multisig_pda, transaction_index - 1, &program_id);
 
-    println!("  Vault:    {}", multisig_pda);
+    println!("  Multisig: {}", multisig_pda);
     println!("  Proposal: {}", proposal_pda);
     println!("  Member:   {}", member.pubkey());
     println!();

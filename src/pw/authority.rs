@@ -47,15 +47,17 @@ pub fn propose_authority(
     // Get the program whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nProposing authority transfer:");
     println!("  Whitelist Account:   {}", whitelist_pubkey);
-    println!("  Current Authority:   {}", authority.pubkey());
+    println!("  Current Authority:   {}", instruction_authority);
     println!("  New Authority:       {}", new_authority_pubkey);
 
     // Build the instruction
     let instruction = InitiateAuthorityTransferBuilder::new()
         .whitelist_account(whitelist_pubkey)
-        .whitelist_authority(authority.pubkey())
+        .whitelist_authority(instruction_authority)
         .new_authority(new_authority_pubkey)
         .instruction();
 
@@ -75,21 +77,21 @@ pub fn accept_authority(rpc_url: &str, authority: Authority) -> eyre::Result<()>
     // Get the program whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nAccepting authority transfer:");
     println!("  Whitelist Account: {}", whitelist_pubkey);
-    println!("  New Authority:     {}", authority.pubkey());
+    println!("  New Authority:     {}", instruction_authority);
 
     // Build the instruction
     let instruction = AcceptAuthorityTransferBuilder::new()
         .whitelist_account(whitelist_pubkey)
-        .pending_whitelist_authority(authority.pubkey())
+        .pending_whitelist_authority(instruction_authority)
         .instruction();
 
     // Execute instruction through authority (single-sig or multi-sig)
     let description = String::from("Accept authority transfer");
     authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    println!("\nYou are now the whitelist authority.");
 
     Ok(())
 }
@@ -100,14 +102,16 @@ pub fn cancel_authority(rpc_url: &str, authority: Authority) -> eyre::Result<()>
     // Get the program whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nCancelling authority transfer:");
     println!("  Whitelist Account: {}", whitelist_pubkey);
-    println!("  Authority:         {}", authority.pubkey());
+    println!("  Authority:         {}", instruction_authority);
 
     // Build the instruction
     let instruction = CancelAuthorityTransferBuilder::new()
         .whitelist_account(whitelist_pubkey)
-        .whitelist_authority(authority.pubkey())
+        .whitelist_authority(instruction_authority)
         .instruction();
 
     // Execute instruction through authority (single-sig or multi-sig)
