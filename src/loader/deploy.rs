@@ -18,7 +18,7 @@ pub fn deploy(
     url: &str,
     program_so_path: String,
     program_keypair_path: String,
-    upgrade_authority_str: String,
+    upgrade_authority_path: String,
     payer_keypair_path: String,
     max_data_len: Option<usize>,
 ) -> eyre::Result<()> {
@@ -43,10 +43,10 @@ pub fn deploy(
         )
     })?;
     let program_id = program_keypair.pubkey();
-    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str).map_err(|e| {
+    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to read upgrade authority keypair from {}: {}",
-            upgrade_authority_str,
+            upgrade_authority_path,
             e
         )
     })?;

@@ -162,6 +162,22 @@ pub fn upgrade_program(
         &program_data,
     )?;
 
+    // Transfer buffer authority to upgrade authority (required for multisig upgrades)
+    println!("\n🔐 Transferring buffer authority...");
+    let set_buffer_authority_ix = solana_sdk::bpf_loader_upgradeable::set_buffer_authority(
+        &buffer_pubkey,
+        &payer.pubkey(), // Current buffer authority (payer)
+        &instruction_authority, // New buffer authority (upgrade authority/vault PDA)
+    );
+
+    let mut set_authority_tx = Transaction::new_with_payer(
+        &[set_buffer_authority_ix],
+        Some(&payer.pubkey()),
+    );
+    set_authority_tx.sign(&[&payer], rpc_client.get_latest_blockhash()?);
+    rpc_client.send_and_confirm_transaction(&set_authority_tx)?;
+    println!("  ✓ Buffer authority transferred to upgrade authority");
+
     // Upgrade program with whitelist validation
     println!("\n🎯 Upgrading program...");
 
@@ -176,11 +192,14 @@ pub fn upgrade_program(
 
     // Execute upgrade through authority (single-sig or multi-sig)
     let description = format!("Upgrade program {}", program_id);
-    upgrade_authority.execute_instruction(&rpc_client, upgrade_ix, &description)?;
+    let result = upgrade_authority.execute_instruction(&rpc_client, upgrade_ix, &description)?;
 
-    println!("\n✅ Program upgraded successfully!");
-    println!("   Program ID: {}", program_id);
-    println!("   Upgrade Authority: {}", instruction_authority);
+    // Only show "upgraded successfully" for single-sig (immediate execution)
+    if matches!(result, crate::cli::authority::ExecutionResult::Executed { .. }) {
+        println!("\n✅ Program upgraded successfully!");
+        println!("   Program ID: {}", program_id);
+        println!("   Upgrade Authority: {}", instruction_authority);
+    }
 
     Ok(())
 }
