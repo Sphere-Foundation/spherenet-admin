@@ -93,7 +93,7 @@ pub fn add(rpc_url: &str, program_authority: String, authority: Authority) -> ey
         .whitelist_account(whitelist_pubkey)
         .whitelist_authority(instruction_authority)
         .whitelist_entry_account(whitelist_entry_pda)
-        .payer(authority.pubkey())
+        .payer(instruction_authority)
         .system_program(*SYSTEM_PROGRAM)
         .program_authority(deployer_pubkey)
         .instruction();
@@ -131,7 +131,7 @@ pub fn remove(rpc_url: &str, program_authority: String, authority: Authority) ->
         .whitelist_account(whitelist_pubkey)
         .whitelist_authority(instruction_authority)
         .whitelist_entry_account(whitelist_entry_pda)
-        .destination_account(authority.pubkey()) // Reclaim lamports to authority
+        .destination_account(instruction_authority) // Reclaim lamports to authority
         .system_program(*SYSTEM_PROGRAM)
         .program_authority(deployer_pubkey)
         .instruction();

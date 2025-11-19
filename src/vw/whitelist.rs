@@ -142,7 +142,7 @@ pub fn add(
 
     // Build the instruction
     let instruction = AddToWhitelistBuilder::new()
-        .payer(authority.pubkey())
+        .payer(instruction_authority)
         .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
@@ -182,7 +182,7 @@ pub fn remove(rpc_url: &str, vote_account: String, authority: Authority) -> eyre
 
     // Build the instruction
     let instruction = RemoveFromWhitelistBuilder::new()
-        .payer(authority.pubkey())
+        .payer(instruction_authority)
         .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
@@ -225,7 +225,7 @@ pub fn update_start_epoch(
 
     // Build the instruction
     let instruction = UpdateStartEpochBuilder::new()
-        .payer(authority.pubkey())
+        .payer(instruction_authority)
         .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
@@ -279,7 +279,7 @@ pub fn update_end_epoch(
 
     // Build the instruction
     let instruction = UpdateEndEpochBuilder::new()
-        .payer(authority.pubkey())
+        .payer(instruction_authority)
         .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)

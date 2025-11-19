@@ -60,7 +60,7 @@ pub fn propose_authority(
 
     // Build the instruction
     let instruction = InitiateAuthorityTransferBuilder::new()
-        .payer(authority.pubkey())
+        .payer(instruction_authority)
         .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .new_authority(new_authority_pubkey)
@@ -90,7 +90,7 @@ pub fn accept_authority(rpc_url: &str, authority: Authority) -> eyre::Result<()>
 
     // Build the instruction
     let instruction = AcceptAuthorityTransferBuilder::new()
-        .payer(authority.pubkey())
+        .payer(instruction_authority)
         .new_whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .instruction();
@@ -116,7 +116,7 @@ pub fn cancel_authority(rpc_url: &str, authority: Authority) -> eyre::Result<()>
 
     // Build the instruction
     let instruction = CancelAuthorityTransferBuilder::new()
-        .payer(authority.pubkey())
+        .payer(instruction_authority)
         .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .instruction();

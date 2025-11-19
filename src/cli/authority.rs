@@ -84,14 +84,6 @@ impl Authority {
         }
     }
 
-    /// Get the pubkey of the signer/payer
-    pub fn pubkey(&self) -> Pubkey {
-        match self {
-            Authority::SingleSig { keypair } => keypair.pubkey(),
-            Authority::MultiSig { signer, .. } => signer.pubkey(),
-        }
-    }
-
     /// Get the pubkey to use as "from" in instructions (the actual vault that holds funds)
     ///
     /// For SingleSig: returns the keypair pubkey
