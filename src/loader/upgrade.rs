@@ -1,5 +1,5 @@
 use super::write_buffer;
-use crate::pw::whitelist::require_whitelist_entry;
+use crate::{cli::Authority, pw::whitelist::require_whitelist_entry};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -19,7 +19,7 @@ pub fn upgrade_program(
     url: &str,
     program_id_str: String,
     program_so_path: String,
-    upgrade_authority_str: String,
+    upgrade_authority: Authority,
     payer_keypair_path: String,
     spill_address_str: Option<String>,
 ) -> eyre::Result<()> {
@@ -36,14 +36,6 @@ pub fn upgrade_program(
             e
         )
     })?;
-    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read upgrade authority keypair from {}: {}",
-            upgrade_authority_str,
-            e
-        )
-    })?;
-    let upgrade_authority = upgrade_authority_keypair.pubkey();
     let program_id = Pubkey::from_str(&program_id_str)
         .map_err(|e| eyre::eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
 
@@ -55,9 +47,12 @@ pub fn upgrade_program(
         payer.pubkey()
     };
 
+    // Get instruction authority early for display and later use
+    let instruction_authority = upgrade_authority.instruction_authority_pubkey()?;
+
     println!("  Program ID: {}", program_id);
     println!("  Payer: {}", payer.pubkey());
-    println!("  Upgrade Authority: {}", upgrade_authority);
+    println!("  Upgrade Authority: {}", instruction_authority);
     println!("  Spill Account: {}", spill_address);
 
     // Verify program exists
@@ -105,27 +100,50 @@ pub fn upgrade_program(
 
     if program_data.len() > current_max_len {
         let additional_bytes = program_data.len() - current_max_len;
+
+        // Note: Program extend cannot be done through multisig because BPF Loader Upgradeable
+        // doesn't support CPI. For multisig authorities, you must temporarily transfer authority
+        // to a single-sig keypair, extend, then transfer back.
+        let extend_note = match &upgrade_authority {
+            crate::cli::Authority::SingleSig { .. } => {
+                format!(
+                    "Run this command to extend the program:\n\
+                    solana program extend {} {} -k {} --url {}",
+                    program_id, additional_bytes, payer_keypair_path, url
+                )
+            }
+            crate::cli::Authority::MultiSig { .. } => {
+                format!(
+                    "⚠️  Program extend does not support multisig (BPF Loader doesn't support CPI).\n\
+                    \n\
+                    Options:\n\
+                    1. Redeploy with larger --max-data-len\n\
+                    2. Temporarily transfer authority to single-sig, extend, then transfer back:\n\
+                       a. spherenet-admin program set-upgrade-authority --program-id {} --current-authority <TEMP_KEYPAIR> --new-authority <TEMP_KEYPAIR> --payer {}\n\
+                       b. solana program extend {} {} -k <TEMP_KEYPAIR> --url {}\n\
+                       c. spherenet-admin program set-upgrade-authority --program-id {} --current-authority <TEMP_KEYPAIR> --new-authority <VAULT_PDA> --payer {}",
+                    program_id, payer_keypair_path, program_id, additional_bytes, url, program_id, payer_keypair_path
+                )
+            }
+        };
+
         return Err(eyre::eyre!(
             "❌ Program data account is too small!\n\n\
             Current capacity: {} bytes\n\
             Required capacity: {} bytes\n\
             Need {} more bytes\n\n\
-            Run this command to extend the program:\n\
-            solana program extend {} {} -k {} --url {}",
+            {}",
             current_max_len,
             program_data.len(),
             additional_bytes,
-            program_id,
-            additional_bytes,
-            upgrade_authority_str,
-            url
+            extend_note
         ));
     }
 
     println!("  ✓ Program capacity sufficient");
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
-    let whitelist_entry = require_whitelist_entry(&rpc_client, upgrade_authority)?;
+    let whitelist_entry = require_whitelist_entry(&rpc_client, instruction_authority)?;
 
     // Create and write buffer
     println!("\n📝 Creating buffer account...");
@@ -137,12 +155,12 @@ pub fn upgrade_program(
     println!("  Buffer size: {} bytes", buffer_size);
     println!("  Buffer rent: {} lamports", buffer_lamports);
 
-    // Create and initialize buffer account with UPGRADE AUTHORITY as authority
-    // (required for upgrade - buffer authority must match program's upgrade authority)
+    // Create and initialize buffer account with PAYER as buffer authority
+    // (payer can write to buffer, then upgrade authority authorizes the upgrade)
     let create_buffer_instructions = create_buffer(
         &payer.pubkey(),
         &buffer_pubkey,
-        &upgrade_authority, // Must match the program's upgrade authority
+        &payer.pubkey(), // Payer is buffer authority for writes
         buffer_lamports,
         program_data.len(),
     )?;
@@ -157,16 +175,32 @@ pub fn upgrade_program(
 
     println!("  ✓ Buffer account created: {}", buffer_pubkey);
 
-    // Write program data to buffer in chunks (upgrade authority signs as buffer authority)
+    // Write program data to buffer in chunks (payer signs buffer writes)
     println!("\n📤 Writing program data to buffer...");
     write_buffer(
         &rpc_client,
         &payer,
-        &upgrade_authority_keypair,
+        &payer, // Payer signs buffer writes
         &buffer_pubkey,
-        &upgrade_authority,
+        &payer.pubkey(), // Buffer authority is payer
         &program_data,
     )?;
+
+    // Transfer buffer authority to upgrade authority (required for multisig upgrades)
+    println!("\n🔐 Transferring buffer authority...");
+    let set_buffer_authority_ix = solana_sdk::bpf_loader_upgradeable::set_buffer_authority(
+        &buffer_pubkey,
+        &payer.pubkey(), // Current buffer authority (payer)
+        &instruction_authority, // New buffer authority (upgrade authority/vault PDA)
+    );
+
+    let mut set_authority_tx = Transaction::new_with_payer(
+        &[set_buffer_authority_ix],
+        Some(&payer.pubkey()),
+    );
+    set_authority_tx.sign(&[&payer], rpc_client.get_latest_blockhash()?);
+    rpc_client.send_and_confirm_transaction(&set_authority_tx)?;
+    println!("  ✓ Buffer authority transferred to upgrade authority");
 
     // Upgrade program with whitelist validation
     println!("\n🎯 Upgrading program...");
@@ -175,21 +209,21 @@ pub fn upgrade_program(
     let upgrade_ix = upgrade(
         &program_id,
         &buffer_pubkey,
-        &upgrade_authority,
+        &instruction_authority, // Program's upgrade authority
         &spill_address,
         &whitelist_entry,
     );
 
-    let mut transaction = Transaction::new_with_payer(&[upgrade_ix], Some(&payer.pubkey()));
-    transaction.sign(
-        &[&payer, &upgrade_authority_keypair],
-        rpc_client.get_latest_blockhash()?,
-    );
-    rpc_client.send_and_confirm_transaction(&transaction)?;
+    // Execute upgrade through authority (single-sig or multi-sig)
+    let description = format!("Upgrade program {}", program_id);
+    let result = upgrade_authority.execute_instruction(&rpc_client, upgrade_ix, &description)?;
 
-    println!("\n✅ Program upgraded successfully!");
-    println!("   Program ID: {}", program_id);
-    println!("   Upgrade Authority: {}", upgrade_authority);
+    // Only show "upgraded successfully" for single-sig (immediate execution)
+    if matches!(result, crate::cli::authority::ExecutionResult::Executed { .. }) {
+        println!("\n✅ Program upgraded successfully!");
+        println!("   Program ID: {}", program_id);
+        println!("   Upgrade Authority: {}", instruction_authority);
+    }
 
     Ok(())
 }

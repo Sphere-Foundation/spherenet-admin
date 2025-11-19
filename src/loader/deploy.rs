@@ -18,7 +18,7 @@ pub fn deploy(
     url: &str,
     program_so_path: String,
     program_keypair_path: String,
-    upgrade_authority_str: String,
+    upgrade_authority_path: String,
     payer_keypair_path: String,
     max_data_len: Option<usize>,
 ) -> eyre::Result<()> {
@@ -43,10 +43,10 @@ pub fn deploy(
         )
     })?;
     let program_id = program_keypair.pubkey();
-    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_str).map_err(|e| {
+    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_path).map_err(|e| {
         eyre::eyre!(
             "Failed to read upgrade authority keypair from {}: {}",
-            upgrade_authority_str,
+            upgrade_authority_path,
             e
         )
     })?;
@@ -62,6 +62,7 @@ pub fn deploy(
     println!("  Program size: {} bytes", program_data.len());
 
     // Determine max data length
+    let max_data_len_provided = max_data_len.is_some();
     let max_data_len = max_data_len.unwrap_or(program_data.len());
     if max_data_len < program_data.len() {
         return Err(eyre::eyre!(
@@ -69,6 +70,14 @@ pub fn deploy(
             max_data_len,
             program_data.len()
         ));
+    }
+
+    // Warn if no max-data-len specified (important for multisig scenarios)
+    if !max_data_len_provided {
+        println!("\n⚠️  WARNING: No --max-data-len specified, using program size as capacity.");
+        println!("   If you plan to transfer upgrade authority to multisig, you CANNOT extend later!");
+        println!("   Consider deploying with generous --max-data-len (e.g., --max-data-len 500000)");
+        println!();
     }
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)

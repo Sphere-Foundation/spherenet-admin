@@ -1,9 +1,6 @@
+use crate::cli::Authority;
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Signer},
-    transaction::Transaction,
-};
+use solana_sdk::pubkey::Pubkey;
 use spherenet_validator_whitelist_client::instructions::{
     AddToWhitelistBuilder, RemoveFromWhitelistBuilder, UpdateEndEpochBuilder,
     UpdateStartEpochBuilder,
@@ -14,7 +11,7 @@ use spherenet_validator_whitelist_interface::{
 };
 use std::sync::LazyLock;
 
-pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(|| Pubkey::default());
+pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(Pubkey::default);
 
 /// Derives the validator whitelist entry PDA for a vote account.
 ///
@@ -95,7 +92,7 @@ pub fn add(
     vote_account: String,
     start_epoch: Option<u64>,
     end_epoch: Option<u64>,
-    authority_path: String,
+    authority: Authority,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -103,15 +100,6 @@ pub fn add(
     let vote_account_pubkey = vote_account
         .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
-
-    // Load authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
 
     // Get current epoch if start_epoch not provided
     let current_epoch = rpc_client.get_epoch_info()?.epoch;
@@ -149,12 +137,13 @@ pub fn add(
             end_epoch.to_string()
         }
     );
-    println!("  Authority:       {}", authority_keypair.pubkey());
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+    println!("  Authority:       {}", instruction_authority);
 
     // Build the instruction
     let instruction = AddToWhitelistBuilder::new()
-        .payer(authority_keypair.pubkey())
-        .whitelist_authority(authority_keypair.pubkey())
+        .payer(instruction_authority)
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .validator_vote_account(vote_account_pubkey)
@@ -163,26 +152,14 @@ pub fn add(
         .end_epoch(end_epoch.to_le_bytes())
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
-    );
-
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nValidator added successfully!");
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!("Add validator {} to whitelist", vote_account_pubkey);
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     Ok(())
 }
 
-pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> eyre::Result<()> {
+pub fn remove(rpc_url: &str, vote_account: String, authority: Authority) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Parse vote account pubkey
@@ -190,50 +167,31 @@ pub fn remove(rpc_url: &str, vote_account: String, authority_path: String) -> ey
         .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
-    // Load authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
-
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nRemoving validator from whitelist:");
     println!("  Vote Account:    {}", vote_account_pubkey);
     println!("  Whitelist Entry: {}", whitelist_entry_pda);
-    println!("  Authority:       {}", authority_keypair.pubkey());
+    println!("  Authority:       {}", instruction_authority);
 
     // Build the instruction
     let instruction = RemoveFromWhitelistBuilder::new()
-        .payer(authority_keypair.pubkey())
-        .whitelist_authority(authority_keypair.pubkey())
+        .payer(instruction_authority)
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .vote_account_pubkey(vote_account_pubkey)
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
-    );
-
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nValidator removed successfully!");
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!("Remove validator {} from whitelist", vote_account_pubkey);
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     Ok(())
 }
@@ -242,7 +200,7 @@ pub fn update_start_epoch(
     rpc_url: &str,
     vote_account: String,
     epoch: u64,
-    authority_path: String,
+    authority: Authority,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -251,52 +209,36 @@ pub fn update_start_epoch(
         .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
 
-    // Load authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
-
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nUpdating validator start epoch:");
     println!("  Vote Account:    {}", vote_account_pubkey);
     println!("  Whitelist Entry: {}", whitelist_entry_pda);
     println!("  New Start Epoch: {}", epoch);
-    println!("  Authority:       {}", authority_keypair.pubkey());
+    println!("  Authority:       {}", instruction_authority);
 
     // Build the instruction
     let instruction = UpdateStartEpochBuilder::new()
-        .payer(authority_keypair.pubkey())
-        .whitelist_authority(authority_keypair.pubkey())
+        .payer(instruction_authority)
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .new_start_epoch(epoch.to_le_bytes())
         .vote_account_pubkey(vote_account_pubkey)
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!(
+        "Update validator {} start epoch to {}",
+        vote_account_pubkey, epoch
     );
-
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nStart epoch updated successfully!");
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     Ok(())
 }
@@ -305,7 +247,7 @@ pub fn update_end_epoch(
     rpc_url: &str,
     vote_account: String,
     epoch: u64,
-    authority_path: String,
+    authority: Authority,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -313,15 +255,6 @@ pub fn update_end_epoch(
     let vote_account_pubkey = vote_account
         .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
-
-    // Load authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
 
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
@@ -340,33 +273,31 @@ pub fn update_end_epoch(
             epoch.to_string()
         }
     );
-    println!("  Authority:       {}", authority_keypair.pubkey());
+
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+    println!("  Authority:       {}", instruction_authority);
 
     // Build the instruction
     let instruction = UpdateEndEpochBuilder::new()
-        .payer(authority_keypair.pubkey())
-        .whitelist_authority(authority_keypair.pubkey())
+        .payer(instruction_authority)
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .whitelist_entry(whitelist_entry_pda)
         .new_end_epoch(epoch.to_le_bytes())
         .vote_account_pubkey(vote_account_pubkey)
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!(
+        "Update validator {} end epoch to {}",
+        vote_account_pubkey,
+        if epoch == u64::MAX {
+            "∞".to_string()
+        } else {
+            epoch.to_string()
+        }
     );
-
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nEnd epoch updated successfully!");
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     Ok(())
 }

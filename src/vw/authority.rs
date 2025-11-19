@@ -1,9 +1,6 @@
+use crate::cli::Authority;
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::{
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Signer},
-    transaction::Transaction,
-};
+use solana_sdk::pubkey::Pubkey;
 use spherenet_validator_whitelist_client::instructions::{
     AcceptAuthorityTransferBuilder, CancelAuthorityTransferBuilder,
     InitiateAuthorityTransferBuilder,
@@ -42,7 +39,7 @@ pub fn auth(rpc_url: &str) -> eyre::Result<()> {
 pub fn propose_authority(
     rpc_url: &str,
     new_authority: String,
-    authority_path: String,
+    authority: Authority,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -51,139 +48,82 @@ pub fn propose_authority(
         .parse::<Pubkey>()
         .map_err(|e| eyre::eyre!("Invalid new authority pubkey: {}", e))?;
 
-    // Load current authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
-
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
     println!("\nProposing authority transfer:");
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("  Whitelist Account:   {}", whitelist_pubkey);
-    println!("  Current Authority:   {}", authority_keypair.pubkey());
+    println!("  Current Authority:   {}", instruction_authority);
     println!("  New Authority:       {}", new_authority_pubkey);
 
     // Build the instruction
     let instruction = InitiateAuthorityTransferBuilder::new()
-        .payer(authority_keypair.pubkey())
-        .whitelist_authority(authority_keypair.pubkey())
+        .payer(instruction_authority)
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .new_authority(new_authority_pubkey)
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
-    );
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!("Propose authority transfer to {}", new_authority_pubkey);
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nAuthority transfer proposed successfully!");
     println!("\nThe new authority must accept the transfer using:");
-    println!("  spherenet-admin vw accept-authority --keypair <new_authority_keypair>");
+    println!("  spherenet-admin vw accept-authority --authority <new_authority_keypair>");
 
     Ok(())
 }
 
-pub fn accept_authority(rpc_url: &str, authority_path: String) -> eyre::Result<()> {
+pub fn accept_authority(rpc_url: &str, authority: Authority) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
-
-    // Load new authority keypair
-    let new_authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load new authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+
+    let instruction_authority = authority.instruction_authority_pubkey()?;
 
     println!("\nAccepting authority transfer:");
     println!("  Whitelist Account: {}", whitelist_pubkey);
-    println!("  New Authority:     {}", new_authority_keypair.pubkey());
+    println!("  New Authority:     {}", instruction_authority);
 
     // Build the instruction
     let instruction = AcceptAuthorityTransferBuilder::new()
-        .payer(new_authority_keypair.pubkey())
-        .new_whitelist_authority(new_authority_keypair.pubkey())
+        .payer(instruction_authority)
+        .new_whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&new_authority_keypair.pubkey()),
-        &[&new_authority_keypair],
-        recent_blockhash,
-    );
-
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nAuthority transfer accepted successfully!");
-    println!("You are now the whitelist authority.");
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = String::from("Accept authority transfer");
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     Ok(())
 }
 
-pub fn cancel_authority(rpc_url: &str, authority_path: String) -> eyre::Result<()> {
+pub fn cancel_authority(rpc_url: &str, authority: Authority) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
-
-    // Load current authority keypair
-    let authority_keypair = read_keypair_file(&authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load authority keypair from {}: {}",
-            authority_path,
-            e
-        )
-    })?;
 
     // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
 
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
     println!("\nCancelling authority transfer:");
     println!("  Whitelist Account: {}", whitelist_pubkey);
-    println!("  Authority:         {}", authority_keypair.pubkey());
+    println!("  Authority:         {}", instruction_authority);
 
     // Build the instruction
     let instruction = CancelAuthorityTransferBuilder::new()
-        .payer(authority_keypair.pubkey())
-        .whitelist_authority(authority_keypair.pubkey())
+        .payer(instruction_authority)
+        .whitelist_authority(instruction_authority)
         .validator_whitelist(whitelist_pubkey)
         .instruction();
 
-    // Get recent blockhash and create transaction
-    let recent_blockhash = rpc_client.get_latest_blockhash()?;
-    let transaction = Transaction::new_signed_with_payer(
-        &[instruction],
-        Some(&authority_keypair.pubkey()),
-        &[&authority_keypair],
-        recent_blockhash,
-    );
-
-    // Send transaction
-    println!("\nSending transaction...");
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-
-    println!("  Signature: {}", signature);
-    println!("\nAuthority transfer cancelled successfully!");
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = String::from("Cancel authority transfer");
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     Ok(())
 }

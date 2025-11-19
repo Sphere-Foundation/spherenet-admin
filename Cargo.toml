@@ -2,11 +2,14 @@
 name = "spherenet-admin"
 version = "0.1.0"
 edition = "2021"
+resolver = "2"
 
 [dependencies]
+borsh = { version = "1.5" }
 clap = { version = "4.5", features = ["derive"] }
 eyre = { version = "0.6" }
 serde_json = { version = "1.0" }
+sha2 = { version = "0.10" }
 solana-client = { version = "2.2.1" }
 solana-sdk = { version = "2.2.1" }
 spherenet-program-whitelist-client = { version = "=0.1.3" }

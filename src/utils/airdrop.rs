@@ -1,16 +1,14 @@
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::signature::{read_keypair_file, Signer};
+use solana_sdk::pubkey::Pubkey;
+use std::str::FromStr;
 
-pub fn airdrop(rpc_url: &str, keypair_path: String, amount: f64) -> eyre::Result<()> {
+pub fn airdrop(rpc_url: &str, pubkey_str: String, amount: f64) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
-    // Load keypair
-    let keypair = read_keypair_file(&keypair_path)
-        .map_err(|e| eyre::eyre!("Failed to load keypair from {}: {}", keypair_path, e))?;
+    // Parse pubkey
+    let pubkey = Pubkey::from_str(&pubkey_str)
+        .map_err(|e| eyre::eyre!("Failed to parse pubkey {}: {}", pubkey_str, e))?;
 
-    let pubkey = keypair.pubkey();
-
-    // Check current balance
     println!("\nRequesting airdrop:");
     println!("  Account:         {}", pubkey);
     println!("  Airdrop Amount:  {} SOL", amount);
