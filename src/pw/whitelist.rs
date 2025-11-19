@@ -102,8 +102,6 @@ pub fn add(rpc_url: &str, program_authority: String, authority: Authority) -> ey
     let description = format!("Whitelist deployer authority {}", deployer_pubkey);
     authority.execute_instruction(&rpc_client, instruction, &description)?;
 
-    println!("\nThis authority can now deploy and upgrade programs on the network.");
-
     Ok(())
 }
 
@@ -142,8 +140,6 @@ pub fn remove(rpc_url: &str, program_authority: String, authority: Authority) ->
         deployer_pubkey
     );
     authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    println!("\nThis authority can no longer deploy or upgrade programs on the network.");
 
     Ok(())
 }

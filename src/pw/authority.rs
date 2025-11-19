@@ -65,9 +65,6 @@ pub fn propose_authority(
     let description = format!("Propose authority transfer to {}", new_authority_pubkey);
     authority.execute_instruction(&rpc_client, instruction, &description)?;
 
-    println!("\nThe new authority must accept the transfer using:");
-    println!("  spherenet-admin pw accept-authority --authority <new_authority_keypair>");
-
     Ok(())
 }
 

@@ -17,11 +17,11 @@ use std::str::FromStr;
 #[derive(Debug)]
 pub enum ExecutionResult {
     /// Instruction was executed directly (single-sig)
-    Executed { signature: Signature },
+    Executed { _signature: Signature },
     /// Proposal was created for multisig approval
     ProposalCreated {
-        proposal: Pubkey,
-        transaction_index: u64,
+        _proposal: Pubkey,
+        _transaction_index: u64,
     },
 }
 
@@ -134,7 +134,7 @@ impl Authority {
                 println!("   Signature: {}", signature);
                 println!();
 
-                Ok(ExecutionResult::Executed { signature })
+                Ok(ExecutionResult::Executed { _signature: signature })
             }
             Authority::MultiSig { vault, signer } => {
                 println!("\nCreating proposal: {}", description);
@@ -220,8 +220,8 @@ impl Authority {
                 println!("   Proposal:  {}", proposal_pda);
 
                 Ok(ExecutionResult::ProposalCreated {
-                    proposal: proposal_pda,
-                    transaction_index: next_transaction_index,
+                    _proposal: proposal_pda,
+                    _transaction_index: next_transaction_index,
                 })
             }
         }

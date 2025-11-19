@@ -66,22 +66,9 @@ pub fn transfer(
     let description = format!("Transfer {} SOL to {}", amount, destination);
     let result = from.execute_instruction(&rpc_client, instruction, &description)?;
 
-    match result {
-        ExecutionResult::Executed { signature } => {
-            println!("\n✅ Transfer executed successfully!");
-            println!("   Signature: {}", signature);
-        }
-        ExecutionResult::ProposalCreated {
-            proposal,
-            transaction_index,
-        } => {
-            println!("\n✅ Multisig proposal created!");
-            println!("   Proposal:          {}", proposal);
-            println!("   Transaction Index: {}", transaction_index);
-            println!("\nNext steps:");
-            println!("  1. Vault members approve: spherenet-admin multisig approve ...");
-            println!("  2. Execute proposal:      spherenet-admin multisig execute ...");
-        }
+    // Only show "executed successfully" for single-sig (immediate execution)
+    if matches!(result, ExecutionResult::Executed { .. }) {
+        println!("\n✅ Transfer executed successfully!");
     }
 
     Ok(())

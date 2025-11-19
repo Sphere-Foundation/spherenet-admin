@@ -100,19 +100,43 @@ pub fn upgrade_program(
 
     if program_data.len() > current_max_len {
         let additional_bytes = program_data.len() - current_max_len;
+
+        // Note: Program extend cannot be done through multisig because BPF Loader Upgradeable
+        // doesn't support CPI. For multisig authorities, you must temporarily transfer authority
+        // to a single-sig keypair, extend, then transfer back.
+        let extend_note = match &upgrade_authority {
+            crate::cli::Authority::SingleSig { .. } => {
+                format!(
+                    "Run this command to extend the program:\n\
+                    solana program extend {} {} -k {} --url {}",
+                    program_id, additional_bytes, payer_keypair_path, url
+                )
+            }
+            crate::cli::Authority::MultiSig { .. } => {
+                format!(
+                    "⚠️  Program extend does not support multisig (BPF Loader doesn't support CPI).\n\
+                    \n\
+                    Options:\n\
+                    1. Redeploy with larger --max-data-len\n\
+                    2. Temporarily transfer authority to single-sig, extend, then transfer back:\n\
+                       a. spherenet-admin program set-upgrade-authority --program-id {} --current-authority <TEMP_KEYPAIR> --new-authority <TEMP_KEYPAIR> --payer {}\n\
+                       b. solana program extend {} {} -k <TEMP_KEYPAIR> --url {}\n\
+                       c. spherenet-admin program set-upgrade-authority --program-id {} --current-authority <TEMP_KEYPAIR> --new-authority <VAULT_PDA> --payer {}",
+                    program_id, payer_keypair_path, program_id, additional_bytes, url, program_id, payer_keypair_path
+                )
+            }
+        };
+
         return Err(eyre::eyre!(
             "❌ Program data account is too small!\n\n\
             Current capacity: {} bytes\n\
             Required capacity: {} bytes\n\
             Need {} more bytes\n\n\
-            Run this command to extend the program:\n\
-            solana program extend {} {} -k <UPGRADE_AUTHORITY_KEYPAIR> --url {}",
+            {}",
             current_max_len,
             program_data.len(),
             additional_bytes,
-            program_id,
-            additional_bytes,
-            url
+            extend_note
         ));
     }
 
