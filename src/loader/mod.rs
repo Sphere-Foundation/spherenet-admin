@@ -1,4 +1,5 @@
 pub mod deploy;
+pub mod extend;
 pub mod upgrade;
 
 use solana_client::rpc_client::RpcClient;

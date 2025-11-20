@@ -101,28 +101,27 @@ pub fn upgrade_program(
     if program_data.len() > current_max_len {
         let additional_bytes = program_data.len() - current_max_len;
 
-        // Note: Program extend cannot be done through multisig because BPF Loader Upgradeable
-        // doesn't support CPI. For multisig authorities, you must temporarily transfer authority
-        // to a single-sig keypair, extend, then transfer back.
-        let extend_note = match &upgrade_authority {
+        // Build the appropriate extend command based on authority type
+        let extend_cmd = match &upgrade_authority {
             crate::cli::Authority::SingleSig { .. } => {
                 format!(
-                    "Run this command to extend the program:\n\
-                    solana program extend {} {} -k {} --url {}",
-                    program_id, additional_bytes, payer_keypair_path, url
+                    "spherenet-admin program extend \\\n  \
+                    --program-id {} \\\n  \
+                    --bytes {} \\\n  \
+                    --upgrade-authority {} \\\n  \
+                    --payer {}",
+                    program_id, additional_bytes, payer_keypair_path, payer_keypair_path
                 )
             }
-            crate::cli::Authority::MultiSig { .. } => {
+            crate::cli::Authority::MultiSig { vault, .. } => {
                 format!(
-                    "⚠️  Program extend does not support multisig (BPF Loader doesn't support CPI).\n\
-                    \n\
-                    Options:\n\
-                    1. Redeploy with larger --max-data-len\n\
-                    2. Temporarily transfer authority to single-sig, extend, then transfer back:\n\
-                       a. spherenet-admin program set-upgrade-authority --program-id {} --current-authority <TEMP_KEYPAIR> --new-authority <TEMP_KEYPAIR> --payer {}\n\
-                       b. solana program extend {} {} -k <TEMP_KEYPAIR> --url {}\n\
-                       c. spherenet-admin program set-upgrade-authority --program-id {} --current-authority <TEMP_KEYPAIR> --new-authority <VAULT_PDA> --payer {}",
-                    program_id, payer_keypair_path, program_id, additional_bytes, url, program_id, payer_keypair_path
+                    "spherenet-admin program extend \\\n  \
+                    --program-id {} \\\n  \
+                    --bytes {} \\\n  \
+                    --multisig {} \\\n  \
+                    --multisig-authority <MEMBER_KEYPAIR> \\\n  \
+                    --payer <MEMBER_KEYPAIR>",
+                    program_id, additional_bytes, vault
                 )
             }
         };
@@ -132,11 +131,12 @@ pub fn upgrade_program(
             Current capacity: {} bytes\n\
             Required capacity: {} bytes\n\
             Need {} more bytes\n\n\
+            Run this command to extend the program:\n\
             {}",
             current_max_len,
             program_data.len(),
             additional_bytes,
-            extend_note
+            extend_cmd
         ));
     }
 

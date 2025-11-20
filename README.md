@@ -319,52 +319,79 @@ spherenet-admin program upgrade \
 - Upgrade authority must remain whitelisted (removing authority prevents upgrades)
 - For multi-sig: The multisig vault PDA must be whitelisted as a deployer authority
 
-**⚠️ CRITICAL: Multisig Program Authority Limitations**
+**⚠️ Multisig Program Authority Limitations**
 
-Due to Solana's security model, the BPF Loader Upgradeable program **does not support CPI (Cross-Program Invocation)**. This creates important limitations when using multisig for program upgrade authority:
+Due to Solana's security model, the BPF Loader Upgradeable program has specific CPI restrictions:
 
 **What Works:**
-- ✅ Program upgrades through multisig (as long as program fits existing capacity)
-- ✅ Transferring upgrade authority **TO** a multisig (one-time, using `solana program set-upgrade-authority`)
+- ✅ Program upgrades through multisig
+- ✅ Program extend through multisig (uses `ExtendProgramChecked` instruction)
+- ✅ Transferring upgrade authority **TO** a multisig (one-time setup)
 
-**What Does NOT Work:**
-- ❌ Program extend through multisig (cannot increase program data account size)
+**What Does NOT Work (Currently):**
 - ❌ Transferring upgrade authority **FROM** a multisig back to single-sig
 
-**Why This Matters:**
+**Understanding CPI-Safe "Checked" Variants:**
 
-Once you transfer a program's upgrade authority to a multisig vault PDA, you **cannot**:
-1. Extend the program data account (if your program grows larger)
-2. Transfer authority back to single-sig or another address
+The BPF Loader has two variants for many operations, following a security pattern:
 
-This is effectively a **one-way door**. You must plan accordingly:
+**Extend Instructions:**
+- `ExtendProgram` (unchecked) - ❌ Blocked from CPI for security
+- `ExtendProgramChecked` (checked) - ✅ Explicitly allowed for CPI, requires authority signature
+
+**Authority Transfer Instructions:**
+- `SetUpgradeAuthority` (unchecked) - ❌ Blocked from CPI for security
+- `SetUpgradeAuthorityChecked` (checked) - ✅ Allowed for CPI, but requires BOTH current and new authorities to sign
+
+**Why Multisig → Single-Sig Transfer Doesn't Work:**
+
+While `SetUpgradeAuthorityChecked` IS in the CPI allowlist, it requires both authorities to sign the same transaction:
+- Current authority (vault PDA) - Can sign via invoke_signed ✅
+- New authority (single-sig keypair) - Would need to be present in the multisig execution context ❌
+
+This creates a coordination problem that Squads' execution model doesn't currently support. However, this could be implemented as an "escape hatch" feature in the future if needed.
 
 **Best Practices:**
-1. **Deploy with generous `--max-data-len`** to allow for future program growth
+
+1. **Deploy with reasonable `--max-data-len`** for future growth (you can always extend via multisig if needed)
    ```bash
    spherenet-admin program deploy \
      --program-so ./target/deploy/my_program.so \
      --program-keypair ./program-keypair.json \
      --upgrade-authority ./authority.json \
      --payer ./payer.json \
-     --max-data-len 500000  # Much larger than current program size
+     --max-data-len 100000
    ```
 
-2. **Test thoroughly before transferring to multisig** - Once transferred, you're committed to that capacity
-
-3. **Transfer upgrade authority using standard Solana CLI:**
+2. **Extend when needed through multisig:**
    ```bash
+   spherenet-admin program extend \
+     --program-id <PROGRAM_ID> \
+     --bytes 10000 \
+     --multisig <MULTISIG_PDA> \
+     --multisig-authority ./member-0.json \
+     --payer ./member-0.json
+   ```
+
+3. **Transfer upgrade authority TO multisig using standard Solana CLI:**
+   ```bash
+   # Single-sig → Multisig (uses unchecked variant, skips new authority signature)
    solana program set-upgrade-authority <PROGRAM_ID> \
      --new-upgrade-authority <VAULT_PDA> \
      --upgrade-authority ./current-authority.json \
      --skip-new-upgrade-authority-signer-check
    ```
 
-**Technical Explanation:**
+   **Note:** The `--skip-new-upgrade-authority-signer-check` flag uses the unchecked `SetUpgradeAuthority` instruction, which only requires the current authority to sign. This is safe because you're explicitly confirming the new authority address.
 
-When Squads executes a proposal, it uses `invoke_signed()` to have the vault PDA sign instructions via CPI. System programs like BPF Loader Upgradeable explicitly reject CPI calls as a security measure to prevent potential exploits. This means operations like `extend_program` and `set_upgrade_authority` cannot be executed through the Squads multisig flow.
+**Complete Program Lifecycle with Multisig:**
+1. Deploy program with single-sig authority
+2. Transfer authority to multisig vault PDA (one-time, using solana CLI)
+3. Upgrade through multisig governance (spherenet-admin)
+4. Extend capacity through multisig governance (spherenet-admin)
+5. Continue upgrading as needed
 
-This is not a bug - it's a fundamental security constraint of Solana's runtime that applies to all multisig implementations, not just Squads
+Once authority is transferred to multisig, the program is under full governance control. While there's no built-in way to transfer authority back to single-sig, this is philosophically correct for governance - true decentralization means the multisig retains permanent control.
 
 #### Helper Scripts
 

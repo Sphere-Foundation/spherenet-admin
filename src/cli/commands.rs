@@ -302,6 +302,32 @@ pub enum ProgramAction {
         #[arg(long)]
         spill: Option<String>,
     },
+    /// Extend a program's data account to accommodate larger programs
+    Extend {
+        /// Program ID of the program to extend
+        #[arg(long)]
+        program_id: String,
+
+        /// Number of additional bytes to add
+        #[arg(long)]
+        bytes: u32,
+
+        /// Single-sig: path to upgrade authority keypair (mutually exclusive with --multisig)
+        #[arg(long, conflicts_with = "multisig")]
+        upgrade_authority: Option<String>,
+
+        /// Multi-sig: multisig address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+
+        /// Payer keypair path
+        #[arg(long)]
+        payer: String,
+    },
 }
 
 #[derive(Subcommand)]

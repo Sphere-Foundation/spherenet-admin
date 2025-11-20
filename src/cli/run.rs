@@ -160,6 +160,18 @@ pub fn run() -> eyre::Result<()> {
                     &cli.url, program_id, program_so, auth, payer, spill,
                 )?
             }
+            ProgramAction::Extend {
+                program_id,
+                bytes,
+                upgrade_authority,
+                multisig,
+                multisig_authority,
+                payer,
+            } => {
+                let auth =
+                    Authority::from_cli_args(upgrade_authority, multisig, multisig_authority)?;
+                loader::extend::extend_program(&cli.url, program_id, bytes, auth, payer)?
+            }
         },
         Commands::Multisig { action } => match action {
             MultisigAction::ProgramConfigInit {
