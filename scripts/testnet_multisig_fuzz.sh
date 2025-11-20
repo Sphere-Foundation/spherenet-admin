@@ -36,6 +36,7 @@
 # solana program set-upgrade-authority Gkz9KvKTmkRujdFNKU6hxUx71LnS69BCC9ouvyt48qsG --new-upgrade-authority 2Wmxgkgny9VytPqcnY6SMTh9u6e5eHfibGLC9D4swakf --upgrade-authority opt/testnet_multisig/member_0/id.json --skip-new-upgrade-authority-signer-check -u https://api.testnet.sphere.net
 #
 # cargo run program upgrade --program-id Gkz9KvKTmkRujdFNKU6hxUx71LnS69BCC9ouvyt48qsG --program-so ../test-program/target/deploy/test_program.so --multisig 5jV5k8rhrDv3NDTZ86uTdsgF1MSA642U1hagcvDPTz1t --multisig-authority opt/testnet_multisig/member_0/id.json --payer opt/testnet_multisig/member_0/id.json
+# cargo run program extend --program-id Gkz9KvKTmkRujdFNKU6hxUx71LnS69BCC9ouvyt48qsG --bytes 1000 --multisig 5jV5k8rhrDv3NDTZ86uTdsgF1MSA642U1hagcvDPTz1t --multisig-authority opt/testnet_multisig/member_0/id.json --payer opt/testnet_multisig/member_0/id.json
 
 if [ "$#" -ne 1 ]; then
     echo "Usage: $0 <transaction_index>"
