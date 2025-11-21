@@ -1,6 +1,6 @@
-use crate::cli::Authority;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
+use spherenet_authority::Authority;
 use spherenet_program_whitelist_client::instructions::{
     AcceptAuthorityTransferBuilder, CancelAuthorityTransferBuilder,
     InitiateAuthorityTransferBuilder,

@@ -1,6 +1,6 @@
-use crate::cli::Authority;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use spherenet_authority::Authority;
 use std::str::FromStr;
 
 /// Extend a program's data account to accommodate larger programs
@@ -37,8 +37,8 @@ pub fn extend_program(
     // Note: Payer must be instruction_authority (vault PDA) for multisig so vault can pay
     let extend_ix = spherenet_whitelisted_loader_v3_interface::instruction::extend_program_checked(
         &program_id,
-        &instruction_authority,  // Authority required - vault PDA for multisig
-        Some(&instruction_authority),  // Payer also vault PDA for multisig consistency
+        &instruction_authority, // Authority required - vault PDA for multisig
+        Some(&instruction_authority), // Payer also vault PDA for multisig consistency
         additional_bytes,
     );
 
@@ -52,7 +52,7 @@ pub fn extend_program(
     // Only show "extended successfully" for single-sig (immediate execution)
     if matches!(
         result,
-        crate::cli::authority::ExecutionResult::Executed { .. }
+        spherenet_authority::ExecutionResult::Executed { .. }
     ) {
         println!("\n✅ Program data account extended successfully!");
     }

@@ -2,11 +2,11 @@
 //!
 //! Routes parsed CLI commands to appropriate domain modules.
 
-use crate::{cli, loader, pw, squads, utils, vw};
+use crate::{cli, loader, pw, utils, vw};
 use clap::Parser;
 
 use cli::commands::*;
-use cli::Authority;
+use spherenet_authority::squads;
 
 pub fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
@@ -23,7 +23,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::whitelist::add(&cli.url, vote_account, start_epoch, end_epoch, auth)?
             }
             ValidatorWhitelistAction::Remove {
@@ -32,7 +33,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::whitelist::remove(&cli.url, vote_account, auth)?
             }
             ValidatorWhitelistAction::UpdateStartEpoch {
@@ -42,7 +44,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::whitelist::update_start_epoch(&cli.url, vote_account, epoch, auth)?
             }
             ValidatorWhitelistAction::UpdateEndEpoch {
@@ -52,7 +55,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::whitelist::update_end_epoch(&cli.url, vote_account, epoch, auth)?
             }
             // Authority commands
@@ -63,7 +67,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::authority::propose_authority(&cli.url, new_authority, auth)?
             }
             ValidatorWhitelistAction::AcceptAuthority {
@@ -71,7 +76,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::authority::accept_authority(&cli.url, auth)?
             }
             ValidatorWhitelistAction::CancelAuthority {
@@ -79,7 +85,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::authority::cancel_authority(&cli.url, auth)?
             }
         },
@@ -91,7 +98,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 pw::whitelist::add(&cli.url, program_authority, auth)?
             }
             ProgramWhitelistAction::Remove {
@@ -100,7 +108,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 pw::whitelist::remove(&cli.url, program_authority, auth)?
             }
             ProgramWhitelistAction::Auth => pw::authority::auth(&cli.url)?,
@@ -110,7 +119,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 pw::authority::propose_authority(&cli.url, new_authority, auth)?
             }
             ProgramWhitelistAction::AcceptAuthority {
@@ -118,7 +128,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 pw::authority::accept_authority(&cli.url, auth)?
             }
             ProgramWhitelistAction::CancelAuthority {
@@ -126,7 +137,8 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = Authority::from_cli_args(authority, multisig, multisig_authority)?;
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 pw::authority::cancel_authority(&cli.url, auth)?
             }
         },
@@ -154,8 +166,11 @@ pub fn run() -> eyre::Result<()> {
                 payer,
                 spill,
             } => {
-                let auth =
-                    Authority::from_cli_args(upgrade_authority, multisig, multisig_authority)?;
+                let auth = cli::authority_builder::from_cli_args(
+                    upgrade_authority,
+                    multisig,
+                    multisig_authority,
+                )?;
                 loader::upgrade::upgrade_program(
                     &cli.url, program_id, program_so, auth, payer, spill,
                 )?
@@ -168,8 +183,11 @@ pub fn run() -> eyre::Result<()> {
                 multisig_authority,
                 payer,
             } => {
-                let auth =
-                    Authority::from_cli_args(upgrade_authority, multisig, multisig_authority)?;
+                let auth = cli::authority_builder::from_cli_args(
+                    upgrade_authority,
+                    multisig,
+                    multisig_authority,
+                )?;
                 loader::extend::extend_program(&cli.url, program_id, bytes, auth, payer)?
             }
         },
@@ -219,7 +237,7 @@ pub fn run() -> eyre::Result<()> {
             multisig,
             multisig_authority,
         } => {
-            let auth = Authority::from_cli_args(from, multisig, multisig_authority)?;
+            let auth = cli::authority_builder::from_cli_args(from, multisig, multisig_authority)?;
             utils::transfer::transfer(&cli.url, auth, destination, amount)?
         }
     }
