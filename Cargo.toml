@@ -12,7 +12,7 @@ serde_json = { version = "1.0" }
 sha2 = { version = "0.10" }
 solana-client = { version = "2.2.1" }
 solana-sdk = { version = "2.2.1" }
-spherenet-authority = { path = "../spherenet-authority" }
+spherenet-authority = { version = "=0.1.0" }
 spherenet-program-whitelist-client = { version = "=0.1.3" }
 spherenet-program-whitelist-interface = { version = "=0.1.3", features = [ "solana-p" ] }
 spherenet-validator-whitelist-client = { version = "=0.1.2" }
