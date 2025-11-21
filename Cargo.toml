@@ -2,7 +2,11 @@
 name = "spherenet-admin"
 version = "0.1.0"
 edition = "2021"
-resolver = "2"
+repository = "https://github.com/Sphere-Foundation/spherenet-admin"
+license-file = "LICENSE"
+readme = "README.md"
+description = "Command-line tool for SphereNet governance and network administration"
+publish = true
 
 [dependencies]
 borsh = { version = "1.5" }
