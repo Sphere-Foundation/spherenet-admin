@@ -115,7 +115,7 @@ pub fn upgrade_program(
                     program_id, additional_bytes, payer_keypair_path, payer_keypair_path
                 )
             }
-            spherenet_authority::Authority::MultiSig { vault, .. } => {
+            spherenet_authority::Authority::MultiSig { multisig, .. } => {
                 format!(
                     "spherenet-admin program extend \\\n  \
                     --program-id {} \\\n  \
@@ -123,7 +123,7 @@ pub fn upgrade_program(
                     --multisig {} \\\n  \
                     --multisig-authority <MEMBER_KEYPAIR> \\\n  \
                     --payer <MEMBER_KEYPAIR>",
-                    program_id, additional_bytes, vault
+                    program_id, additional_bytes, multisig
                 )
             }
         };

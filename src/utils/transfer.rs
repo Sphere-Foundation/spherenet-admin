@@ -38,14 +38,14 @@ pub fn transfer(
         spherenet_authority::Authority::SingleSig { keypair } => {
             println!("  From:        {}", keypair.pubkey());
         }
-        spherenet_authority::Authority::MultiSig { vault, signer } => {
-            println!("  Proposer:    {}", signer.pubkey());
-            println!("  Multisig:    {}", vault);
+        spherenet_authority::Authority::MultiSig { multisig, member } => {
+            println!("  Proposer:    {}", member.pubkey());
+            println!("  Multisig:    {}", multisig);
 
             // Derive and show vault PDA (where funds will come from)
             let program_id =
                 squads::types::SQUADS_PROGRAM_ID.parse::<solana_sdk::pubkey::Pubkey>()?;
-            let (vault_pda, _) = squads::types::get_vault_pda(vault, 0, &program_id);
+            let (vault_pda, _) = squads::types::get_vault_pda(multisig, 0, &program_id);
 
             // Get vault balance
             let vault_balance = rpc_client.get_balance(&vault_pda).unwrap_or(0);
