@@ -1,5 +1,5 @@
 use super::write_buffer;
-use crate::{cli::Authority, pw::whitelist::require_whitelist_entry};
+use crate::pw::whitelist::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -7,11 +7,13 @@ use solana_sdk::{
     signature::{read_keypair_file, Keypair, Signer},
     transaction::Transaction,
 };
+use spherenet_authority::Authority;
 #[allow(deprecated)]
 use spherenet_whitelisted_loader_v3_interface::{
     instruction::{create_buffer, upgrade},
     state::UpgradeableLoaderState,
 };
+
 use std::{fs, str::FromStr};
 
 /// Upgrade an existing program on SphereNet
@@ -103,7 +105,7 @@ pub fn upgrade_program(
 
         // Build the appropriate extend command based on authority type
         let extend_cmd = match &upgrade_authority {
-            crate::cli::Authority::SingleSig { .. } => {
+            spherenet_authority::Authority::SingleSig { .. } => {
                 format!(
                     "spherenet-admin program extend \\\n  \
                     --program-id {} \\\n  \
@@ -113,7 +115,7 @@ pub fn upgrade_program(
                     program_id, additional_bytes, payer_keypair_path, payer_keypair_path
                 )
             }
-            crate::cli::Authority::MultiSig { vault, .. } => {
+            spherenet_authority::Authority::MultiSig { vault, .. } => {
                 format!(
                     "spherenet-admin program extend \\\n  \
                     --program-id {} \\\n  \
@@ -190,14 +192,12 @@ pub fn upgrade_program(
     println!("\n🔐 Transferring buffer authority...");
     let set_buffer_authority_ix = solana_sdk::bpf_loader_upgradeable::set_buffer_authority(
         &buffer_pubkey,
-        &payer.pubkey(), // Current buffer authority (payer)
+        &payer.pubkey(),        // Current buffer authority (payer)
         &instruction_authority, // New buffer authority (upgrade authority/vault PDA)
     );
 
-    let mut set_authority_tx = Transaction::new_with_payer(
-        &[set_buffer_authority_ix],
-        Some(&payer.pubkey()),
-    );
+    let mut set_authority_tx =
+        Transaction::new_with_payer(&[set_buffer_authority_ix], Some(&payer.pubkey()));
     set_authority_tx.sign(&[&payer], rpc_client.get_latest_blockhash()?);
     rpc_client.send_and_confirm_transaction(&set_authority_tx)?;
     println!("  ✓ Buffer authority transferred to upgrade authority");
@@ -219,7 +219,10 @@ pub fn upgrade_program(
     let result = upgrade_authority.execute_instruction(&rpc_client, upgrade_ix, &description)?;
 
     // Only show "upgraded successfully" for single-sig (immediate execution)
-    if matches!(result, crate::cli::authority::ExecutionResult::Executed { .. }) {
+    if matches!(
+        result,
+        spherenet_authority::ExecutionResult::Executed { .. }
+    ) {
         println!("\n✅ Program upgraded successfully!");
         println!("   Program ID: {}", program_id);
         println!("   Upgrade Authority: {}", instruction_authority);

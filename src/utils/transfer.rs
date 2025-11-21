@@ -1,9 +1,9 @@
-use crate::cli::{authority::ExecutionResult, Authority};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     commitment_config::CommitmentConfig, native_token::LAMPORTS_PER_SOL, pubkey::Pubkey,
     signature::Signer,
 };
+use spherenet_authority::{squads, Authority, ExecutionResult};
 use std::str::FromStr;
 
 #[allow(deprecated)]
@@ -35,17 +35,17 @@ pub fn transfer(
 
     // Display different info based on authority type
     match &from {
-        crate::cli::Authority::SingleSig { keypair } => {
+        spherenet_authority::Authority::SingleSig { keypair } => {
             println!("  From:        {}", keypair.pubkey());
         }
-        crate::cli::Authority::MultiSig { vault, signer } => {
+        spherenet_authority::Authority::MultiSig { vault, signer } => {
             println!("  Proposer:    {}", signer.pubkey());
             println!("  Multisig:    {}", vault);
 
             // Derive and show vault PDA (where funds will come from)
             let program_id =
-                crate::squads::types::SQUADS_PROGRAM_ID.parse::<solana_sdk::pubkey::Pubkey>()?;
-            let (vault_pda, _) = crate::squads::types::get_vault_pda(vault, 0, &program_id);
+                squads::types::SQUADS_PROGRAM_ID.parse::<solana_sdk::pubkey::Pubkey>()?;
+            let (vault_pda, _) = squads::types::get_vault_pda(vault, 0, &program_id);
 
             // Get vault balance
             let vault_balance = rpc_client.get_balance(&vault_pda).unwrap_or(0);

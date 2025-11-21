@@ -2,11 +2,11 @@
 //!
 //! Routes parsed CLI commands to appropriate domain modules.
 
-use crate::{cli, loader, pw, squads, utils, vw};
+use crate::{cli, loader, pw, utils, vw};
 use clap::Parser;
 
 use cli::commands::*;
-use cli::Authority;
+use spherenet_authority::{squads, Authority};
 
 pub fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
