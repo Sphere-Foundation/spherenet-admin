@@ -33,6 +33,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: ProgramWhitelistAction,
     },
+    /// Monetary policy commands
+    #[command(name = "mp")]
+    MonetaryPolicy {
+        #[command(subcommand)]
+        action: MonetaryPolicyAction,
+    },
     /// Program deployment commands
     Program {
         #[command(subcommand)]
@@ -413,5 +419,20 @@ pub enum MultisigAction {
         /// Path to member keypair who is executing
         #[arg(long)]
         member: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MonetaryPolicyAction {
+    /// Show monetary policy account details
+    Show,
+    /// Create the monetary policy account
+    Create {
+        /// Single-sig: path to authority keypair (who will control the policy)
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
+        /// Path to payer keypair (who pays for account creation)
+        #[arg(long)]
+        payer: String,
     },
 }

@@ -2,7 +2,7 @@
 //!
 //! Routes parsed CLI commands to appropriate domain modules.
 
-use crate::{cli, loader, pw, utils, vw};
+use crate::{cli, loader, mp, pw, utils, vw};
 use clap::Parser;
 
 use cli::commands::*;
@@ -88,6 +88,12 @@ pub fn run() -> eyre::Result<()> {
                 let auth =
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::authority::cancel_authority(&cli.url, auth)?
+            }
+        },
+        Commands::MonetaryPolicy { action } => match action {
+            MonetaryPolicyAction::Show => mp::account::show(&cli.url)?,
+            MonetaryPolicyAction::Create { authority, payer } => {
+                mp::account::create(&cli.url, authority, payer)?
             }
         },
         Commands::ProgramWhitelist { action } => match action {
