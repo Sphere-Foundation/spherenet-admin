@@ -6,9 +6,10 @@ Command-line interface for administering SphereNet validator and program whiteli
 
 SphereNet administration tool for governance and network management:
 
-**Whitelist Management:**
+**Governance:**
 - **Validator Whitelist** - Control which validators participate in consensus
 - **Program Whitelist** - Control which authorities can deploy/upgrade programs
+- **Monetary Policy** - Manage inflation rate, transaction fees, and fee burn percentage
 
 **Program Operations:**
 - Deploy, upgrade, and extend programs with whitelist enforcement
@@ -24,8 +25,8 @@ SphereNet administration tool for governance and network management:
 Connects to SphereNet testnet by default. Override with `--url <RPC_URL>` flag.
 
 ```bash
-spherenet-admin --url http://localhost:8899 vw list  # Local validator
-spherenet-admin vw list                               # Testnet (default)
+spherenet-admin --url http://localhost:8899 vw show  # Local validator
+spherenet-admin vw show                               # Testnet (default)
 ```
 
 ## Commands
@@ -54,11 +55,10 @@ spherenet-admin vw add <VOTE_ACCOUNT> \
 ```
 
 **Other Commands:**
-- `vw list` - Show all whitelisted validators
+- `vw show` - Show validator whitelist account (authority and entries)
 - `vw remove <VOTE_ACCOUNT>` - Remove validator from whitelist
 - `vw update-start-epoch <VOTE_ACCOUNT> --epoch <N>` - Update when validator can start
 - `vw update-end-epoch <VOTE_ACCOUNT> --epoch <N>` - Update when validator term ends
-- `vw auth` - View current whitelist authority
 - `vw propose-authority <NEW_AUTHORITY>` - Initiate authority transfer
 - `vw accept-authority` - Accept pending authority transfer
 - `vw cancel-authority` - Cancel pending authority transfer
@@ -82,12 +82,39 @@ spherenet-admin pw add <DEPLOYER_PUBKEY> \
 ```
 
 **Other Commands:**
-- `pw list` - Show all whitelisted deployer authorities
+- `pw show` - Show program whitelist account (authority and entries)
 - `pw remove <DEPLOYER>` - Remove deployer authority
-- `pw auth` - View current whitelist authority
 - `pw propose-authority <NEW_AUTHORITY>` - Initiate authority transfer
 - `pw accept-authority` - Accept pending authority transfer
 - `pw cancel-authority` - Cancel pending authority transfer
+
+---
+
+### Monetary Policy (`mp`)
+
+Manage SphereNet's monetary policy parameters: inflation rate, transaction fees, and fee burn percentage.
+
+**Example: Update Inflation Rate**
+
+```bash
+# Single-sig
+spherenet-admin mp update-inflation-rate-bips 500 --authority ./authority.json
+
+# Multi-sig
+spherenet-admin mp update-inflation-rate-bips 500 \
+  --multisig <MULTISIG_PDA> \
+  --multisig-authority ./member.json
+```
+
+**Commands:**
+- `mp show` - Show monetary policy account (authority and parameters)
+- `mp create --authority <PATH> --payer <PATH>` - Create monetary policy account (testnet only)
+- `mp update-inflation-rate-bips <BIPS>` - Update inflation rate (0-2000 bips = 0-20%)
+- `mp update-lamports-per-signature <LAMPORTS>` - Update transaction fee
+- `mp update-burn-percent <PERCENT>` - Update fee burn percentage (0-100%)
+- `mp propose-authority <NEW_AUTHORITY>` - Initiate authority transfer
+- `mp accept-authority` - Accept pending authority transfer
+- `mp cancel-authority` - Cancel pending authority transfer
 
 ---
 
@@ -192,6 +219,7 @@ spherenet-admin airdrop --pubkey <PUBKEY> --amount 5.0
 The CLI uses:
 - `spherenet-validator-whitelist-client` - Generated instruction builders for validator whitelist operations
 - `spherenet-program-whitelist-client` - Generated instruction builders for program whitelist operations
+- `spherenet-monetary-policy-client` - Generated instruction builders for monetary policy operations
 - `spherenet-authority` - Authority abstraction and Squads v4 multisig integration
 
 All instruction builders are generated from their respective interface definitions using Codama/Kinobi.
@@ -202,4 +230,5 @@ All instruction builders are generated from their respective interface definitio
 - RPC: `https://api.testnet.sphere.net`
 - Validator Whitelist Program: `wLpnFMEvuP6hPE84AGrsmNr2Bo2uk69MC4kKWtrWHBN`
 - Program Whitelist Program: `PwLzPtX2e5PwNFQTrEY5DkkmRQ1t1x5vWcGzTnMgibR`
+- Monetary Policy Program: `MpM3Yve3AkLvrVsZXvD3hmUmqKj669bv75DPW67PAdr`
 - Squads v4 Program: `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf`
