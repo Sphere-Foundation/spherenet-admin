@@ -91,9 +91,9 @@ pub fn run() -> eyre::Result<()> {
             }
         },
         Commands::MonetaryPolicy { action } => match action {
-            MonetaryPolicyAction::Show => mp::account::show(&cli.url)?,
+            MonetaryPolicyAction::Show => mp::policy::show(&cli.url)?,
             MonetaryPolicyAction::Create { authority, payer } => {
-                mp::account::create(&cli.url, authority, payer)?
+                mp::create::create(&cli.url, authority, payer)?
             }
             MonetaryPolicyAction::Auth => mp::authority::auth(&cli.url)?,
             MonetaryPolicyAction::ProposeAuthority {
@@ -132,7 +132,7 @@ pub fn run() -> eyre::Result<()> {
             } => {
                 let auth =
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::parameters::update_inflation_rate_bips(&cli.url, new_rate_bips, auth)?
+                mp::policy::update_inflation_rate_bips(&cli.url, new_rate_bips, auth)?
             }
             MonetaryPolicyAction::UpdateLamportsPerSignature {
                 new_lamports_per_signature,
@@ -142,7 +142,7 @@ pub fn run() -> eyre::Result<()> {
             } => {
                 let auth =
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::parameters::update_lamports_per_signature(
+                mp::policy::update_lamports_per_signature(
                     &cli.url,
                     new_lamports_per_signature,
                     auth,
@@ -156,7 +156,7 @@ pub fn run() -> eyre::Result<()> {
             } => {
                 let auth =
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::parameters::update_burn_percent(&cli.url, new_percent, auth)?
+                mp::policy::update_burn_percent(&cli.url, new_percent, auth)?
             }
         },
         Commands::ProgramWhitelist { action } => match action {

@@ -1,5 +1,5 @@
 //! Monetary policy commands
 
-pub mod account;
 pub mod authority;
-pub mod parameters;
+pub mod create;
+pub mod policy;

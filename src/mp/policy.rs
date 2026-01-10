@@ -4,7 +4,51 @@ use spherenet_authority::Authority;
 use spherenet_monetary_policy_client::instructions::{
     UpdateBurnPercentBuilder, UpdateInflationRateBipsBuilder, UpdateLamportsPerSignatureBuilder,
 };
-use spherenet_monetary_policy_interface::account_solana;
+use spherenet_monetary_policy_interface::{
+    account_solana,
+    state::{account::MonetaryPolicyAccount, load},
+};
+
+pub fn show(rpc_url: &str) -> eyre::Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
+
+    // Get the monetary policy account
+    let account_pubkey = Pubkey::from(account_solana::id().to_bytes());
+    let account = rpc_client.get_account(&account_pubkey)?;
+    let monetary_policy = load::<MonetaryPolicyAccount>(&account.data)
+        .map_err(|e| eyre::eyre!("Failed to deserialize monetary policy account: {:?}", e))?;
+
+    // Print monetary policy info
+    println!("\n╔═══════════════════════════════════════════════════════════════╗");
+    println!("║               Monetary Policy Account                         ║");
+    println!("╚═══════════════════════════════════════════════════════════════╝");
+    println!();
+    println!("Account Address:     {}", account_pubkey);
+    println!(
+        "Authority:           {}",
+        Pubkey::from(monetary_policy.authority)
+    );
+    println!(
+        "Pending Authority:   {}",
+        Pubkey::from(monetary_policy.pending_authority)
+    );
+    println!();
+    println!("Parameters:");
+    println!(
+        "  Inflation Rate:    {} bips ({:.2}%)",
+        monetary_policy.inflation_rate_bips(),
+        monetary_policy.inflation_rate_bips() as f64 / 100.0
+    );
+    println!(
+        "  Fee Per Signature: {} lamports ({:.6} SOL)",
+        monetary_policy.lamports_per_signature(),
+        monetary_policy.lamports_per_signature() as f64 / 1_000_000_000.0
+    );
+    println!("  Burn Percent:      {}%", monetary_policy.burn_percent());
+    println!();
+
+    Ok(())
+}
 
 pub fn update_inflation_rate_bips(
     rpc_url: &str,
