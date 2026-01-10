@@ -24,7 +24,12 @@ pub fn show(rpc_url: &str) -> eyre::Result<()> {
     println!("║               Program Whitelist Account                       ║");
     println!("╚═══════════════════════════════════════════════════════════════╝");
     println!();
+    println!(
+        "Program ID:          {}",
+        Pubkey::from(program_solana::id().to_bytes())
+    );
     println!("Whitelist Account:   {}", whitelist_pubkey);
+    println!();
     println!("Authority:           {}", Pubkey::from(whitelist.authority));
     println!(
         "Pending Authority:   {}",

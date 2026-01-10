@@ -5,7 +5,7 @@ use spherenet_monetary_policy_client::instructions::{
     UpdateBurnPercentBuilder, UpdateInflationRateBipsBuilder, UpdateLamportsPerSignatureBuilder,
 };
 use spherenet_monetary_policy_interface::{
-    account_solana,
+    account_solana, program_solana,
     state::{account::MonetaryPolicyAccount, load},
 };
 
@@ -23,7 +23,12 @@ pub fn show(rpc_url: &str) -> eyre::Result<()> {
     println!("║               Monetary Policy Account                         ║");
     println!("╚═══════════════════════════════════════════════════════════════╝");
     println!();
+    println!(
+        "Program ID:          {}",
+        Pubkey::from(program_solana::id().to_bytes())
+    );
     println!("Account Address:     {}", account_pubkey);
+    println!();
     println!(
         "Authority:           {}",
         Pubkey::from(monetary_policy.authority)
@@ -100,7 +105,10 @@ pub fn update_lamports_per_signature(
     println!("\nUpdating lamports per signature:");
     println!("  Monetary Policy Account: {}", account_pubkey);
     println!("  Authority:               {}", instruction_authority);
-    println!("  New Fee:                 {} lamports", new_lamports_per_signature);
+    println!(
+        "  New Fee:                 {} lamports",
+        new_lamports_per_signature
+    );
 
     // Build the instruction
     let instruction = UpdateLamportsPerSignatureBuilder::new()
