@@ -5,32 +5,7 @@ use spherenet_program_whitelist_client::instructions::{
     AcceptAuthorityTransferBuilder, CancelAuthorityTransferBuilder,
     InitiateAuthorityTransferBuilder,
 };
-use spherenet_program_whitelist_interface::{
-    account_solana,
-    state::{account::ProgramWhitelistAccount, load},
-};
-
-pub fn auth(rpc_url: &str) -> eyre::Result<()> {
-    let rpc_client = RpcClient::new(rpc_url);
-
-    // Get the program whitelist account
-    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-    let account = rpc_client.get_account(&whitelist_pubkey)?;
-    let whitelist = load::<ProgramWhitelistAccount>(&account.data)
-        .map_err(|e| eyre::eyre!("Failed to deserialize program whitelist account: {:?}", e))?;
-
-    // Print authority info
-    println!("\nProgram Whitelist");
-    println!("  Whitelist Account: {}", whitelist_pubkey);
-    println!("  Authority:         {}", Pubkey::from(whitelist.authority));
-    println!(
-        "  Pending Authority: {}",
-        Pubkey::from(whitelist.pending_authority)
-    );
-    println!();
-
-    Ok(())
-}
+use spherenet_program_whitelist_interface::account_solana;
 
 pub fn propose_authority(
     rpc_url: &str,

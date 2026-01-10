@@ -5,36 +5,7 @@ use spherenet_validator_whitelist_client::instructions::{
     AcceptAuthorityTransferBuilder, CancelAuthorityTransferBuilder,
     InitiateAuthorityTransferBuilder,
 };
-use spherenet_validator_whitelist_interface::{
-    account_solana,
-    state::{account::ValidatorWhitelistAccount, load},
-};
-
-pub fn auth(rpc_url: &str) -> eyre::Result<()> {
-    let rpc_client = RpcClient::new(rpc_url);
-
-    // Get the validator whitelist account
-    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-    let account = rpc_client.get_account(&whitelist_pubkey)?;
-    let whitelist = load::<ValidatorWhitelistAccount>(&account.data)
-        .map_err(|e| eyre::eyre!("Failed to deserialize whitelist account: {:?}", e))?;
-
-    // Print authority info
-    println!("\nValidator Whitelist Authority");
-    println!("  Whitelist Account: {}", whitelist_pubkey);
-    println!("  Authority:         {}", Pubkey::from(whitelist.authority));
-    println!(
-        "  Pending Authority: {}",
-        Pubkey::from(whitelist.pending_authority)
-    );
-    println!(
-        "  Validator Count:   {}",
-        u32::from_le_bytes(whitelist.validator_amount)
-    );
-    println!();
-
-    Ok(())
-}
+use spherenet_validator_whitelist_interface::account_solana;
 
 pub fn propose_authority(
     rpc_url: &str,

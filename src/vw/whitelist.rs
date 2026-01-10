@@ -13,23 +13,7 @@ use std::sync::LazyLock;
 
 pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(Pubkey::default);
 
-/// Derives the validator whitelist entry PDA for a vote account.
-///
-/// The PDA is derived using:
-/// - Seeds: `[vote_account]`
-/// - Program: validator whitelist program ID
-///
-/// # Arguments
-/// * `vote_account` - Pubkey of the validator's vote account
-///
-/// # Returns
-/// * `(Pubkey, u8)` - The derived PDA and bump seed
-pub fn derive_whitelist_entry(vote_account: &Pubkey) -> (Pubkey, u8) {
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    Pubkey::find_program_address(&[vote_account.as_ref()], &program_id)
-}
-
-pub fn list(rpc_url: &str) -> eyre::Result<()> {
+pub fn show(rpc_url: &str) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
     // Get the validator whitelist account
@@ -38,15 +22,29 @@ pub fn list(rpc_url: &str) -> eyre::Result<()> {
     let whitelist = load::<ValidatorWhitelistAccount>(&account.data)
         .map_err(|e| eyre::eyre!("Failed to deserialize whitelist account: {:?}", e))?;
 
+    // Print authority info
+    println!("\n╔═══════════════════════════════════════════════════════════════╗");
+    println!("║              Validator Whitelist Account                      ║");
+    println!("╚═══════════════════════════════════════════════════════════════╝");
+    println!();
+    println!("Whitelist Account:   {}", whitelist_pubkey);
+    println!("Authority:           {}", Pubkey::from(whitelist.authority));
+    println!(
+        "Pending Authority:   {}",
+        Pubkey::from(whitelist.pending_authority)
+    );
+    println!();
+
     // Get validator count
     let validator_count = u32::from_le_bytes(whitelist.validator_amount);
 
+    println!("Whitelisted Validators ({}):", validator_count);
+
     if validator_count == 0 {
-        println!("\nNo validators whitelisted.");
+        println!("  (none)");
+        println!();
         return Ok(());
     }
-
-    println!("\nWhitelisted Validators ({}):", validator_count);
 
     // Use getProgramAccounts to find all validator whitelist entries
     let program_id = Pubkey::from(program_solana::id().to_bytes());
@@ -81,10 +79,27 @@ pub fn list(rpc_url: &str) -> eyre::Result<()> {
     }
 
     if found_count == 0 {
-        println!("  No validator entries found");
+        println!("  (none)");
     }
+    println!();
 
     Ok(())
+}
+
+/// Derives the validator whitelist entry PDA for a vote account.
+///
+/// The PDA is derived using:
+/// - Seeds: `[vote_account]`
+/// - Program: validator whitelist program ID
+///
+/// # Arguments
+/// * `vote_account` - Pubkey of the validator's vote account
+///
+/// # Returns
+/// * `(Pubkey, u8)` - The derived PDA and bump seed
+pub fn derive_whitelist_entry(vote_account: &Pubkey) -> (Pubkey, u8) {
+    let program_id = Pubkey::from(program_solana::id().to_bytes());
+    Pubkey::find_program_address(&[vote_account.as_ref()], &program_id)
 }
 
 pub fn add(

@@ -13,8 +13,7 @@ pub fn run() -> eyre::Result<()> {
 
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
-            // Whitelist commands
-            ValidatorWhitelistAction::List => vw::whitelist::list(&cli.url)?,
+            ValidatorWhitelistAction::Show => vw::whitelist::show(&cli.url)?,
             ValidatorWhitelistAction::Add {
                 vote_account,
                 start_epoch,
@@ -59,8 +58,6 @@ pub fn run() -> eyre::Result<()> {
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::whitelist::update_end_epoch(&cli.url, vote_account, epoch, auth)?
             }
-            // Authority commands
-            ValidatorWhitelistAction::Auth => vw::authority::auth(&cli.url)?,
             ValidatorWhitelistAction::ProposeAuthority {
                 new_authority,
                 authority,
@@ -160,7 +157,7 @@ pub fn run() -> eyre::Result<()> {
             }
         },
         Commands::ProgramWhitelist { action } => match action {
-            ProgramWhitelistAction::List => pw::whitelist::list(&cli.url)?,
+            ProgramWhitelistAction::Show => pw::whitelist::show(&cli.url)?,
             ProgramWhitelistAction::Add {
                 program_authority,
                 authority,
@@ -181,7 +178,6 @@ pub fn run() -> eyre::Result<()> {
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 pw::whitelist::remove(&cli.url, program_authority, auth)?
             }
-            ProgramWhitelistAction::Auth => pw::authority::auth(&cli.url)?,
             ProgramWhitelistAction::ProposeAuthority {
                 new_authority,
                 authority,

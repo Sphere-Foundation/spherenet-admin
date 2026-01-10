@@ -80,8 +80,8 @@ pub enum Commands {
 
 #[derive(Subcommand)]
 pub enum ValidatorWhitelistAction {
-    /// List all whitelisted validators
-    List,
+    /// Show validator whitelist account (authority and entries)
+    Show,
     /// Add a validator to the whitelist
     Add {
         vote_account: String,
@@ -142,8 +142,6 @@ pub enum ValidatorWhitelistAction {
         #[arg(long, requires = "multisig")]
         multisig_authority: Option<String>,
     },
-    /// Show authority account
-    Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
@@ -185,8 +183,8 @@ pub enum ValidatorWhitelistAction {
 
 #[derive(Subcommand)]
 pub enum ProgramWhitelistAction {
-    /// List all whitelisted deployer authorities
-    List,
+    /// Show program whitelist account (authority + deployers)
+    Show,
     /// Whitelist a deployer authority (who can deploy/upgrade programs)
     Add {
         program_authority: String,
@@ -213,8 +211,6 @@ pub enum ProgramWhitelistAction {
         #[arg(long, requires = "multisig")]
         multisig_authority: Option<String>,
     },
-    /// Show authority account
-    Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
