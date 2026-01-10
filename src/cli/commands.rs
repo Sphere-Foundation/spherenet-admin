@@ -435,4 +435,85 @@ pub enum MonetaryPolicyAction {
         #[arg(long)]
         payer: String,
     },
+    /// Show authority account
+    Auth,
+    /// Propose a new authority
+    ProposeAuthority {
+        new_authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Accept pending authority transfer
+    AcceptAuthority {
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Cancel pending authority transfer
+    CancelAuthority {
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Update inflation rate (in basis points)
+    UpdateInflationRate {
+        /// New inflation rate in basis points (0-2000 bips = 0-20%)
+        new_rate_bips: u64,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Update lamports per signature (transaction fee)
+    UpdateLamportsPerSignature {
+        /// New lamports per signature (1-10,000,000 lamports)
+        new_lamports_per_signature: u64,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Update burn percent
+    UpdateBurnPercent {
+        /// New burn percent (0-100%)
+        new_percent: u8,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
 }
