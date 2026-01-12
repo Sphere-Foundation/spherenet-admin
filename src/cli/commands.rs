@@ -33,6 +33,12 @@ pub enum Commands {
         #[command(subcommand)]
         action: ProgramWhitelistAction,
     },
+    /// Monetary policy commands
+    #[command(name = "mp")]
+    MonetaryPolicy {
+        #[command(subcommand)]
+        action: MonetaryPolicyAction,
+    },
     /// Program deployment commands
     Program {
         #[command(subcommand)]
@@ -74,8 +80,8 @@ pub enum Commands {
 
 #[derive(Subcommand)]
 pub enum ValidatorWhitelistAction {
-    /// List all whitelisted validators
-    List,
+    /// Show validator whitelist account (authority and entries)
+    Show,
     /// Add a validator to the whitelist
     Add {
         vote_account: String,
@@ -136,8 +142,6 @@ pub enum ValidatorWhitelistAction {
         #[arg(long, requires = "multisig")]
         multisig_authority: Option<String>,
     },
-    /// Show authority account
-    Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
@@ -179,8 +183,8 @@ pub enum ValidatorWhitelistAction {
 
 #[derive(Subcommand)]
 pub enum ProgramWhitelistAction {
-    /// List all whitelisted deployer authorities
-    List,
+    /// Show program whitelist account (authority + deployers)
+    Show,
     /// Whitelist a deployer authority (who can deploy/upgrade programs)
     Add {
         program_authority: String,
@@ -207,8 +211,6 @@ pub enum ProgramWhitelistAction {
         #[arg(long, requires = "multisig")]
         multisig_authority: Option<String>,
     },
-    /// Show authority account
-    Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,
@@ -413,5 +415,101 @@ pub enum MultisigAction {
         /// Path to member keypair who is executing
         #[arg(long)]
         member: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum MonetaryPolicyAction {
+    /// Show monetary policy account details
+    Show,
+    /// Create the monetary policy account
+    Create {
+        /// Single-sig: path to authority keypair (who will control the policy)
+        #[arg(long = "authority", alias = "auth")]
+        authority: String,
+        /// Path to payer keypair (who pays for account creation)
+        #[arg(long)]
+        payer: String,
+    },
+    /// Show authority account
+    Auth,
+    /// Propose a new authority
+    ProposeAuthority {
+        new_authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Accept pending authority transfer
+    AcceptAuthority {
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Cancel pending authority transfer
+    CancelAuthority {
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Update inflation rate (in basis points)
+    UpdateInflationRate {
+        /// New inflation rate in basis points (0-2000 bips = 0-20%)
+        new_rate_bips: u64,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Update lamports per signature (transaction fee)
+    UpdateLamportsPerSignature {
+        /// New lamports per signature (1-10,000,000 lamports)
+        new_lamports_per_signature: u64,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
+    /// Update burn percent
+    UpdateBurnPercent {
+        /// New burn percent (0-100%)
+        new_percent: u8,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
     },
 }

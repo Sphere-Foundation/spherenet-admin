@@ -4,11 +4,69 @@ use spherenet_authority::Authority;
 use spherenet_program_whitelist_client::instructions::{AddEntryBuilder, RemoveEntryBuilder};
 use spherenet_program_whitelist_interface::{
     account_solana, program_solana,
-    state::{load, whitelist_entry::ProgramWhitelistEntry},
+    state::{account::ProgramWhitelistAccount, load, whitelist_entry::ProgramWhitelistEntry},
 };
 use std::sync::LazyLock;
 
 pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(Pubkey::default);
+
+pub fn show(rpc_url: &str) -> eyre::Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
+
+    // Get the program whitelist account
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+    let account = rpc_client.get_account(&whitelist_pubkey)?;
+    let whitelist = load::<ProgramWhitelistAccount>(&account.data)
+        .map_err(|e| eyre::eyre!("Failed to deserialize program whitelist account: {:?}", e))?;
+
+    // Print authority info
+    println!("\n╔═══════════════════════════════════════════════════════════════╗");
+    println!("║               Program Whitelist Account                       ║");
+    println!("╚═══════════════════════════════════════════════════════════════╝");
+    println!();
+    println!(
+        "Program ID:          {}",
+        Pubkey::from(program_solana::id().to_bytes())
+    );
+    println!("Whitelist Account:   {}", whitelist_pubkey);
+    println!();
+    println!("Authority:           {}", Pubkey::from(whitelist.authority));
+    println!(
+        "Pending Authority:   {}",
+        Pubkey::from(whitelist.pending_authority)
+    );
+    println!();
+
+    // Get all program whitelist entries
+    let program_id = Pubkey::from(program_solana::id().to_bytes());
+    let accounts = rpc_client.get_program_accounts(&program_id)?;
+
+    // Collect deployer entries
+    let mut entries = Vec::new();
+    for (pubkey, account) in accounts {
+        // Skip the main whitelist account itself
+        if pubkey == whitelist_pubkey {
+            continue;
+        }
+
+        // Try to deserialize as ProgramWhitelistEntry
+        if let Ok(entry_data) = load::<ProgramWhitelistEntry>(&account.data) {
+            entries.push(Pubkey::from(entry_data.entry_address));
+        }
+    }
+
+    println!("Whitelisted Deployer Authorities ({}):", entries.len());
+    if entries.is_empty() {
+        println!("  (none)");
+    } else {
+        for deployer in entries {
+            println!("  Deployer Authority: {}", deployer);
+        }
+    }
+    println!();
+
+    Ok(())
+}
 
 /// Derives the program whitelist entry PDA for a deployer authority.
 ///
@@ -28,45 +86,6 @@ pub fn derive_whitelist_entry(deployer_authority: &Pubkey) -> (Pubkey, u8) {
         &[whitelist_pubkey.as_ref(), deployer_authority.as_ref()],
         &program_id,
     )
-}
-
-pub fn list(rpc_url: &str) -> eyre::Result<()> {
-    let rpc_client = RpcClient::new(rpc_url);
-
-    // Get the program whitelist account
-    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-
-    // Use getProgramAccounts to find all program whitelist entries
-    let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let accounts = rpc_client.get_program_accounts(&program_id)?;
-
-    // Count entries first
-    let mut entries = Vec::new();
-    for (pubkey, account) in accounts {
-        // Skip the main whitelist account itself
-        if pubkey == whitelist_pubkey {
-            continue;
-        }
-
-        // Try to deserialize as ProgramWhitelistEntry
-        if let Ok(entry_data) = load::<ProgramWhitelistEntry>(&account.data) {
-            entries.push(Pubkey::from(entry_data.entry_address));
-        }
-    }
-
-    if entries.is_empty() {
-        println!("\nNo deployer authorities whitelisted.");
-        return Ok(());
-    }
-
-    println!("\nWhitelisted Deployer Authorities ({}):", entries.len());
-
-    for deployer in entries {
-        println!("  Deployer Authority: {}", deployer);
-    }
-    println!();
-
-    Ok(())
 }
 
 pub fn add(rpc_url: &str, program_authority: String, authority: Authority) -> eyre::Result<()> {

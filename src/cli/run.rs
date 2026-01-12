@@ -2,7 +2,7 @@
 //!
 //! Routes parsed CLI commands to appropriate domain modules.
 
-use crate::{cli, loader, pw, utils, vw};
+use crate::{cli, loader, mp, pw, utils, vw};
 use clap::Parser;
 
 use cli::commands::*;
@@ -13,8 +13,7 @@ pub fn run() -> eyre::Result<()> {
 
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
-            // Whitelist commands
-            ValidatorWhitelistAction::List => vw::whitelist::list(&cli.url)?,
+            ValidatorWhitelistAction::Show => vw::whitelist::show(&cli.url)?,
             ValidatorWhitelistAction::Add {
                 vote_account,
                 start_epoch,
@@ -59,8 +58,6 @@ pub fn run() -> eyre::Result<()> {
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 vw::whitelist::update_end_epoch(&cli.url, vote_account, epoch, auth)?
             }
-            // Authority commands
-            ValidatorWhitelistAction::Auth => vw::authority::auth(&cli.url)?,
             ValidatorWhitelistAction::ProposeAuthority {
                 new_authority,
                 authority,
@@ -90,8 +87,77 @@ pub fn run() -> eyre::Result<()> {
                 vw::authority::cancel_authority(&cli.url, auth)?
             }
         },
+        Commands::MonetaryPolicy { action } => match action {
+            MonetaryPolicyAction::Show => mp::policy::show(&cli.url)?,
+            MonetaryPolicyAction::Create { authority, payer } => {
+                mp::create::create(&cli.url, authority, payer)?
+            }
+            MonetaryPolicyAction::Auth => mp::authority::auth(&cli.url)?,
+            MonetaryPolicyAction::ProposeAuthority {
+                new_authority,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
+                mp::authority::propose_authority(&cli.url, new_authority, auth)?
+            }
+            MonetaryPolicyAction::AcceptAuthority {
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
+                mp::authority::accept_authority(&cli.url, auth)?
+            }
+            MonetaryPolicyAction::CancelAuthority {
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
+                mp::authority::cancel_authority(&cli.url, auth)?
+            }
+            MonetaryPolicyAction::UpdateInflationRate {
+                new_rate_bips,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
+                mp::policy::update_inflation_rate_bips(&cli.url, new_rate_bips, auth)?
+            }
+            MonetaryPolicyAction::UpdateLamportsPerSignature {
+                new_lamports_per_signature,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
+                mp::policy::update_lamports_per_signature(
+                    &cli.url,
+                    new_lamports_per_signature,
+                    auth,
+                )?
+            }
+            MonetaryPolicyAction::UpdateBurnPercent {
+                new_percent,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
+                mp::policy::update_burn_percent(&cli.url, new_percent, auth)?
+            }
+        },
         Commands::ProgramWhitelist { action } => match action {
-            ProgramWhitelistAction::List => pw::whitelist::list(&cli.url)?,
+            ProgramWhitelistAction::Show => pw::whitelist::show(&cli.url)?,
             ProgramWhitelistAction::Add {
                 program_authority,
                 authority,
@@ -112,7 +178,6 @@ pub fn run() -> eyre::Result<()> {
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 pw::whitelist::remove(&cli.url, program_authority, auth)?
             }
-            ProgramWhitelistAction::Auth => pw::authority::auth(&cli.url)?,
             ProgramWhitelistAction::ProposeAuthority {
                 new_authority,
                 authority,

@@ -5187,6 +5187,8 @@ dependencies = [
  "solana-client",
  "solana-sdk",
  "spherenet-authority",
+ "spherenet-monetary-policy-client",
+ "spherenet-monetary-policy-interface",
  "spherenet-program-whitelist-client",
  "spherenet-program-whitelist-interface",
  "spherenet-validator-whitelist-client",
@@ -5205,6 +5207,32 @@ dependencies = [
  "sha2 0.10.9",
  "solana-client",
  "solana-sdk",
+]
+
+[[package]]
+name = "spherenet-monetary-policy-client"
+version = "0.1.0"
+dependencies = [
+ "borsh 1.5.7",
+ "num-derive",
+ "num-traits",
+ "solana-program",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "spherenet-monetary-policy-interface"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "pinocchio",
+ "pinocchio-log",
+ "pinocchio-pubkey",
+ "shank",
+ "solana-instruction",
+ "solana-program",
+ "solana-pubkey",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
