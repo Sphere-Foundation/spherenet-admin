@@ -5212,6 +5212,8 @@ dependencies = [
 [[package]]
 name = "spherenet-monetary-policy-client"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a57aed05eb4aaa749fad458273f091b71d9e347751e4f9ef0d8a7b45b22944c8"
 dependencies = [
  "borsh 1.5.7",
  "num-derive",
@@ -5223,6 +5225,8 @@ dependencies = [
 [[package]]
 name = "spherenet-monetary-policy-interface"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8e3e2b4a777788840a6b6524fcc01fa4e6a4f4a60ab9786cf35d873fd756a00"
 dependencies = [
  "bytemuck",
  "pinocchio",
