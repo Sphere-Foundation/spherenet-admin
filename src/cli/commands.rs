@@ -351,6 +351,10 @@ pub enum MultisigAction {
         /// Path to INITIALIZER keypair (hardcoded in program)
         #[arg(long)]
         initializer: String,
+
+        /// Payer keypair path
+        #[arg(long)]
+        payer: String,
     },
     /// Create a new multisig vault
     Create {

@@ -4687,7 +4687,7 @@ dependencies = [
 
 [[package]]
 name = "spherenet-admin"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "borsh",
  "clap",
@@ -4711,9 +4711,9 @@ dependencies = [
 
 [[package]]
 name = "spherenet-authority"
-version = "0.2.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c09aed636de72247bdf8f788fb6bb9a1698a04b0efb037de037a10764741fa8"
+checksum = "50c4124614e959663cac1d172d27913ea7a68f764a57fcd90acc5614faaff569"
 dependencies = [
  "borsh",
  "eyre",

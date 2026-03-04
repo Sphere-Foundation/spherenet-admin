@@ -1,6 +1,6 @@
 [package]
 name = "spherenet-admin"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 repository = "https://github.com/Sphere-Foundation/spherenet-admin"
 license-file = "LICENSE"
@@ -19,7 +19,7 @@ solana-commitment-config = { version = "3.0.0" }
 solana-sdk = { version = "3.0.0" }
 solana-sdk-ids = { version = "3.0.0" }
 solana-system-interface = { version = "=2.0", features = ["bincode"] }
-spherenet-authority = { version = "=0.2.0" }
+spherenet-authority = { version = "=0.2.1" }
 spherenet-monetary-policy-client = { version = "=0.2.1" }
 spherenet-monetary-policy-interface = { version = "=0.2.1", features = [ "solana-p" ] }
 spherenet-program-whitelist-client = { version = "=0.2.1" }

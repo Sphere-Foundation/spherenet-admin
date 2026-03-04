@@ -262,11 +262,13 @@ pub fn run() -> eyre::Result<()> {
                 treasury,
                 creation_fee,
                 initializer,
+                payer,
             } => squads::commands::program_config_init(
                 authority,
                 treasury,
                 creation_fee,
                 initializer,
+                payer,
                 &cli.url,
             )?,
             MultisigAction::Create {
