@@ -1,16 +1,17 @@
 use super::write_buffer;
 use crate::pw::whitelist::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
     pubkey::Pubkey,
     signature::{read_keypair_file, Keypair, Signer},
     transaction::Transaction,
 };
+use solana_sdk_ids::bpf_loader_upgradeable;
 use spherenet_authority::Authority;
 #[allow(deprecated)]
 use spherenet_whitelisted_loader_v3_interface::{
-    instruction::{create_buffer, upgrade},
+    instruction::{create_buffer, set_buffer_authority, upgrade},
     state::UpgradeableLoaderState,
 };
 
@@ -77,7 +78,7 @@ pub fn upgrade_program(
     println!("\n🔍 Checking program capacity...");
     let (programdata_address, _) = Pubkey::find_program_address(
         &[program_id.as_ref()],
-        &solana_sdk::bpf_loader_upgradeable::id(),
+        &bpf_loader_upgradeable::id(),
     );
 
     let programdata_account = rpc_client.get_account(&programdata_address).map_err(|e| {
@@ -190,7 +191,7 @@ pub fn upgrade_program(
 
     // Transfer buffer authority to upgrade authority (required for multisig upgrades)
     println!("\n🔐 Transferring buffer authority...");
-    let set_buffer_authority_ix = solana_sdk::bpf_loader_upgradeable::set_buffer_authority(
+    let set_buffer_authority_ix = set_buffer_authority(
         &buffer_pubkey,
         &payer.pubkey(),        // Current buffer authority (payer)
         &instruction_authority, // New buffer authority (upgrade authority/vault PDA)

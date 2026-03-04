@@ -1,13 +1,13 @@
 use solana_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    commitment_config::CommitmentConfig, native_token::LAMPORTS_PER_SOL, pubkey::Pubkey,
+    native_token::LAMPORTS_PER_SOL, pubkey::Pubkey,
     signature::Signer,
 };
 use spherenet_authority::{squads, Authority, ExecutionResult};
 use std::str::FromStr;
 
-#[allow(deprecated)]
-use solana_sdk::system_instruction;
+use solana_system_interface::instruction as system_instruction;
 
 /// Transfer SOL from one account to another
 pub fn transfer(

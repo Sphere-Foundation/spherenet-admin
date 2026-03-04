@@ -1,5 +1,6 @@
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::{commitment_config::CommitmentConfig, pubkey::Pubkey};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
 use spherenet_authority::Authority;
 use std::str::FromStr;
 
