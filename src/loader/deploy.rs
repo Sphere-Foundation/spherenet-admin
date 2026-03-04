@@ -1,8 +1,8 @@
 use super::write_buffer;
 use crate::pw::whitelist::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    commitment_config::CommitmentConfig,
     signature::{read_keypair_file, Keypair, Signer},
     transaction::Transaction,
 };
