@@ -5,7 +5,7 @@
 use clap::{Parser, Subcommand};
 
 /// Default RPC_URL
-pub const RPC_URL: &str = "https://api.testnet.sphere.net";
+pub const RPC_URL: &str = "https://api.test.sphere.net";
 
 #[derive(Parser)]
 #[command(name = "spherenet-admin")]
