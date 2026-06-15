@@ -50,6 +50,11 @@ pub fn show(rpc_url: &str) -> eyre::Result<()> {
         monetary_policy.lamports_per_signature() as f64 / 1_000_000_000.0
     );
     println!("  Burn Percent:      {}%", monetary_policy.burn_percent());
+    println!(
+        "  VAT per Epoch:     {} lamports ({:.6} SOL)",
+        monetary_policy.vat_lamports_per_epoch(),
+        monetary_policy.vat_lamports_per_epoch() as f64 / 1_000_000_000.0
+    );
     println!();
 
     Ok(())
