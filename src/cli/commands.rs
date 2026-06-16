@@ -516,4 +516,18 @@ pub enum MonetaryPolicyAction {
         #[arg(long, requires = "multisig")]
         multisig_authority: Option<String>,
     },
+    /// Update VAT lamports per epoch (Vote Admission Ticket price for Alpenglow voting)
+    UpdateVatLamportsPerEpoch {
+        /// New VAT lamports per epoch (0-100,000,000,000 lamports)
+        new_vat_lamports: u64,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: vault address (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
 }

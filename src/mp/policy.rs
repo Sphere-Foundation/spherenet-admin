@@ -2,7 +2,10 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use spherenet_authority::Authority;
 use spherenet_monetary_policy_client::instructions::{
-    UpdateBurnPercentBuilder, UpdateInflationRateBipsBuilder, UpdateLamportsPerSignatureBuilder,
+    UpdateBurnPercentBuilder,
+    UpdateInflationRateBipsBuilder,
+    UpdateLamportsPerSignatureBuilder,
+    UpdateVatLamportsPerEpochBuilder,
 };
 use spherenet_monetary_policy_interface::{
     account_solana, program_solana,
@@ -158,6 +161,37 @@ pub fn update_burn_percent(
 
     // Execute instruction through authority (single-sig or multi-sig)
     let description = format!("Update burn percent to {}%", new_percent);
+    authority.execute_instruction(&rpc_client, instruction, &description)?;
+
+    Ok(())
+}
+
+pub fn update_vat_lamports_per_epoch(
+    rpc_url: &str,
+    new_vat_lamports: u64,
+    authority: Authority,
+) -> eyre::Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
+
+    // Get the monetary policy account
+    let account_pubkey = Pubkey::from(account_solana::id().to_bytes());
+
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
+    println!("\nUpdating VAT lamports per epoch:");
+    println!("  Monetary Policy Account: {}", account_pubkey);
+    println!("  Authority:               {}", instruction_authority);
+    println!("  New VAT cost:            {} lamports", new_vat_lamports);
+
+    // Build the instruction
+    let instruction = UpdateVatLamportsPerEpochBuilder::new()
+        .monetary_policy_account(account_pubkey)
+        .monetary_policy_authority(instruction_authority)
+        .new_vat_lamports(new_vat_lamports)
+        .instruction();
+
+    // Execute instruction through authority (single-sig or multi-sig)
+    let description = format!("Update VAT lamports per epoch to {}", new_vat_lamports);
     authority.execute_instruction(&rpc_client, instruction, &description)?;
 
     Ok(())
