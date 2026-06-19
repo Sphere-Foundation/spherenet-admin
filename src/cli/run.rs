@@ -155,6 +155,16 @@ pub fn run() -> eyre::Result<()> {
                     cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
                 mp::policy::update_burn_percent(&cli.url, new_percent, auth)?
             }
+            MonetaryPolicyAction::UpdateVatLamportsPerEpoch {
+                new_vat_lamports,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth =
+                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
+                mp::policy::update_vat_lamports_per_epoch(&cli.url, new_vat_lamports, auth)?
+            }
         },
         Commands::ProgramWhitelist { action } => match action {
             ProgramWhitelistAction::Show => pw::whitelist::show(&cli.url)?,
