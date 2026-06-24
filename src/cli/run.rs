@@ -362,6 +362,22 @@ pub fn run() -> eyre::Result<()> {
                 stake_authority,
                 payer,
             } => stake::deactivate::deactivate(&cli.url, stake_account, stake_authority, payer)?,
+            StakeAction::Withdraw {
+                stake_account,
+                destination,
+                amount,
+                all,
+                withdraw_authority,
+                payer,
+            } => stake::withdraw::withdraw(
+                &cli.url,
+                stake_account,
+                destination,
+                amount,
+                all,
+                withdraw_authority,
+                payer,
+            )?,
         },
         Commands::Airdrop { pubkey, amount } => utils::airdrop::airdrop(&cli.url, pubkey, amount)?,
         Commands::Transfer {

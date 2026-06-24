@@ -4703,7 +4703,7 @@ dependencies = [
 
 [[package]]
 name = "spherenet-admin"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
  "bincode",
  "borsh",

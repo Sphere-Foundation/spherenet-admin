@@ -630,4 +630,25 @@ pub enum StakeAction {
         #[arg(long, alias = "fee-payer")]
         payer: String,
     },
+    /// Withdraw lamports from a stake account (use --all to drain & close)
+    Withdraw {
+        /// Stake account pubkey
+        #[arg(long)]
+        stake_account: String,
+        /// Destination pubkey that receives the withdrawn SPHR
+        #[arg(long)]
+        destination: String,
+        /// Amount of SPHR to withdraw (mutually exclusive with --all)
+        #[arg(long, conflicts_with = "all")]
+        amount: Option<f64>,
+        /// Withdraw the entire balance and close the account
+        #[arg(long)]
+        all: bool,
+        /// Path to the withdraw authority keypair; signs the withdrawal
+        #[arg(long)]
+        withdraw_authority: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
 }
