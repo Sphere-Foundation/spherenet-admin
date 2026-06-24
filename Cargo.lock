@@ -4700,6 +4700,7 @@ dependencies = [
  "solana-sdk",
  "solana-sdk-ids",
  "solana-system-interface",
+ "solana-vote-interface",
  "spherenet-authority",
  "spherenet-monetary-policy-client",
  "spherenet-monetary-policy-interface",

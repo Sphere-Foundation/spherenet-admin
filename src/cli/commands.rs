@@ -49,6 +49,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: MultisigAction,
     },
+    /// Vote account commands
+    Vote {
+        #[command(subcommand)]
+        action: VoteAction,
+    },
     /// Request an airdrop for an account
     Airdrop {
         /// Account pubkey to receive the airdrop
@@ -529,5 +534,38 @@ pub enum MonetaryPolicyAction {
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig")]
         multisig_authority: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum VoteAction {
+    /// Show a vote account's identity, authorities, commission, and voting state
+    Show {
+        /// Vote account pubkey
+        vote_account: String,
+    },
+    /// Create and initialize a vote account
+    Create {
+        /// Path to the new vote account keypair (signs its own creation)
+        #[arg(long)]
+        vote_account: String,
+        /// Path to the validator identity (node) keypair (signs initialization)
+        #[arg(long)]
+        identity: String,
+        /// Pubkey authorized to submit votes
+        #[arg(long)]
+        authorized_voter: String,
+        /// Pubkey authorized to withdraw from the vote account
+        #[arg(long)]
+        authorized_withdrawer: String,
+        /// Inflation-rewards commission percentage (0-100)
+        #[arg(long, default_value = "100")]
+        commission: u8,
+        /// Path to keypair that funds the vote account's rent-exempt reserve
+        #[arg(long)]
+        from: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
     },
 }

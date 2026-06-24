@@ -2,7 +2,7 @@
 //!
 //! Routes parsed CLI commands to appropriate domain modules.
 
-use crate::{cli, loader, mp, pw, utils, vw};
+use crate::{cli, loader, mp, pw, utils, vote, vw};
 use clap::Parser;
 
 use cli::commands::*;
@@ -305,6 +305,27 @@ pub fn run() -> eyre::Result<()> {
                 transaction_index,
                 member,
             } => squads::commands::execute_proposal(multisig, transaction_index, member, &cli.url)?,
+        },
+        Commands::Vote { action } => match action {
+            VoteAction::Show { vote_account } => vote::show::show(&cli.url, vote_account)?,
+            VoteAction::Create {
+                vote_account,
+                identity,
+                authorized_voter,
+                authorized_withdrawer,
+                commission,
+                from,
+                payer,
+            } => vote::create::create(
+                &cli.url,
+                vote_account,
+                identity,
+                authorized_voter,
+                authorized_withdrawer,
+                commission,
+                from,
+                payer,
+            )?,
         },
         Commands::Airdrop { pubkey, amount } => utils::airdrop::airdrop(&cli.url, pubkey, amount)?,
         Commands::Transfer {
