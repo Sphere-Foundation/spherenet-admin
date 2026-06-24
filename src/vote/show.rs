@@ -6,6 +6,7 @@
 //! authorities set by `vote create`.
 
 use solana_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
 use solana_vote_interface::state::VoteStateVersions;
 use std::str::FromStr;
@@ -27,7 +28,10 @@ struct VoteView {
 }
 
 pub fn show(rpc_url: &str, vote_account: String) -> eyre::Result<()> {
-    let rpc_client = RpcClient::new(rpc_url);
+    // `confirmed` so freshly created accounts are visible immediately (the
+    // create commands confirm at this level); finalized would lag ~13s.
+    let rpc_client =
+        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
     let vote_pubkey = Pubkey::from_str(&vote_account)
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey '{}': {}", vote_account, e))?;

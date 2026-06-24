@@ -54,6 +54,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: VoteAction,
     },
+    /// Stake account commands
+    Stake {
+        #[command(subcommand)]
+        action: StakeAction,
+    },
     /// Request an airdrop for an account
     Airdrop {
         /// Account pubkey to receive the airdrop
@@ -564,6 +569,63 @@ pub enum VoteAction {
         /// Path to keypair that funds the vote account's rent-exempt reserve
         #[arg(long)]
         from: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum StakeAction {
+    /// Show a stake account's authorities, lockup, and delegation state
+    Show {
+        /// Stake account pubkey
+        stake_account: String,
+    },
+    /// Create and initialize a stake account (does not delegate)
+    Create {
+        /// Path to the new stake account keypair (signs its own creation)
+        #[arg(long)]
+        stake_account: String,
+        /// Amount of SPHR to deposit (total; delegatable = amount − rent reserve)
+        #[arg(long)]
+        amount: f64,
+        /// Pubkey set as the stake authority (staker)
+        #[arg(long)]
+        stake_authority: String,
+        /// Pubkey set as the withdraw authority
+        #[arg(long)]
+        withdraw_authority: String,
+        /// Path to keypair that funds the deposited SPHR
+        #[arg(long)]
+        from: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
+    /// Delegate an existing stake account to a vote account
+    Delegate {
+        /// Stake account pubkey (must be initialized, not already delegated)
+        #[arg(long)]
+        stake_account: String,
+        /// Vote account pubkey to delegate to (must be whitelisted)
+        #[arg(long)]
+        vote_account: String,
+        /// Path to the stake authority (staker) keypair; signs the delegation
+        #[arg(long)]
+        stake_authority: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
+    /// Deactivate a delegated stake account (begins cooldown)
+    Deactivate {
+        /// Stake account pubkey (must be delegated)
+        #[arg(long)]
+        stake_account: String,
+        /// Path to the stake authority (staker) keypair; signs the deactivation
+        #[arg(long)]
+        stake_authority: String,
         /// Path to keypair that pays transaction fees
         #[arg(long, alias = "fee-payer")]
         payer: String,

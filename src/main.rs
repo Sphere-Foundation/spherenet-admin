@@ -2,6 +2,7 @@ mod cli;
 mod loader;
 mod mp;
 mod pw;
+mod stake;
 mod utils;
 mod vote;
 mod vw;

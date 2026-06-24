@@ -11,7 +11,7 @@ use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
     native_token::LAMPORTS_PER_SOL,
     pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair, Signer},
+    signature::{read_keypair_file, Signer},
     transaction::Transaction,
 };
 use solana_vote_interface::{
@@ -132,7 +132,7 @@ pub fn create(
 
     // Sign with every required signer, deduplicated by pubkey. The fee payer
     // must come first so it is the transaction's payer.
-    let signers = dedupe_signers(&[&payer, &from, &vote_account, &identity]);
+    let signers = crate::utils::signers::dedupe(&[&payer, &from, &vote_account, &identity]);
 
     let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
     transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
@@ -143,21 +143,4 @@ pub fn create(
     println!("   Signature:    {}", signature);
 
     Ok(())
-}
-
-/// Deduplicate signers by pubkey, preserving order (first occurrence wins).
-///
-/// A transaction with the same key listed twice as a signer is rejected, so
-/// when roles collapse onto one keypair we must pass it only once.
-fn dedupe_signers<'a>(signers: &[&'a Keypair]) -> Vec<&'a Keypair> {
-    let mut seen: Vec<Pubkey> = Vec::with_capacity(signers.len());
-    let mut out: Vec<&Keypair> = Vec::with_capacity(signers.len());
-    for kp in signers {
-        let pk = kp.pubkey();
-        if !seen.contains(&pk) {
-            seen.push(pk);
-            out.push(kp);
-        }
-    }
-    out
 }
