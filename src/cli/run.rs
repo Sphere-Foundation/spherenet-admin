@@ -2,7 +2,7 @@
 //!
 //! Routes parsed CLI commands to appropriate domain modules.
 
-use crate::{cli, loader, mp, pw, utils, vw};
+use crate::{cli, loader, mp, pw, stake, utils, vote, vw};
 use clap::Parser;
 
 use cli::commands::*;
@@ -306,6 +306,81 @@ pub fn run() -> eyre::Result<()> {
                 member,
             } => squads::commands::execute_proposal(multisig, transaction_index, member, &cli.url)?,
         },
+        Commands::Vote { action } => match action {
+            VoteAction::Show { vote_account } => vote::show::show(&cli.url, vote_account)?,
+            VoteAction::Create {
+                vote_account,
+                identity,
+                authorized_voter,
+                authorized_withdrawer,
+                commission,
+                from,
+                payer,
+            } => vote::create::create(
+                &cli.url,
+                vote_account,
+                identity,
+                authorized_voter,
+                authorized_withdrawer,
+                commission,
+                from,
+                payer,
+            )?,
+        },
+        Commands::Stake { action } => match action {
+            StakeAction::Show { stake_account } => stake::show::show(&cli.url, stake_account)?,
+            StakeAction::Create {
+                stake_account,
+                amount,
+                stake_authority,
+                withdraw_authority,
+                from,
+                payer,
+            } => stake::create::create(
+                &cli.url,
+                stake_account,
+                amount,
+                stake_authority,
+                withdraw_authority,
+                from,
+                payer,
+            )?,
+            StakeAction::Delegate {
+                stake_account,
+                vote_account,
+                stake_authority,
+                payer,
+            } => stake::delegate::delegate(
+                &cli.url,
+                stake_account,
+                vote_account,
+                stake_authority,
+                payer,
+            )?,
+            StakeAction::Deactivate {
+                stake_account,
+                stake_authority,
+                payer,
+            } => stake::deactivate::deactivate(&cli.url, stake_account, stake_authority, payer)?,
+            StakeAction::Withdraw {
+                stake_account,
+                destination,
+                amount,
+                all,
+                withdraw_authority,
+                payer,
+            } => stake::withdraw::withdraw(
+                &cli.url,
+                stake_account,
+                destination,
+                amount,
+                all,
+                withdraw_authority,
+                payer,
+            )?,
+        },
+        Commands::Balance { pubkey } => utils::balance::balance(&cli.url, pubkey)?,
+        Commands::Epoch => utils::epoch::epoch(&cli.url)?,
         Commands::Airdrop { pubkey, amount } => utils::airdrop::airdrop(&cli.url, pubkey, amount)?,
         Commands::Transfer {
             destination,

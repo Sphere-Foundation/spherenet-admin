@@ -11,6 +11,10 @@ SphereNet administration tool for governance and network management:
 - **Program Whitelist** - Control which authorities can deploy/upgrade programs
 - **Monetary Policy** - Manage inflation rate, transaction fees, and fee burn percentage
 
+**Validator Lifecycle:**
+- **Vote Accounts** - Create and inspect vote accounts
+- **Stake Accounts** - Create, delegate, deactivate, and withdraw stake
+
 **Program Operations:**
 - Deploy, upgrade, and extend programs with whitelist enforcement
 - Full lifecycle management with single-sig or multisig governance
@@ -118,6 +122,80 @@ spherenet-admin mp update-inflation-rate-bips 500 \
 
 ---
 
+### Vote Accounts (`vote`)
+
+Create and inspect validator vote accounts. Keypair-file based (not the multisig
+authority abstraction) — the new account and the validator identity must sign.
+
+**Example: Create Vote Account**
+
+```bash
+spherenet-admin vote create \
+  --vote-account ./vote-account.json \
+  --identity ./identity.json \
+  --authorized-voter <PUBKEY> \
+  --authorized-withdrawer <PUBKEY> \
+  --commission 100 \
+  --from ./funder.json \
+  --payer ./payer.json
+```
+
+Roles are independent: `--authorized-withdrawer` should differ from `--identity`
+(the identity is a hot key); a warning is printed if they match. Funds the
+account with exactly the rent-exempt reserve. Uses the v1 `VoteInit` path
+(no BLS; SIMD-0464/0387 inactive on testnet).
+
+**Other Commands:**
+- `vote show <VOTE_ACCOUNT>` - Show identity, authorities, commission, and voting state
+
+---
+
+### Stake Accounts (`stake`)
+
+Create, delegate, and manage stake accounts — the validator activation path.
+Keypair-file based; the relevant authority signs each operation.
+
+**Example: Create + Delegate**
+
+```bash
+# 1. Create and fund a stake account (no vote account involved yet)
+spherenet-admin stake create \
+  --stake-account ./stake-account.json \
+  --amount 10000 \
+  --stake-authority <STAKER_PUBKEY> \
+  --withdraw-authority <WITHDRAWER_PUBKEY> \
+  --from ./funder.json \
+  --payer ./payer.json
+
+# 2. Delegate to a whitelisted vote account (staker signs; whitelist preflighted)
+spherenet-admin stake delegate \
+  --stake-account <STAKE_PUBKEY> \
+  --vote-account <VOTE_PUBKEY> \
+  --stake-authority ./staker.json \
+  --payer ./payer.json
+```
+
+`--amount` is the total deposited (delegatable = amount − rent reserve). The
+stake authority (staker) is a *pubkey* at create and a *keypair* (signer) at
+delegate. Delegation is gated on the validator whitelist and preflighted with a
+clear "run `vw add`" error if the vote account isn't whitelisted.
+
+**Teardown:**
+
+```bash
+# Stop delegating (begins cooldown); staker signs
+spherenet-admin stake deactivate --stake-account <PK> --stake-authority ./staker.json --payer ./payer.json
+
+# Withdraw inactive lamports; withdraw authority signs (--all drains & closes)
+spherenet-admin stake withdraw --stake-account <PK> --destination <PK> --all \
+  --withdraw-authority ./withdrawer.json --payer ./payer.json
+```
+
+**Other Commands:**
+- `stake show <STAKE_ACCOUNT>` - Show authorities, lockup, and delegation state
+
+---
+
 ### Program Deployment (`program`)
 
 Deploy and upgrade programs with whitelist enforcement. Upgrade authority must be whitelisted before deployment.
@@ -220,15 +298,19 @@ The CLI uses:
 - `spherenet-validator-whitelist-client` - Generated instruction builders for validator whitelist operations
 - `spherenet-program-whitelist-client` - Generated instruction builders for program whitelist operations
 - `spherenet-monetary-policy-client` - Generated instruction builders for monetary policy operations
+- `spherenet-stake-interface` - Stake program instructions (delegation carries the validator-whitelist entry PDA)
+- `solana-vote-interface` - Vote program instructions and state (v1 `VoteInit` path)
 - `spherenet-authority` - Authority abstraction and Squads v4 multisig integration
 
-All instruction builders are generated from their respective interface definitions using Codama/Kinobi.
+All whitelist/monetary-policy instruction builders are generated from their respective interface definitions using Codama/Kinobi. Vote and stake commands build instructions directly with keypair-file signing (the new account and authority keys must sign, which doesn't fit the multisig authority abstraction).
 
 ## Network Information
 
 **Testnet:**
-- RPC: `https://api.testnet.sphere.net`
-- Validator Whitelist Program: `wLpnFMEvuP6hPE84AGrsmNr2Bo2uk69MC4kKWtrWHBN`
-- Program Whitelist Program: `PwLzPtX2e5PwNFQTrEY5DkkmRQ1t1x5vWcGzTnMgibR`
-- Monetary Policy Program: `MpM3Yve3AkLvrVsZXvD3hmUmqKj669bv75DPW67PAdr`
-- Squads v4 Program: `SQDS4ep65T869zMMBKyuUq6aD6EgTu8psMjkvj52pCf`
+- RPC: `https://api.test.sphere.net`
+- Validator Whitelist Program: `VwL1111111111111111111111111111111111111111`
+- Program Whitelist Program: `PwL1111111111111111111111111111111111111111`
+- Monetary Policy Program: `MpM1111111111111111111111111111111111111111`
+- Vote Program: `Vote111111111111111111111111111111111111111`
+- Stake Program: `Stake11111111111111111111111111111111111111`
+- Squads v4 Program: `SqdsYSe3QC9aGdU5p8y7Y3HtT5VrVLEtYCNjN37yBTh`

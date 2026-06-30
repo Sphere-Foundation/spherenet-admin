@@ -1,6 +1,6 @@
 [package]
 name = "spherenet-admin"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 repository = "https://github.com/Sphere-Foundation/spherenet-admin"
 license-file = "LICENSE"
@@ -9,6 +9,7 @@ description = "Command-line tool for SphereNet governance and network administra
 publish = true
 
 [dependencies]
+bincode = { version = "1.3.3" }
 borsh = { version = "1.5" }
 clap = { version = "4.5", features = ["derive"] }
 eyre = { version = "0.6" }
@@ -19,11 +20,13 @@ solana-commitment-config = { version = "3.0.0" }
 solana-sdk = { version = "3.0.0" }
 solana-sdk-ids = { version = "3.0.0" }
 solana-system-interface = { version = "=2.0", features = ["bincode"] }
+solana-vote-interface = { version = "4.0.4", features = ["bincode"] }
 spherenet-authority = { version = "=0.2.1" }
 spherenet-monetary-policy-client = { version = "=0.3.1" }
 spherenet-monetary-policy-interface = { version = "=0.3.1", features = [ "solana-p" ] }
 spherenet-program-whitelist-client = { version = "=0.2.2" }
 spherenet-program-whitelist-interface = { version = "=0.2.2", features = [ "solana-p" ] }
+spherenet-stake-interface = { version = "=0.3.2", features = ["bincode"] }
 spherenet-validator-whitelist-client = { version = "=0.3.1" }
 spherenet-validator-whitelist-interface = { version = "=0.3.1", features = [ "solana-p" ] }
 spherenet-whitelisted-loader-v3-interface = { version = "=0.2.1", features = ["bincode"] }

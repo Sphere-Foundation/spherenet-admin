@@ -3200,7 +3200,7 @@ dependencies = [
  "solana-pubkey 3.0.0",
  "solana-signature",
  "solana-signer",
- "solana-system-interface",
+ "solana-system-interface 2.0.0",
  "solana-transaction",
  "solana-transaction-error",
 ]
@@ -3251,7 +3251,7 @@ dependencies = [
  "solana-pubkey 3.0.0",
  "solana-sdk-ids",
  "solana-short-vec",
- "solana-system-interface",
+ "solana-system-interface 2.0.0",
 ]
 
 [[package]]
@@ -3409,7 +3409,7 @@ dependencies = [
  "solana-nonce",
  "solana-pubkey 3.0.0",
  "solana-sdk-ids",
- "solana-system-interface",
+ "solana-system-interface 2.0.0",
  "thiserror 2.0.18",
 ]
 
@@ -4322,7 +4322,7 @@ dependencies = [
  "solana-instruction",
  "solana-program-error",
  "solana-pubkey 3.0.0",
- "solana-system-interface",
+ "solana-system-interface 2.0.0",
  "solana-sysvar",
  "solana-sysvar-id",
 ]
@@ -4403,6 +4403,21 @@ dependencies = [
  "solana-msg",
  "solana-program-error",
  "solana-pubkey 3.0.0",
+]
+
+[[package]]
+name = "solana-system-interface"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a95a6f2e23ed861d6444ad4a6d6896c418d7d101b960787e65a8e33157cee81b"
+dependencies = [
+ "num-traits",
+ "serde",
+ "serde_derive",
+ "solana-address 2.2.0",
+ "solana-instruction",
+ "solana-msg",
+ "solana-program-error",
 ]
 
 [[package]]
@@ -4646,7 +4661,7 @@ dependencies = [
  "solana-serde-varint",
  "solana-serialize-utils",
  "solana-short-vec",
- "solana-system-interface",
+ "solana-system-interface 2.0.0",
 ]
 
 [[package]]
@@ -4688,8 +4703,9 @@ dependencies = [
 
 [[package]]
 name = "spherenet-admin"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
+ "bincode",
  "borsh",
  "clap",
  "eyre",
@@ -4699,12 +4715,14 @@ dependencies = [
  "solana-commitment-config",
  "solana-sdk",
  "solana-sdk-ids",
- "solana-system-interface",
+ "solana-system-interface 2.0.0",
+ "solana-vote-interface",
  "spherenet-authority",
  "spherenet-monetary-policy-client",
  "spherenet-monetary-policy-interface",
  "spherenet-program-whitelist-client",
  "spherenet-program-whitelist-interface",
+ "spherenet-stake-interface",
  "spherenet-validator-whitelist-client",
  "spherenet-validator-whitelist-interface",
  "spherenet-whitelisted-loader-v3-interface",
@@ -4794,6 +4812,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "spherenet-stake-interface"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2516788d2d45b409eb87650db8a0d376f1cbd41471fe4716786796a7614e37b"
+dependencies = [
+ "num-traits",
+ "serde",
+ "serde_derive",
+ "solana-clock",
+ "solana-cpi",
+ "solana-instruction",
+ "solana-program-error",
+ "solana-pubkey 3.0.0",
+ "solana-system-interface 3.1.0",
+ "solana-sysvar",
+ "spherenet-validator-whitelist-interface",
+]
+
+[[package]]
 name = "spherenet-validator-whitelist-client"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4841,7 +4878,7 @@ dependencies = [
  "solana-instruction",
  "solana-pubkey 3.0.0",
  "solana-sdk-ids",
- "solana-system-interface",
+ "solana-system-interface 2.0.0",
 ]
 
 [[package]]

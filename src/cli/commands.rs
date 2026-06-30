@@ -49,6 +49,23 @@ pub enum Commands {
         #[command(subcommand)]
         action: MultisigAction,
     },
+    /// Vote account commands
+    Vote {
+        #[command(subcommand)]
+        action: VoteAction,
+    },
+    /// Stake account commands
+    Stake {
+        #[command(subcommand)]
+        action: StakeAction,
+    },
+    /// Show the native (SPHR) balance of an account
+    Balance {
+        /// Account pubkey
+        pubkey: String,
+    },
+    /// Show the current epoch
+    Epoch,
     /// Request an airdrop for an account
     Airdrop {
         /// Account pubkey to receive the airdrop
@@ -529,5 +546,116 @@ pub enum MonetaryPolicyAction {
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig")]
         multisig_authority: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum VoteAction {
+    /// Show a vote account's identity, authorities, commission, and voting state
+    Show {
+        /// Vote account pubkey
+        vote_account: String,
+    },
+    /// Create and initialize a vote account
+    Create {
+        /// Path to the new vote account keypair (signs its own creation)
+        #[arg(long)]
+        vote_account: String,
+        /// Path to the validator identity (node) keypair (signs initialization)
+        #[arg(long)]
+        identity: String,
+        /// Pubkey authorized to submit votes
+        #[arg(long)]
+        authorized_voter: String,
+        /// Pubkey authorized to withdraw from the vote account
+        #[arg(long)]
+        authorized_withdrawer: String,
+        /// Inflation-rewards commission percentage (0-100)
+        #[arg(long, default_value = "100")]
+        commission: u8,
+        /// Path to keypair that funds the vote account's rent-exempt reserve
+        #[arg(long)]
+        from: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum StakeAction {
+    /// Show a stake account's authorities, lockup, and delegation state
+    Show {
+        /// Stake account pubkey
+        stake_account: String,
+    },
+    /// Create and initialize a stake account (does not delegate)
+    Create {
+        /// Path to the new stake account keypair (signs its own creation)
+        #[arg(long)]
+        stake_account: String,
+        /// Amount of SPHR to deposit (total; delegatable = amount − rent reserve)
+        #[arg(long)]
+        amount: f64,
+        /// Pubkey set as the stake authority (staker)
+        #[arg(long)]
+        stake_authority: String,
+        /// Pubkey set as the withdraw authority
+        #[arg(long)]
+        withdraw_authority: String,
+        /// Path to keypair that funds the deposited SPHR
+        #[arg(long)]
+        from: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
+    /// Delegate an existing stake account to a vote account
+    Delegate {
+        /// Stake account pubkey (must be initialized, not already delegated)
+        #[arg(long)]
+        stake_account: String,
+        /// Vote account pubkey to delegate to (must be whitelisted)
+        #[arg(long)]
+        vote_account: String,
+        /// Path to the stake authority (staker) keypair; signs the delegation
+        #[arg(long)]
+        stake_authority: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
+    /// Deactivate a delegated stake account (begins cooldown)
+    Deactivate {
+        /// Stake account pubkey (must be delegated)
+        #[arg(long)]
+        stake_account: String,
+        /// Path to the stake authority (staker) keypair; signs the deactivation
+        #[arg(long)]
+        stake_authority: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
+    /// Withdraw lamports from a stake account (use --all to drain & close)
+    Withdraw {
+        /// Stake account pubkey
+        #[arg(long)]
+        stake_account: String,
+        /// Destination pubkey that receives the withdrawn SPHR
+        #[arg(long)]
+        destination: String,
+        /// Amount of SPHR to withdraw (mutually exclusive with --all)
+        #[arg(long, conflicts_with = "all")]
+        amount: Option<f64>,
+        /// Withdraw the entire balance and close the account
+        #[arg(long)]
+        all: bool,
+        /// Path to the withdraw authority keypair; signs the withdrawal
+        #[arg(long)]
+        withdraw_authority: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
     },
 }
