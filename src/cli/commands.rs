@@ -59,6 +59,13 @@ pub enum Commands {
         #[command(subcommand)]
         action: StakeAction,
     },
+    /// Show the native (SPHR) balance of an account
+    Balance {
+        /// Account pubkey
+        pubkey: String,
+    },
+    /// Show the current epoch
+    Epoch,
     /// Request an airdrop for an account
     Airdrop {
         /// Account pubkey to receive the airdrop

@@ -379,6 +379,8 @@ pub fn run() -> eyre::Result<()> {
                 payer,
             )?,
         },
+        Commands::Balance { pubkey } => utils::balance::balance(&cli.url, pubkey)?,
+        Commands::Epoch => utils::epoch::epoch(&cli.url)?,
         Commands::Airdrop { pubkey, amount } => utils::airdrop::airdrop(&cli.url, pubkey, amount)?,
         Commands::Transfer {
             destination,
