@@ -5172,7 +5172,6 @@ dependencies = [
  "solana-sdk-ids",
  "solana-system-interface 2.0.0",
  "solana-vote-interface",
- "spherenet-authority",
  "spherenet-monetary-policy-client",
  "spherenet-monetary-policy-interface",
  "spherenet-program-whitelist-client",
@@ -5181,19 +5180,6 @@ dependencies = [
  "spherenet-validator-whitelist-client",
  "spherenet-validator-whitelist-interface",
  "spherenet-whitelisted-loader-v3-interface",
-]
-
-[[package]]
-name = "spherenet-authority"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50c4124614e959663cac1d172d27913ea7a68f764a57fcd90acc5614faaff569"
-dependencies = [
- "borsh",
- "eyre",
- "sha2",
- "solana-client",
- "solana-sdk",
 ]
 
 [[package]]

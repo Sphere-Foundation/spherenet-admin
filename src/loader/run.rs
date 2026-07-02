@@ -9,7 +9,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use solana_sdk_ids::bpf_loader_upgradeable;
-use spherenet_authority::Authority;
+use crate::authority::Authority;
 #[allow(deprecated)]
 use spherenet_whitelisted_loader_v3_interface::{
     instruction::{
@@ -292,7 +292,7 @@ pub fn upgrade_program(
 
         // Build the appropriate extend command based on authority type
         let extend_cmd = match &upgrade_authority {
-            spherenet_authority::Authority::SingleSig { .. } => {
+            crate::authority::Authority::SingleSig { .. } => {
                 format!(
                     "spherenet-admin program extend \\\n  \
                     --program-id {} \\\n  \
@@ -302,7 +302,7 @@ pub fn upgrade_program(
                     program_id, additional_bytes, payer_keypair_path, payer_keypair_path
                 )
             }
-            spherenet_authority::Authority::MultiSig { multisig, .. } => {
+            crate::authority::Authority::MultiSig { multisig, .. } => {
                 format!(
                     "spherenet-admin program extend \\\n  \
                     --program-id {} \\\n  \
@@ -406,7 +406,7 @@ pub fn upgrade_program(
     let result = upgrade_authority.execute_instruction(&rpc_client, upgrade_ix, &description)?;
 
     // Only show "upgraded successfully" for single-sig (immediate execution)
-    if matches!(result, spherenet_authority::ExecutionResult::Executed { .. }) {
+    if matches!(result, crate::authority::ExecutionResult::Executed { .. }) {
         println!("\n✅ Program upgraded successfully!");
         println!("   Program ID: {}", program_id);
         println!("   Upgrade Authority: {}", instruction_authority);
@@ -459,7 +459,7 @@ pub fn extend_program(
     let result = upgrade_authority.execute_instruction(&rpc_client, extend_ix, &description)?;
 
     // Only show "extended successfully" for single-sig (immediate execution)
-    if matches!(result, spherenet_authority::ExecutionResult::Executed { .. }) {
+    if matches!(result, crate::authority::ExecutionResult::Executed { .. }) {
         println!("\n✅ Program data account extended successfully!");
     }
 

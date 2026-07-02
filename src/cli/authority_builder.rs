@@ -2,7 +2,7 @@
 
 use eyre::Result;
 use solana_sdk::{pubkey::Pubkey, signature::read_keypair_file};
-use spherenet_authority::Authority;
+use crate::authority::Authority;
 
 /// Build Authority from CLI arguments
 ///

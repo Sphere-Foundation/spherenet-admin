@@ -7,7 +7,7 @@ use crate::{cli, loader, mp, pw, server, stake, utils, vote, vw};
 use clap::Parser;
 
 use cli::commands::*;
-use spherenet_authority::squads;
+use crate::authority::squads;
 
 pub fn run() -> eyre::Result<()> {
     let cli = Cli::parse();

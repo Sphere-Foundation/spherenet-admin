@@ -8,7 +8,7 @@ use solana_sdk::{
     native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::Keypair, signer::Signer,
 };
 use solana_system_interface::instruction as system_instruction;
-use spherenet_authority::{squads, Authority, ExecutionResult};
+use crate::authority::{squads, Authority, ExecutionResult};
 use std::str::FromStr;
 
 /// Deduplicate signers by pubkey, preserving order (first occurrence wins).
@@ -136,10 +136,10 @@ pub fn transfer(
 
     // Display different info based on authority type
     match &from {
-        spherenet_authority::Authority::SingleSig { keypair } => {
+        crate::authority::Authority::SingleSig { keypair } => {
             println!("  From:        {}", keypair.pubkey());
         }
-        spherenet_authority::Authority::MultiSig { multisig, member } => {
+        crate::authority::Authority::MultiSig { multisig, member } => {
             println!("  Proposer:    {}", member.pubkey());
             println!("  Multisig:    {}", multisig);
 
