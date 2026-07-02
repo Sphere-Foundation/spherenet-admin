@@ -448,17 +448,6 @@ pub enum MultisigAction {
 pub enum MonetaryPolicyAction {
     /// Show monetary policy account details
     Show,
-    /// Create the monetary policy account
-    Create {
-        /// Single-sig: path to authority keypair (who will control the policy)
-        #[arg(long = "authority", alias = "auth")]
-        authority: String,
-        /// Path to payer keypair (who pays for account creation)
-        #[arg(long)]
-        payer: String,
-    },
-    /// Show authority account
-    Auth,
     /// Propose a new authority
     ProposeAuthority {
         new_authority: String,

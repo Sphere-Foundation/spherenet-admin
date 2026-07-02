@@ -132,7 +132,7 @@ pub fn create(
 
     // Sign with every required signer, deduplicated by pubkey. The fee payer
     // must come first so it is the transaction's payer.
-    let signers = crate::utils::signers::dedupe(&[&payer, &from, &vote_account, &identity]);
+    let signers = crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
 
     let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
     transaction.sign(&signers, rpc_client.get_latest_blockhash()?);

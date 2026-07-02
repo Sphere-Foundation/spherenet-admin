@@ -5,32 +5,7 @@ use spherenet_monetary_policy_client::instructions::{
     AcceptAuthorityTransferBuilder, CancelAuthorityTransferBuilder,
     InitiateAuthorityTransferBuilder,
 };
-use spherenet_monetary_policy_interface::{
-    account_solana,
-    state::{account::MonetaryPolicyAccount, load},
-};
-
-pub fn auth(rpc_url: &str) -> eyre::Result<()> {
-    let rpc_client = RpcClient::new(rpc_url);
-
-    // Get the monetary policy account
-    let account_pubkey = Pubkey::from(account_solana::id().to_bytes());
-    let account = rpc_client.get_account(&account_pubkey)?;
-    let monetary_policy = load::<MonetaryPolicyAccount>(&account.data)
-        .map_err(|e| eyre::eyre!("Failed to deserialize monetary policy account: {:?}", e))?;
-
-    // Print authority info
-    println!("\nMonetary Policy");
-    println!("  Account:           {}", account_pubkey);
-    println!("  Authority:         {}", Pubkey::from(monetary_policy.authority));
-    println!(
-        "  Pending Authority: {}",
-        Pubkey::from(monetary_policy.pending_authority)
-    );
-    println!();
-
-    Ok(())
-}
+use spherenet_monetary_policy_interface::account_solana;
 
 pub fn propose_authority(
     rpc_url: &str,
