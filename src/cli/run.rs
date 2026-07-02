@@ -31,7 +31,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
 
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
-            ValidatorWhitelistAction::Show => vw::whitelist::show(&cli.url)?,
+            ValidatorWhitelistAction::Show => vw::whitelist::show(&cli.url, mode)?,
             ValidatorWhitelistAction::Add {
                 vote_account,
                 start_epoch,
@@ -106,7 +106,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             }
         },
         Commands::MonetaryPolicy { action } => match action {
-            MonetaryPolicyAction::Show => mp::policy::show(&cli.url)?,
+            MonetaryPolicyAction::Show => mp::policy::show(&cli.url, mode)?,
             MonetaryPolicyAction::Create { authority, payer } => {
                 mp::create::create(&cli.url, authority, payer)?
             }
@@ -185,7 +185,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             }
         },
         Commands::ProgramWhitelist { action } => match action {
-            ProgramWhitelistAction::Show => pw::whitelist::show(&cli.url)?,
+            ProgramWhitelistAction::Show => pw::whitelist::show(&cli.url, mode)?,
             ProgramWhitelistAction::Add {
                 program_authority,
                 authority,

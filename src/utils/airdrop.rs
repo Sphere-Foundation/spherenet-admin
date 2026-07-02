@@ -1,6 +1,6 @@
 //! Request an airdrop for an account (testnet).
 
-use crate::cli::output::{emit, progress, OutputMode, Render};
+use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
@@ -16,10 +16,15 @@ struct AirdropResult {
 
 impl Render for AirdropResult {
     fn to_text(&self) -> String {
-        format!(
-            "✅ Airdrop successful!\n   Account:     {}\n   Amount:      {} SPHR\n   New balance: {} SPHR\n   Signature:   {}",
-            self.pubkey, self.amount_sphr, self.new_balance_sphr, self.signature
-        )
+        let mut out = String::from("✅ Airdrop successful!\n");
+        out.push_str(&subfield("Account", &self.pubkey));
+        out.push_str(&subfield("Amount", format!("{} SPHR", self.amount_sphr)));
+        out.push_str(&subfield(
+            "New balance",
+            format!("{} SPHR", self.new_balance_sphr),
+        ));
+        out.push_str(&subfield("Signature", &self.signature));
+        out
     }
 }
 

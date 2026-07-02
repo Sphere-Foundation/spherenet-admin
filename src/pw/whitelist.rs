@@ -1,4 +1,6 @@
+use crate::cli::output::{boxed_header, emit, field, newline, subfield, OutputMode, Render};
 use solana_client::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
 use spherenet_authority::Authority;
 use spherenet_program_whitelist_client::instructions::{AddEntryBuilder, RemoveEntryBuilder};
@@ -10,62 +12,69 @@ use std::sync::LazyLock;
 
 pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(Pubkey::default);
 
-pub fn show(rpc_url: &str) -> eyre::Result<()> {
-    let rpc_client = RpcClient::new(rpc_url);
+#[derive(serde::Serialize)]
+struct ProgramWhitelistView {
+    program_id: String,
+    account: String,
+    authority: String,
+    pending_authority: String,
+    deployers: Vec<String>,
+}
 
-    // Get the program whitelist account
+impl Render for ProgramWhitelistView {
+    fn to_text(&self) -> String {
+        let mut out = boxed_header("Program Whitelist Account");
+        out.push_str(newline());
+        out.push_str(&field("Program ID", &self.program_id));
+        out.push_str(&field("Whitelist Account", &self.account));
+        out.push_str(newline());
+        out.push_str(&field("Authority", &self.authority));
+        out.push_str(&field("Pending Authority", &self.pending_authority));
+        out.push_str(newline());
+        out.push_str(&format!(
+            "Whitelisted Deployer Authorities ({}):",
+            self.deployers.len()
+        ));
+        out.push_str(newline());
+        if self.deployers.is_empty() {
+            out.push_str("  (none)");
+        } else {
+            for d in &self.deployers {
+                out.push_str(&subfield("Deployer Authority", d));
+            }
+        }
+        out
+    }
+}
+
+pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+    let rpc_client =
+        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
+
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let account = rpc_client.get_account(&whitelist_pubkey)?;
     let whitelist = load::<ProgramWhitelistAccount>(&account.data)
         .map_err(|e| eyre::eyre!("Failed to deserialize program whitelist account: {:?}", e))?;
 
-    // Print authority info
-    println!("\n╔═══════════════════════════════════════════════════════════════╗");
-    println!("║               Program Whitelist Account                       ║");
-    println!("╚═══════════════════════════════════════════════════════════════╝");
-    println!();
-    println!(
-        "Program ID:          {}",
-        Pubkey::from(program_solana::id().to_bytes())
-    );
-    println!("Whitelist Account:   {}", whitelist_pubkey);
-    println!();
-    println!("Authority:           {}", Pubkey::from(whitelist.authority));
-    println!(
-        "Pending Authority:   {}",
-        Pubkey::from(whitelist.pending_authority)
-    );
-    println!();
-
-    // Get all program whitelist entries
     let program_id = Pubkey::from(program_solana::id().to_bytes());
-    let accounts = rpc_client.get_program_accounts(&program_id)?;
-
-    // Collect deployer entries
-    let mut entries = Vec::new();
-    for (pubkey, account) in accounts {
-        // Skip the main whitelist account itself
+    let mut deployers = Vec::new();
+    for (pubkey, account) in rpc_client.get_program_accounts(&program_id)? {
         if pubkey == whitelist_pubkey {
-            continue;
+            continue; // skip the main whitelist account itself
         }
-
-        // Try to deserialize as ProgramWhitelistEntry
-        if let Ok(entry_data) = load::<ProgramWhitelistEntry>(&account.data) {
-            entries.push(Pubkey::from(entry_data.entry_address));
+        if let Ok(entry) = load::<ProgramWhitelistEntry>(&account.data) {
+            deployers.push(Pubkey::from(entry.entry_address).to_string());
         }
     }
 
-    println!("Whitelisted Deployer Authorities ({}):", entries.len());
-    if entries.is_empty() {
-        println!("  (none)");
-    } else {
-        for deployer in entries {
-            println!("  Deployer Authority: {}", deployer);
-        }
-    }
-    println!();
-
-    Ok(())
+    let view = ProgramWhitelistView {
+        program_id: program_id.to_string(),
+        account: whitelist_pubkey.to_string(),
+        authority: Pubkey::from(whitelist.authority).to_string(),
+        pending_authority: Pubkey::from(whitelist.pending_authority).to_string(),
+        deployers,
+    };
+    emit(&view, mode)
 }
 
 /// Derives the program whitelist entry PDA for a deployer authority.

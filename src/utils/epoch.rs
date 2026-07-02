@@ -1,6 +1,6 @@
 //! Show the current epoch.
 
-use crate::cli::output::{emit, OutputMode, Render};
+use crate::cli::output::{emit, field, OutputMode, Render};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 
@@ -19,12 +19,13 @@ impl Render for EpochView {
         } else {
             0.0
         };
-        format!(
-            "Epoch:          {}\n\
-             Slot Index:     {} / {} ({:.2}%)\n\
-             Absolute Slot:  {}",
-            self.epoch, self.slot_index, self.slots_in_epoch, pct, self.absolute_slot
-        )
+        let mut out = field("Epoch", self.epoch);
+        out.push_str(&field(
+            "Slot Index",
+            format!("{} / {} ({:.2}%)", self.slot_index, self.slots_in_epoch, pct),
+        ));
+        out.push_str(&field("Absolute Slot", self.absolute_slot));
+        out
     }
 }
 
