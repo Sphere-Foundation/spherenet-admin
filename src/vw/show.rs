@@ -10,7 +10,7 @@ use spherenet_validator_whitelist_interface::{
 };
 
 #[derive(serde::Serialize)]
-struct WhitelistEntryView {
+pub struct WhitelistEntryView {
     vote_account: String,
     start_epoch: u64,
     /// `None` = no end (on-chain sentinel `u64::MAX`, shown as ∞).
@@ -18,7 +18,7 @@ struct WhitelistEntryView {
 }
 
 #[derive(serde::Serialize)]
-struct WhitelistView {
+pub struct WhitelistView {
     program_id: String,
     account: String,
     authority: String,
@@ -61,7 +61,9 @@ impl Render for WhitelistView {
     }
 }
 
-pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+/// Fetch the validator whitelist account and its entries. Shared by the `show`
+/// command and the HTTP API — no printing, just data.
+pub fn fetch(rpc_url: &str) -> eyre::Result<WhitelistView> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
@@ -91,13 +93,16 @@ pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
         }
     }
 
-    let view = WhitelistView {
+    Ok(WhitelistView {
         program_id: Pubkey::from(program_solana::id().to_bytes()).to_string(),
         account: whitelist_pubkey.to_string(),
         authority: Pubkey::from(whitelist.authority).to_string(),
         pending_authority: Pubkey::from(whitelist.pending_authority).to_string(),
         validator_count,
         validators,
-    };
-    emit(&view, mode)
+    })
+}
+
+pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+    emit(&fetch(rpc_url)?, mode)
 }

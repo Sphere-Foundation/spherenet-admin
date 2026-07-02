@@ -80,3 +80,31 @@ pub fn field(label: &str, value: impl std::fmt::Display) -> String {
 pub fn subfield(label: &str, value: impl std::fmt::Display) -> String {
     format!("  {:<19}{}\n", format!("{label}:"), value)
 }
+
+/// Result for a `show` of an account that does not exist.
+///
+/// Serializes as `{ "found": false, "pubkey": "…" }`; renders as
+/// "`<label> <pubkey> not found.`" in text mode.
+#[derive(serde::Serialize)]
+pub struct NotFound {
+    pub found: bool,
+    pub pubkey: String,
+    #[serde(skip)]
+    pub label: String,
+}
+
+impl NotFound {
+    pub fn new(label: impl Into<String>, pubkey: impl Into<String>) -> Self {
+        Self {
+            found: false,
+            pubkey: pubkey.into(),
+            label: label.into(),
+        }
+    }
+}
+
+impl Render for NotFound {
+    fn to_text(&self) -> String {
+        format!("{} {} not found.", self.label, self.pubkey)
+    }
+}

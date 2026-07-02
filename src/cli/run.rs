@@ -3,7 +3,7 @@
 //! Routes parsed CLI commands to appropriate domain modules.
 
 use crate::cli::output::OutputMode;
-use crate::{cli, loader, mp, pw, stake, utils, vote, vw};
+use crate::{cli, loader, mp, pw, server, stake, utils, vote, vw};
 use clap::Parser;
 
 use cli::commands::*;
@@ -321,7 +321,9 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             } => squads::commands::execute_proposal(multisig, transaction_index, member, &cli.url)?,
         },
         Commands::Vote { action } => match action {
-            VoteAction::Show { vote_account } => vote::show::show(&cli.url, vote_account)?,
+            VoteAction::Show { vote_account } => {
+                vote::show::show(&cli.url, vote_account, mode)?
+            }
             VoteAction::Create {
                 vote_account,
                 identity,
@@ -342,7 +344,9 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             )?,
         },
         Commands::Stake { action } => match action {
-            StakeAction::Show { stake_account } => stake::show::show(&cli.url, stake_account)?,
+            StakeAction::Show { stake_account } => {
+                stake::show::show(&cli.url, stake_account, mode)?
+            }
             StakeAction::Create {
                 stake_account,
                 amount,
@@ -395,6 +399,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
         },
         Commands::Balance { pubkey } => utils::show::balance(&cli.url, pubkey, mode)?,
         Commands::Epoch => utils::show::epoch(&cli.url, mode)?,
+        Commands::Server { port } => server::run::serve(&cli.url, port)?,
         Commands::Airdrop { pubkey, amount } => {
             utils::run::airdrop(&cli.url, pubkey, amount, mode)?
         }

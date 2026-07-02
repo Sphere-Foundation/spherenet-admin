@@ -71,6 +71,12 @@ pub enum Commands {
     },
     /// Show the current epoch
     Epoch,
+    /// Serve command output as a read-only JSON HTTP API
+    Server {
+        /// Port to listen on
+        #[arg(long, default_value = "8080")]
+        port: u16,
+    },
     /// Request an airdrop for an account
     Airdrop {
         /// Account pubkey to receive the airdrop

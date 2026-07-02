@@ -10,7 +10,7 @@ use spherenet_program_whitelist_interface::{
 };
 
 #[derive(serde::Serialize)]
-struct ProgramWhitelistView {
+pub struct ProgramWhitelistView {
     program_id: String,
     account: String,
     authority: String,
@@ -44,7 +44,9 @@ impl Render for ProgramWhitelistView {
     }
 }
 
-pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+/// Fetch the program whitelist account and its deployer authorities. Shared by
+/// the `show` command and the HTTP API — no printing, just data.
+pub fn fetch(rpc_url: &str) -> eyre::Result<ProgramWhitelistView> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
@@ -64,12 +66,15 @@ pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
         }
     }
 
-    let view = ProgramWhitelistView {
+    Ok(ProgramWhitelistView {
         program_id: program_id.to_string(),
         account: whitelist_pubkey.to_string(),
         authority: Pubkey::from(whitelist.authority).to_string(),
         pending_authority: Pubkey::from(whitelist.pending_authority).to_string(),
         deployers,
-    };
-    emit(&view, mode)
+    })
+}
+
+pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+    emit(&fetch(rpc_url)?, mode)
 }

@@ -30,7 +30,7 @@ pub fn dedupe_signers<'a>(signers: &[&'a Keypair]) -> Vec<&'a Keypair> {
 }
 
 #[derive(serde::Serialize)]
-struct AirdropResult {
+pub struct AirdropResult {
     pubkey: String,
     amount_sphr: f64,
     signature: String,
@@ -51,13 +51,13 @@ impl Render for AirdropResult {
     }
 }
 
-/// Request an airdrop for an account (testnet).
-pub fn airdrop(
+/// Request an airdrop and verify it actually landed. Shared by the `airdrop`
+/// command and the HTTP API — no printing (beyond progress), returns the result.
+pub fn request_airdrop(
     rpc_url: &str,
     pubkey_str: String,
     amount: f64,
-    mode: OutputMode,
-) -> eyre::Result<()> {
+) -> eyre::Result<AirdropResult> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
@@ -92,13 +92,22 @@ pub fn airdrop(
         ));
     }
 
-    let result = AirdropResult {
+    Ok(AirdropResult {
         pubkey: pubkey.to_string(),
         amount_sphr: amount,
         signature: signature.to_string(),
         new_balance_sphr: after as f64 / LAMPORTS_PER_SOL as f64,
-    };
-    emit(&result, mode)
+    })
+}
+
+/// Request an airdrop for an account (testnet).
+pub fn airdrop(
+    rpc_url: &str,
+    pubkey_str: String,
+    amount: f64,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    emit(&request_airdrop(rpc_url, pubkey_str, amount)?, mode)
 }
 
 /// Transfer SOL from one account to another

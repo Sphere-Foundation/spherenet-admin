@@ -10,7 +10,7 @@ use spherenet_monetary_policy_interface::{
 };
 
 #[derive(serde::Serialize)]
-struct MonetaryPolicyView {
+pub struct MonetaryPolicyView {
     program_id: String,
     account: String,
     authority: String,
@@ -63,7 +63,9 @@ impl Render for MonetaryPolicyView {
     }
 }
 
-pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+/// Fetch the monetary policy account and build the view. Shared by the `show`
+/// command and the HTTP API — no printing, just data.
+pub fn fetch(rpc_url: &str) -> eyre::Result<MonetaryPolicyView> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
@@ -72,7 +74,7 @@ pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
     let mp = load::<MonetaryPolicyAccount>(&account.data)
         .map_err(|e| eyre::eyre!("Failed to deserialize monetary policy account: {:?}", e))?;
 
-    let view = MonetaryPolicyView {
+    Ok(MonetaryPolicyView {
         program_id: Pubkey::from(program_solana::id().to_bytes()).to_string(),
         account: account_pubkey.to_string(),
         authority: Pubkey::from(mp.authority).to_string(),
@@ -81,6 +83,9 @@ pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
         lamports_per_signature: mp.lamports_per_signature(),
         burn_percent: mp.burn_percent(),
         vat_lamports_per_epoch: mp.vat_lamports_per_epoch(),
-    };
-    emit(&view, mode)
+    })
+}
+
+pub fn show(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+    emit(&fetch(rpc_url)?, mode)
 }

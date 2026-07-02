@@ -7,7 +7,7 @@ use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
 use std::str::FromStr;
 
 #[derive(serde::Serialize)]
-struct BalanceView {
+pub struct BalanceView {
     pubkey: String,
     lamports: u64,
     sphr: f64,
@@ -21,8 +21,10 @@ impl Render for BalanceView {
     }
 }
 
-/// Show the native (SPHR) balance of an account.
-pub fn balance(rpc_url: &str, pubkey: String, mode: OutputMode) -> eyre::Result<()> {
+/// Fetch an account's native (SPHR) balance. Shared by the `balance` command
+/// and the HTTP API. Named `fetch_balance` (not `fetch`) since this module also
+/// hosts `epoch`.
+pub fn fetch_balance(rpc_url: &str, pubkey: String) -> eyre::Result<BalanceView> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
@@ -30,16 +32,20 @@ pub fn balance(rpc_url: &str, pubkey: String, mode: OutputMode) -> eyre::Result<
         .map_err(|e| eyre::eyre!("Invalid pubkey '{}': {}", pubkey, e))?;
 
     let lamports = rpc_client.get_balance(&pubkey)?;
-    let view = BalanceView {
+    Ok(BalanceView {
         pubkey: pubkey.to_string(),
         lamports,
         sphr: lamports as f64 / LAMPORTS_PER_SOL as f64,
-    };
-    emit(&view, mode)
+    })
+}
+
+/// Show the native (SPHR) balance of an account.
+pub fn balance(rpc_url: &str, pubkey: String, mode: OutputMode) -> eyre::Result<()> {
+    emit(&fetch_balance(rpc_url, pubkey)?, mode)
 }
 
 #[derive(serde::Serialize)]
-struct EpochView {
+pub struct EpochView {
     epoch: u64,
     slot_index: u64,
     slots_in_epoch: u64,
@@ -63,17 +69,21 @@ impl Render for EpochView {
     }
 }
 
-/// Show the current epoch.
-pub fn epoch(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+/// Fetch the current epoch info. Shared by the `epoch` command and the HTTP API.
+pub fn fetch_epoch(rpc_url: &str) -> eyre::Result<EpochView> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
     let info = rpc_client.get_epoch_info()?;
-    let view = EpochView {
+    Ok(EpochView {
         epoch: info.epoch,
         slot_index: info.slot_index,
         slots_in_epoch: info.slots_in_epoch,
         absolute_slot: info.absolute_slot,
-    };
-    emit(&view, mode)
+    })
+}
+
+/// Show the current epoch.
+pub fn epoch(rpc_url: &str, mode: OutputMode) -> eyre::Result<()> {
+    emit(&fetch_epoch(rpc_url)?, mode)
 }
