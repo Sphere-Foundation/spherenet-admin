@@ -1,28 +1,73 @@
+//! Request an airdrop for an account (testnet).
+
+use crate::cli::output::{emit, progress, OutputMode, Render};
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::pubkey::Pubkey;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
 use std::str::FromStr;
 
-pub fn airdrop(rpc_url: &str, pubkey_str: String, amount: f64) -> eyre::Result<()> {
-    let rpc_client = RpcClient::new(rpc_url);
+#[derive(serde::Serialize)]
+struct AirdropResult {
+    pubkey: String,
+    amount_sphr: f64,
+    signature: String,
+    new_balance_sphr: f64,
+}
 
-    // Parse pubkey
+impl Render for AirdropResult {
+    fn to_text(&self) -> String {
+        format!(
+            "✅ Airdrop successful!\n   Account:     {}\n   Amount:      {} SPHR\n   New balance: {} SPHR\n   Signature:   {}",
+            self.pubkey, self.amount_sphr, self.new_balance_sphr, self.signature
+        )
+    }
+}
+
+pub fn airdrop(
+    rpc_url: &str,
+    pubkey_str: String,
+    amount: f64,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    let rpc_client =
+        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
+
     let pubkey = Pubkey::from_str(&pubkey_str)
         .map_err(|e| eyre::eyre!("Failed to parse pubkey {}: {}", pubkey_str, e))?;
+    let lamports = (amount * LAMPORTS_PER_SOL as f64) as u64;
 
-    println!("\nRequesting airdrop:");
-    println!("  Account:         {}", pubkey);
-    println!("  Airdrop Amount:  {} SOL", amount);
+    // Capture the balance up front so we can verify the airdrop actually landed
+    // — a signature alone doesn't prove funding (the faucet may be empty, the
+    // request rate-limited, or the transaction may fail on-chain).
+    let before = rpc_client.get_balance(&pubkey)?;
 
-    // Request airdrop
-    let lamports = (amount * 1_000_000_000.0) as u64;
+    progress(format!("Requesting airdrop of {} SPHR to {}...", amount, pubkey));
     let signature = rpc_client.request_airdrop(&pubkey, lamports)?;
 
-    println!("\nConfirming airdrop...");
-    rpc_client.confirm_transaction(&signature)?;
+    progress("Confirming airdrop...");
+    let confirmed = rpc_client.confirm_transaction(&signature)?;
+    if !confirmed {
+        return Err(eyre::eyre!(
+            "Airdrop {} did not confirm — the faucet may be empty or rate-limited.",
+            signature
+        ));
+    }
 
-    // Check new balance
-    println!("  Signature:       {}", signature);
-    println!("\nAirdrop successful!");
+    let after = rpc_client.get_balance(&pubkey)?;
+    if after <= before {
+        return Err(eyre::eyre!(
+            "Airdrop confirmed (signature {}) but the balance did not increase (still {} SPHR) \
+             — the faucet could not fund the request.",
+            signature,
+            after as f64 / LAMPORTS_PER_SOL as f64
+        ));
+    }
 
-    Ok(())
+    let result = AirdropResult {
+        pubkey: pubkey.to_string(),
+        amount_sphr: amount,
+        signature: signature.to_string(),
+        new_balance_sphr: after as f64 / LAMPORTS_PER_SOL as f64,
+    };
+    emit(&result, mode)
 }

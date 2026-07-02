@@ -4709,6 +4709,7 @@ dependencies = [
  "borsh",
  "clap",
  "eyre",
+ "serde",
  "serde_json",
  "sha2",
  "solana-client",

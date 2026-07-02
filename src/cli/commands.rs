@@ -2,6 +2,7 @@
 //!
 //! CLAP structs and enums defining the CLI interface.
 
+use crate::cli::output::OutputMode;
 use clap::{Parser, Subcommand};
 
 /// Default RPC_URL
@@ -14,6 +15,10 @@ pub struct Cli {
     /// RPC URL to connect to
     #[arg(long, global = true, default_value = RPC_URL)]
     pub url: String,
+
+    /// Output format: text (human-readable) or json (machine-readable)
+    #[arg(long, global = true, value_enum, default_value_t = OutputMode::Text)]
+    pub output: OutputMode,
 
     #[command(subcommand)]
     pub command: Commands,

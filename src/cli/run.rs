@@ -2,6 +2,7 @@
 //!
 //! Routes parsed CLI commands to appropriate domain modules.
 
+use crate::cli::output::OutputMode;
 use crate::{cli, loader, mp, pw, stake, utils, vote, vw};
 use clap::Parser;
 
@@ -10,6 +11,23 @@ use spherenet_authority::squads;
 
 pub fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
+    let mode = cli.output;
+
+    let result = dispatch(cli);
+
+    // In JSON mode, surface errors as a JSON object on stderr (exit nonzero) so
+    // downstream tooling never has to parse eyre's human-readable report.
+    if let Err(e) = &result {
+        if mode == OutputMode::Json {
+            eprintln!("{}", serde_json::json!({ "error": e.to_string() }));
+            std::process::exit(1);
+        }
+    }
+    result
+}
+
+fn dispatch(cli: Cli) -> eyre::Result<()> {
+    let mode = cli.output;
 
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
@@ -379,9 +397,11 @@ pub fn run() -> eyre::Result<()> {
                 payer,
             )?,
         },
-        Commands::Balance { pubkey } => utils::balance::balance(&cli.url, pubkey)?,
-        Commands::Epoch => utils::epoch::epoch(&cli.url)?,
-        Commands::Airdrop { pubkey, amount } => utils::airdrop::airdrop(&cli.url, pubkey, amount)?,
+        Commands::Balance { pubkey } => utils::balance::balance(&cli.url, pubkey, mode)?,
+        Commands::Epoch => utils::epoch::epoch(&cli.url, mode)?,
+        Commands::Airdrop { pubkey, amount } => {
+            utils::airdrop::airdrop(&cli.url, pubkey, amount, mode)?
+        }
         Commands::Transfer {
             destination,
             amount,
