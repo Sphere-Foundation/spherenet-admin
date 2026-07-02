@@ -10,41 +10,6 @@ use solana_sdk::{
     pubkey::Pubkey,
 };
 
-/// Build program_config_init instruction
-///
-/// One-time initialization of the program config PDA.
-/// Must be signed by the hardcoded INITIALIZER key in the program.
-pub fn build_program_config_init_ix(
-    program_id: &Pubkey,
-    program_config: &Pubkey,
-    initializer: &Pubkey,
-    args: ProgramConfigInitArgs,
-) -> eyre::Result<Instruction> {
-    // Anchor discriminator for "program_config_init"
-    let discriminator = anchor_discriminator("global", "program_config_init");
-
-    // Serialize: [discriminator (8 bytes)] + [borsh-serialized args]
-    let mut data = Vec::new();
-    data.extend_from_slice(&discriminator);
-    args.serialize(&mut data)?;
-
-    // System program ID
-    let system_program = SYSTEM_PROGRAM_ID.parse::<Pubkey>()?;
-
-    // Accounts (order from ProgramConfigInit in instructions/program_config_init.rs)
-    let accounts = vec![
-        AccountMeta::new(*program_config, false), // program_config (init)
-        AccountMeta::new(*initializer, true),     // initializer (signer)
-        AccountMeta::new_readonly(system_program, false), // system_program
-    ];
-
-    Ok(Instruction {
-        program_id: *program_id,
-        accounts,
-        data,
-    })
-}
-
 /// Build multisig_create_v2 instruction
 ///
 /// Creates a new multisig vault with specified members and threshold.

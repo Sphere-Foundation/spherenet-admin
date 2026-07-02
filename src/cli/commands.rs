@@ -362,28 +362,6 @@ pub enum ProgramAction {
 
 #[derive(Subcommand)]
 pub enum MultisigAction {
-    /// Initialize Squads program config (one-time setup)
-    ProgramConfigInit {
-        /// Pubkey that will control the program config
-        #[arg(long)]
-        authority: String,
-
-        /// Pubkey where multisig creation fees are sent
-        #[arg(long)]
-        treasury: String,
-
-        /// Fee in lamports charged for creating a multisig
-        #[arg(long, default_value = "0")]
-        creation_fee: u64,
-
-        /// Path to INITIALIZER keypair (hardcoded in program)
-        #[arg(long)]
-        initializer: String,
-
-        /// Payer keypair path
-        #[arg(long)]
-        payer: String,
-    },
     /// Create a new multisig vault
     Create {
         /// Comma-separated list of member pubkeys

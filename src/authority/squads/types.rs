@@ -13,8 +13,8 @@ use std::marker::PhantomData;
 // Constants
 // ============================================================================
 
-/// Squads v4 program ID on SphereNet
-pub const SQUADS_PROGRAM_ID: &str = "SqdsYSe3QC9aGdU5p8y7Y3HtT5VrVLEtYCNjN37yBTh";
+/// Squads v4 program ID on SphereNet (genesis builtin, off-curve)
+pub const SQUADS_PROGRAM_ID: &str = "Sqds111111111111111111111111111111111111111";
 
 /// System program ID
 pub const SYSTEM_PROGRAM_ID: &str = "11111111111111111111111111111111";
@@ -155,17 +155,6 @@ pub struct Multisig {
     pub bump: u8,
     /// Members of the multisig
     pub members: Vec<Member>,
-}
-
-/// Arguments for program_config_init instruction
-#[derive(BorshSerialize, BorshDeserialize)]
-pub struct ProgramConfigInitArgs {
-    /// The authority that can configure the program config
-    pub authority: Pubkey,
-    /// The fee charged for creating a new multisig (in lamports)
-    pub multisig_creation_fee: u64,
-    /// The treasury where the creation fee is transferred to
-    pub treasury: Pubkey,
 }
 
 /// Arguments for multisig_create_v2 instruction

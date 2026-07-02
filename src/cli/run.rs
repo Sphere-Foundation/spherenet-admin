@@ -281,20 +281,6 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             }
         },
         Commands::Multisig { action } => match action {
-            MultisigAction::ProgramConfigInit {
-                authority,
-                treasury,
-                creation_fee,
-                initializer,
-                payer,
-            } => squads::commands::program_config_init(
-                authority,
-                treasury,
-                creation_fee,
-                initializer,
-                payer,
-                &cli.url,
-            )?,
             MultisigAction::Create {
                 members,
                 threshold,

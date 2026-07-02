@@ -3,119 +3,13 @@
 //! User-facing CLI commands for managing multisig vaults and proposals.
 //! Handles parsing, validation, user feedback, and formatting.
 
-use crate::authority::squads::{self, Member, Multisig, Permissions, ProgramConfigInitArgs};
+use crate::authority::squads::{self, Member, Multisig, Permissions};
 use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::AccountMeta, pubkey::Pubkey, signature::Signer, transaction::Transaction,
 };
 use std::str::FromStr;
-
-/// Initialize the Squads program config (one-time setup)
-///
-/// # Arguments
-/// * `authority` - Pubkey that will control the program config
-/// * `treasury` - Pubkey where multisig creation fees are sent
-/// * `creation_fee` - Fee in lamports charged for creating a multisig
-/// * `initializer_path` - Path to the INITIALIZER keypair (hardcoded in program)
-/// * `payer_path` - Path to keypair that pays for the transaction
-/// * `url` - RPC URL
-pub fn program_config_init(
-    authority: String,
-    treasury: String,
-    creation_fee: u64,
-    initializer_path: String,
-    payer_path: String,
-    url: &str,
-) -> eyre::Result<()> {
-    println!("Initializing Squads program config...");
-    println!();
-
-    // Parse pubkeys
-    let authority_pubkey = Pubkey::from_str(&authority)
-        .map_err(|e| eyre::eyre!("Invalid authority pubkey '{}': {}", authority, e))?;
-
-    let treasury_pubkey = Pubkey::from_str(&treasury)
-        .map_err(|e| eyre::eyre!("Invalid treasury pubkey '{}': {}", treasury, e))?;
-
-    // Show configuration
-    println!("Configuration:");
-    println!("  Authority: {}", authority_pubkey);
-    println!("  Treasury:  {}", treasury_pubkey);
-    println!(
-        "  Creation Fee: {} lamports ({:.6} SOL)",
-        creation_fee,
-        creation_fee as f64 / 1_000_000_000.0
-    );
-    println!();
-
-    // Load initializer keypair
-    let initializer = solana_sdk::signature::read_keypair_file(&initializer_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read initializer key '{}': {}",
-            initializer_path,
-            e
-        )
-    })?;
-
-    println!("Initializer: {}", initializer.pubkey());
-
-    // Load payer keypair
-    let payer = solana_sdk::signature::read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer key '{}': {}", payer_path, e))?;
-
-    println!("Payer:       {}", payer.pubkey());
-    println!();
-
-    // Create RPC client
-    let rpc = RpcClient::new(url);
-
-    // Parse program ID
-    let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
-
-    // Derive program config PDA
-    let (program_config_pda, _) = squads::types::get_program_config_pda(&program_id);
-
-    // Build args
-    let args = ProgramConfigInitArgs {
-        authority: authority_pubkey,
-        multisig_creation_fee: creation_fee,
-        treasury: treasury_pubkey,
-    };
-
-    // Build instruction
-    let init_ix = squads::instructions::build_program_config_init_ix(
-        &program_id,
-        &program_config_pda,
-        &initializer.pubkey(),
-        args,
-    )?;
-
-    println!("Sending transaction...");
-
-    // Send transaction
-    let recent_blockhash = rpc.get_latest_blockhash()?;
-
-    let tx = Transaction::new_signed_with_payer(
-        &[init_ix],
-        Some(&payer.pubkey()),
-        &[&payer, &initializer],
-        recent_blockhash,
-    );
-
-    let signature = rpc.send_and_confirm_transaction(&tx)?;
-
-    println!();
-    println!("✅ Program config initialized successfully!");
-    println!();
-    println!("   Program Config PDA: {}", program_config_pda);
-    println!("   Transaction: {}", signature);
-    println!();
-    println!("The Squads program is now ready to create multisig vaults.");
-    println!();
-
-    Ok(())
-}
 
 /// Create a new multisig vault
 ///
@@ -201,7 +95,7 @@ pub fn create(
 
     // Fetch program config to get treasury
     let program_config_account = rpc.get_account(&program_config_pda)
-        .map_err(|e| eyre::eyre!("Failed to fetch program_config account at {}: {}. Has program_config_init been called?", program_config_pda, e))?;
+        .map_err(|e| eyre::eyre!("Failed to fetch program_config account at {}: {}. Is the Squads ProgramConfig baked into genesis?", program_config_pda, e))?;
 
     // Parse treasury from account data
     // ProgramConfig layout: discriminator(8) + authority(32) + multisig_creation_fee(8) + treasury(32)
