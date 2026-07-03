@@ -108,3 +108,46 @@ impl Render for NotFound {
         format!("{} {} not found.", self.label, self.pubkey)
     }
 }
+
+/// Result of a write command that submitted a transaction.
+///
+/// Single-sig execution lands immediately (`Executed`); a multisig routes the
+/// instruction into a proposal for later approval (`ProposalCreated`). Base58
+/// strings so the JSON is clean; the `status` tag lets machine consumers branch
+/// on the outcome. Produced by both `cli::authority::Authority::execute_instruction`
+/// and the squads commands — hence it lives here in the shared output layer.
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum TxOutputView {
+    /// Executed directly (single-sig).
+    Executed { signature: String },
+    /// Proposal created for multisig approval.
+    ProposalCreated {
+        proposal: String,
+        transaction_index: u64,
+        signature: String,
+    },
+}
+
+impl Render for TxOutputView {
+    fn to_text(&self) -> String {
+        match self {
+            TxOutputView::Executed { signature } => {
+                let mut out = String::from("✅ Transaction executed\n");
+                out.push_str(&subfield("Signature", signature));
+                out
+            }
+            TxOutputView::ProposalCreated {
+                proposal,
+                transaction_index,
+                signature,
+            } => {
+                let mut out = String::from("✅ Proposal created\n");
+                out.push_str(&subfield("Proposal", proposal));
+                out.push_str(&subfield("Transaction Index", transaction_index));
+                out.push_str(&subfield("Signature", signature));
+                out
+            }
+        }
+    }
+}

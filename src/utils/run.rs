@@ -1,14 +1,15 @@
 //! Utility actions: airdrop, transfer — plus the shared signer-dedup helper
 //! used across command modules.
 
-use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
+use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
     native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::Keypair, signer::Signer,
 };
 use solana_system_interface::instruction as system_instruction;
-use crate::authority::{squads, Authority, ExecutionResult};
+use crate::cli::authority::Authority;
+use crate::squads;
 use std::str::FromStr;
 
 /// Deduplicate signers by pubkey, preserving order (first occurrence wins).
@@ -136,10 +137,10 @@ pub fn transfer(
 
     // Display different info based on authority type
     match &from {
-        crate::authority::Authority::SingleSig { keypair } => {
+        crate::cli::authority::Authority::SingleSig { keypair } => {
             println!("  From:        {}", keypair.pubkey());
         }
-        crate::authority::Authority::MultiSig { multisig, member } => {
+        crate::cli::authority::Authority::MultiSig { multisig, member } => {
             println!("  Proposer:    {}", member.pubkey());
             println!("  Multisig:    {}", multisig);
 
@@ -168,7 +169,7 @@ pub fn transfer(
     let result = from.execute_instruction(&rpc_client, instruction, &description)?;
 
     // Only show "executed successfully" for single-sig (immediate execution)
-    if matches!(result, ExecutionResult::Executed { .. }) {
+    if matches!(result, TxOutputView::Executed { .. }) {
         println!("\n✅ Transfer executed successfully!");
     }
 

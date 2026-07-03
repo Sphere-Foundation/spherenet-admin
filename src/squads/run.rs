@@ -1,13 +1,14 @@
-//! Multisig command implementations
-//!
-//! User-facing CLI commands for managing multisig vaults and proposals.
-//! Handles parsing, validation, user feedback, and formatting.
+//! Multisig write commands: create a vault, approve and execute proposals.
 
-use crate::authority::squads::{self, Member, Multisig, Permissions};
+use crate::cli::output::{progress, TxOutputView};
+use crate::squads::{self, Member, Permissions};
 use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
-    instruction::AccountMeta, pubkey::Pubkey, signature::Signer, transaction::Transaction,
+    instruction::{AccountMeta, Instruction},
+    pubkey::Pubkey,
+    signature::{Keypair, Signer},
+    transaction::Transaction,
 };
 use std::str::FromStr;
 
@@ -125,7 +126,7 @@ pub fn create(
     };
 
     // Build instruction
-    let create_ix = squads::instructions::build_multisig_create_v2_ix(
+    let create_ix = squads::ixs::build_multisig_create_v2_ix(
         &program_id,
         &program_config_pda,
         &treasury, // Must match program_config.treasury
@@ -164,134 +165,92 @@ pub fn create(
     Ok(())
 }
 
-/// Show multisig information (fetches on-chain data)
+/// Wrap an arbitrary instruction into a Squads proposal.
 ///
-/// # Arguments
-/// * `create_key_path` - Optional path to the create key keypair used during vault creation
-/// * `multisig_str` - Optional multisig PDA address (must provide one of these)
-/// * `url` - RPC URL
-pub fn show_multisig(
-    create_key_path: Option<String>,
-    multisig_str: Option<String>,
-    url: &str,
-) -> eyre::Result<()> {
+/// Builds `vault_transaction_create` + `proposal_create` in one transaction
+/// signed by `member`, targeting the multisig's default vault (index 0). This is
+/// the multisig path behind `Authority::execute_instruction` — governance ops
+/// (mp/vw/pw) reach it via that adapter; it can also be called directly.
+pub fn propose(
+    rpc: &RpcClient,
+    multisig: &Pubkey,
+    member: &Keypair,
+    instruction: Instruction,
+    description: &str,
+) -> eyre::Result<TxOutputView> {
+    progress(format!("Creating proposal: {}", description));
+
     let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
 
-    // Derive multisig PDA from either create_key or direct address
-    let multisig_pda = match (create_key_path, multisig_str) {
-        (Some(path), None) => {
-            // Load create key and derive PDA
-            let create_key = solana_sdk::signature::read_keypair_file(&path)
-                .map_err(|e| eyre::eyre!("Failed to read create key '{}': {}", path, e))?;
-            let (pda, _) = squads::types::get_multisig_pda(&create_key.pubkey(), &program_id);
-            pda
-        }
-        (None, Some(address)) => {
-            // Parse multisig PDA directly
-            address
-                .parse::<Pubkey>()
-                .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", address, e))?
-        }
-        _ => {
-            return Err(eyre::eyre!(
-                "Must provide either --create-key OR --multisig"
-            ));
-        }
+    // Fetch multisig account to get the next transaction index
+    let multisig_account = rpc
+        .get_account(multisig)
+        .map_err(|e| eyre::eyre!("Failed to fetch multisig account at {}: {}", multisig, e))?;
+    let current_transaction_index =
+        squads::types::parse_transaction_index(&multisig_account.data)?;
+    let next_transaction_index = current_transaction_index
+        .checked_add(1)
+        .ok_or_else(|| eyre::eyre!("Transaction index overflow"))?;
+
+    progress(format!("Transaction index: {}", next_transaction_index));
+
+    // Derive PDAs
+    let (vault_transaction_pda, _) =
+        squads::types::get_vault_transaction_pda(multisig, current_transaction_index, &program_id);
+    let (proposal_pda, _) =
+        squads::types::get_proposal_pda(multisig, current_transaction_index, &program_id);
+    // Default vault (index 0) — the account that signs the wrapped instruction.
+    let (vault_pda, _) = squads::types::get_vault_pda(multisig, 0, &program_id);
+
+    // Compile the instruction into a Squads TransactionMessage (signed by the vault PDA)
+    let transaction_message =
+        squads::types::compile_instruction_to_transaction_message(&instruction, &vault_pda);
+    let transaction_message_bytes = borsh::to_vec(&transaction_message)
+        .map_err(|e| eyre::eyre!("Failed to serialize transaction message: {}", e))?;
+
+    let vault_tx_args = squads::types::VaultTransactionCreateArgs {
+        vault_index: 0,
+        ephemeral_signers: 0,
+        transaction_message: transaction_message_bytes,
+        memo: Some(description.to_string()),
     };
+    let vault_tx_create_ix = squads::ixs::build_vault_transaction_create_ix(
+        &program_id,
+        multisig,
+        &vault_transaction_pda,
+        &member.pubkey(),
+        &member.pubkey(), // rent_payer
+        vault_tx_args,
+    )?;
 
-    // 3. Fetch account
-    let rpc = RpcClient::new(url);
-    let account = rpc.get_account(&multisig_pda).map_err(|e| {
-        eyre::eyre!(
-            "Failed to fetch multisig account at {}: {}",
-            multisig_pda,
-            e
-        )
-    })?;
+    let proposal_args = squads::types::ProposalCreateArgs {
+        transaction_index: next_transaction_index,
+        draft: false, // Active proposal (ready for voting)
+    };
+    let proposal_create_ix = squads::ixs::build_proposal_create_ix(
+        &program_id,
+        multisig,
+        &proposal_pda,
+        &member.pubkey(),
+        &member.pubkey(), // rent_payer
+        proposal_args,
+    )?;
 
-    // 4. Deserialize account data (skip 8-byte Anchor discriminator)
-    if account.data.len() < 8 {
-        eyre::bail!("Invalid multisig account data (too short)");
-    }
-    // Use deserialize_reader to handle accounts with extra allocated space
-    let mut data_slice = &account.data[8..];
-    let multisig_data = Multisig::deserialize_reader(&mut data_slice)
-        .map_err(|e| eyre::eyre!("Failed to deserialize multisig account: {}", e))?;
-
-    // 5. Derive vault PDA (where funds are held)
-    let (vault_pda, _vault_bump) = squads::types::get_vault_pda(&multisig_pda, 0, &program_id);
-    let vault_balance_lamports = rpc.get_balance(&vault_pda).unwrap_or(0);
-    let vault_balance_sol = vault_balance_lamports as f64 / 1_000_000_000.0;
-
-    // 6. Display information
-    println!("\n╔═══════════════════════════════════════════════════════════════╗");
-    println!("║               Multisig Vault Information                      ║");
-    println!("╚═══════════════════════════════════════════════════════════════╝\n");
-
-    println!("Create Key:      {}", multisig_data.create_key);
-    println!("Multisig PDA:    {}", multisig_pda);
-    println!();
-    println!("Vault PDA:       {}", vault_pda);
-    println!(
-        "  Vault Balance: {:.9} SOL ({} lamports)",
-        vault_balance_sol, vault_balance_lamports
+    // Send both instructions in one transaction
+    let recent_blockhash = rpc.get_latest_blockhash()?;
+    let tx = Transaction::new_signed_with_payer(
+        &[vault_tx_create_ix, proposal_create_ix],
+        Some(&member.pubkey()),
+        &[member],
+        recent_blockhash,
     );
-    println!();
-    println!(
-        "Threshold:         {}/{}",
-        multisig_data.threshold,
-        multisig_data.members.len()
-    );
-    println!("Next TX Index:     {}", multisig_data.transaction_index);
-    println!(
-        "Stale TX Index:    {}",
-        multisig_data.stale_transaction_index
-    );
-    println!("Time Lock:         {} seconds", multisig_data.time_lock);
-    println!();
+    let signature = rpc.send_and_confirm_transaction(&tx)?;
 
-    println!("Config Authority:");
-    if multisig_data.config_authority == Pubkey::default() {
-        println!("  Autonomous (no external authority)");
-    } else {
-        println!("  {}", multisig_data.config_authority);
-    }
-    println!();
-
-    println!("Rent Collector:");
-    match multisig_data.rent_collector {
-        Some(rc) => println!("  {}", rc),
-        None => println!("  Disabled"),
-    }
-    println!();
-
-    println!("Members ({}):", multisig_data.members.len());
-    for (i, member) in multisig_data.members.iter().enumerate() {
-        let perms = format_permissions(&member.permissions);
-        println!("  [{}] {} ({})", i + 1, member.key, perms);
-    }
-    println!();
-
-    Ok(())
-}
-
-/// Helper to format permissions as readable string
-fn format_permissions(perms: &Permissions) -> String {
-    let mut parts = Vec::new();
-    if perms.mask & (squads::types::Permission::Initiate as u8) != 0 {
-        parts.push("Initiate");
-    }
-    if perms.mask & (squads::types::Permission::Vote as u8) != 0 {
-        parts.push("Vote");
-    }
-    if perms.mask & (squads::types::Permission::Execute as u8) != 0 {
-        parts.push("Execute");
-    }
-    if parts.is_empty() {
-        "No permissions".to_string()
-    } else {
-        parts.join(" | ")
-    }
+    Ok(TxOutputView::ProposalCreated {
+        proposal: proposal_pda.to_string(),
+        transaction_index: next_transaction_index,
+        signature: signature.to_string(),
+    })
 }
 
 /// Approve a multisig proposal
@@ -331,7 +290,7 @@ pub fn approve_proposal(
     println!();
 
     // Build approve instruction
-    let approve_ix = squads::instructions::build_proposal_approve_ix(
+    let approve_ix = squads::ixs::build_proposal_approve_ix(
         &program_id,
         &multisig_pda,
         &proposal_pda,
@@ -453,7 +412,7 @@ pub fn execute_proposal(
     }
 
     // Build execute instruction
-    let execute_ix = squads::instructions::build_vault_transaction_execute_ix(
+    let execute_ix = squads::ixs::build_vault_transaction_execute_ix(
         &program_id,
         &multisig_pda,
         &proposal_pda,

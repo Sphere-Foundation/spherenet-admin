@@ -1,6 +1,6 @@
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use crate::authority::Authority;
+use crate::cli::authority::Authority;
 use spherenet_monetary_policy_client::instructions::{
     UpdateBurnPercentBuilder, UpdateInflationRateBipsBuilder, UpdateLamportsPerSignatureBuilder,
     UpdateVatLamportsPerEpochBuilder,

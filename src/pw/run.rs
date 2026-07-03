@@ -1,6 +1,6 @@
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use crate::authority::Authority;
+use crate::cli::authority::Authority;
 use spherenet_program_whitelist_client::instructions::{AddEntryBuilder, RemoveEntryBuilder};
 use spherenet_program_whitelist_interface::{account_solana, program_solana};
 use std::sync::LazyLock;

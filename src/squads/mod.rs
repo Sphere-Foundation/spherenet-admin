@@ -14,11 +14,13 @@
 //!
 //! **Structure:**
 //! - types.rs: Type definitions, constants, PDA helpers
-//! - instructions.rs: Instruction builders (create, approve, execute)
-//! - commands.rs: CLI commands for vault management
+//! - ixs.rs: Instruction builders (create, approve, execute)
+//! - show.rs: multisig read commands
+//! - run.rs: multisig write commands (create, approve, execute)
 
-pub mod commands;
-pub mod instructions;
+pub mod ixs;
+pub mod run;
+pub mod show;
 pub mod types;
 
 // Re-export commonly used types
