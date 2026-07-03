@@ -15,7 +15,7 @@ use solana_sdk_ids::bpf_loader_upgradeable;
 use spherenet_whitelisted_loader_v3_interface::{
     instruction::{
         create_buffer, deploy_with_max_program_len, extend_program_checked, set_buffer_authority,
-        upgrade, write,
+        set_upgrade_authority as set_upgrade_authority_ix, upgrade, write,
     },
     state::UpgradeableLoaderState,
 };
@@ -475,5 +475,69 @@ pub fn extend_program(
         program_id, additional_bytes
     );
     let result = upgrade_authority.execute_instruction(&rpc_client, extend_ix, &description)?;
+    emit(&result, mode)
+}
+
+/// Set (transfer) or renounce a program's upgrade authority.
+///
+/// The **current** authority signs (single-sig directly, or a multisig via
+/// proposal). Without `make_final`, the new authority is resolved through the
+/// shared multisig-safety gate: a raw pubkey is guarded against being a config
+/// account / create-key, and `--new-multisig <create-key>` resolves to the
+/// multisig's vault — the account that can actually sign future upgrades. With
+/// `make_final = true`, the authority is set to `None`, making the program
+/// permanently immutable.
+///
+/// Uses the unchecked `SetAuthority` (a multisig vault can't co-sign); the guard
+/// provides the safety `SetAuthorityChecked` would otherwise give.
+///
+/// Note: after handing upgrade authority to a multisig, whitelist the vault
+/// (`pw add <vault>`) so it can actually deploy/upgrade.
+pub fn set_upgrade_authority(
+    url: &str,
+    program_id_str: String,
+    current_authority: Authority,
+    new_authority: Option<String>,
+    new_multisig: Option<String>,
+    make_final: bool,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    progress("🔑 Setting program upgrade authority...");
+
+    let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
+
+    let program_id = Pubkey::from_str(&program_id_str)
+        .map_err(|e| eyre::eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
+
+    let current = current_authority.instruction_authority_pubkey()?;
+
+    // `--final` renounces upgradeability (authority → None); otherwise resolve
+    // the new authority through the multisig-safety gate.
+    let new = if make_final {
+        None
+    } else {
+        Some(crate::cli::authority::resolve_target(
+            &rpc_client,
+            new_authority,
+            new_multisig,
+            "--new-authority",
+            "--new-multisig",
+        )?)
+    };
+
+    progress(format!("Program ID:         {}", program_id));
+    progress(format!("Current Authority:  {}", current));
+    match &new {
+        Some(new) => progress(format!("New Authority:      {}", new)),
+        None => progress("New Authority:      (none — program becomes immutable)"),
+    }
+
+    let set_ix = set_upgrade_authority_ix(&program_id, &current, new.as_ref());
+
+    let description = match &new {
+        Some(new) => format!("Set upgrade authority of {} to {}", program_id, new),
+        None => format!("Make program {} immutable", program_id),
+    };
+    let result = current_authority.execute_instruction(&rpc_client, set_ix, &description)?;
     emit(&result, mode)
 }

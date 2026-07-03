@@ -374,6 +374,34 @@ pub enum ProgramAction {
         #[arg(long)]
         payer: String,
     },
+    /// Transfer a program's upgrade authority to a new authority
+    SetUpgradeAuthority {
+        /// Program ID whose upgrade authority to transfer
+        #[arg(long)]
+        program_id: String,
+
+        /// New authority pubkey (mutually exclusive with --new-multisig)
+        #[arg(long, conflicts_with = "new_multisig")]
+        new_authority: Option<String>,
+        /// New authority is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --new-authority)
+        #[arg(long, conflicts_with = "new_authority")]
+        new_multisig: Option<String>,
+        /// Renounce upgradeability — set the authority to none (program becomes
+        /// permanently immutable). Mutually exclusive with --new-authority/--new-multisig.
+        #[arg(long = "final", conflicts_with_all = ["new_authority", "new_multisig"])]
+        make_final: bool,
+
+        /// Single-sig: path to the current upgrade authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig")]
+        multisig_authority: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

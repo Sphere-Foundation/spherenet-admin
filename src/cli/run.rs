@@ -357,6 +357,31 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 )?;
                 loader::run::extend_program(&cli.url, program_id, bytes, auth, payer, mode)?
             }
+            ProgramAction::SetUpgradeAuthority {
+                program_id,
+                new_authority,
+                new_multisig,
+                make_final,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                loader::run::set_upgrade_authority(
+                    &cli.url,
+                    program_id,
+                    auth,
+                    new_authority,
+                    new_multisig,
+                    make_final,
+                    mode,
+                )?
+            }
         },
         Commands::Multisig { action } => match action {
             MultisigAction::Create {
