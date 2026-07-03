@@ -28,8 +28,8 @@ pub fn fetch_balance(rpc_url: &str, pubkey: String) -> eyre::Result<BalanceView>
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
-    let pubkey = Pubkey::from_str(&pubkey)
-        .map_err(|e| eyre::eyre!("Invalid pubkey '{}': {}", pubkey, e))?;
+    let pubkey =
+        Pubkey::from_str(&pubkey).map_err(|e| eyre::eyre!("Invalid pubkey '{}': {}", pubkey, e))?;
 
     let lamports = rpc_client.get_balance(&pubkey)?;
     Ok(BalanceView {
@@ -62,7 +62,10 @@ impl Render for EpochView {
         let mut out = field("Epoch", self.epoch);
         out.push_str(&field(
             "Slot Index",
-            format!("{} / {} ({:.2}%)", self.slot_index, self.slots_in_epoch, pct),
+            format!(
+                "{} / {} ({:.2}%)",
+                self.slot_index, self.slots_in_epoch, pct
+            ),
         ));
         out.push_str(&field("Absolute Slot", self.absolute_slot));
         out

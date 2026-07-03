@@ -120,8 +120,12 @@ pub fn show(rpc_url: &str, vote_account: String, mode: OutputMode) -> eyre::Resu
 /// Collapse any supported vote-state version into the display view.
 fn build_view(state: &VoteStateVersions, pubkey: String, lamports: u64) -> VoteView {
     let balance_sphr = lamports as f64 / LAMPORTS_PER_SOL as f64;
-    let latest =
-        |ec: &[(u64, u64, u64)]| ec.last().map(|(e, c, _)| Credits { epoch: *e, credits: *c });
+    let latest = |ec: &[(u64, u64, u64)]| {
+        ec.last().map(|(e, c, _)| Credits {
+            epoch: *e,
+            credits: *c,
+        })
+    };
 
     match state {
         VoteStateVersions::V1_14_11(s) => VoteView {

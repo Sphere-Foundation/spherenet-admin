@@ -392,19 +392,23 @@ pub fn compile_instruction_to_transaction_message(
 
     // Add all accounts from the instruction
     for account_meta in &instruction.accounts {
-        account_key_indexes.entry(account_meta.pubkey).or_insert_with(|| {
-            let index = account_keys.len() as u8;
-            account_keys.push(account_meta.pubkey);
-            index
-        });
+        account_key_indexes
+            .entry(account_meta.pubkey)
+            .or_insert_with(|| {
+                let index = account_keys.len() as u8;
+                account_keys.push(account_meta.pubkey);
+                index
+            });
     }
 
     // Add program ID if not already in account_keys
-    account_key_indexes.entry(instruction.program_id).or_insert_with(|| {
-        let index = account_keys.len() as u8;
-        account_keys.push(instruction.program_id);
-        index
-    });
+    account_key_indexes
+        .entry(instruction.program_id)
+        .or_insert_with(|| {
+            let index = account_keys.len() as u8;
+            account_keys.push(instruction.program_id);
+            index
+        });
 
     // Reorder accounts: writable signers, readonly signers, writable non-signers, readonly non-signers
     let mut writable_signers = vec![*vault_pubkey]; // Vault is always writable signer

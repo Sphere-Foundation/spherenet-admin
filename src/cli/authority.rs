@@ -85,15 +85,19 @@ impl Authority {
 /// Build an [`Authority`] from CLI arguments.
 ///
 /// # Arguments
+/// * `url` - RPC URL, used to resolve + validate a multisig create-key
 /// * `authority` - Single-sig: path to authority keypair
-/// * `multisig` - Multi-sig: multisig PDA address
+/// * `multisig` - Multi-sig: the multisig's create-key (pubkey)
 /// * `multisig_authority` - Multi-sig: path to member keypair
 ///
 /// # Returns
 /// - `Authority::SingleSig` if only `authority` is provided
-/// - `Authority::MultiSig` if `multisig` and `multisig_authority` are provided
+/// - `Authority::MultiSig` if `multisig` and `multisig_authority` are provided.
+///   The create-key is resolved and **validated** against the chain (fails if it
+///   isn't a real multisig), and the resolved multisig PDA is stored.
 /// - Error if neither or an invalid combination is provided
 pub fn from_cli_args(
+    url: &str,
     authority: Option<String>,
     multisig: Option<String>,
     multisig_authority: Option<String>,
@@ -110,11 +114,12 @@ pub fn from_cli_args(
             })?;
             Ok(Authority::SingleSig { keypair })
         }
-        (None, Some(multisig_str), Some(member_path)) => {
-            // Multi-sig mode
-            let multisig = multisig_str
+        (None, Some(create_key_str), Some(member_path)) => {
+            // Multi-sig mode: the multisig is referenced by its create-key,
+            // resolved + validated against the chain (never a raw PDA).
+            let create_key = create_key_str
                 .parse::<Pubkey>()
-                .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", multisig_str, e))?;
+                .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key_str, e))?;
             let member = read_keypair_file(&member_path).map_err(|e| {
                 eyre::eyre!(
                     "Failed to load multisig member keypair from {}: {}",
@@ -122,7 +127,12 @@ pub fn from_cli_args(
                     e
                 )
             })?;
-            Ok(Authority::MultiSig { multisig, member })
+            let rpc = RpcClient::new(url.to_string());
+            let resolved = squads::resolve(&rpc, &create_key)?;
+            Ok(Authority::MultiSig {
+                multisig: resolved.multisig,
+                member,
+            })
         }
         _ => Err(eyre::eyre!(
             "Must provide either --authority OR (--multisig + --multisig-authority)"

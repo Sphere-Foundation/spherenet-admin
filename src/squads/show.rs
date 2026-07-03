@@ -1,136 +1,140 @@
-//! Multisig read commands.
+//! Multisig read command.
+//!
+//! `fetch` resolves + validates the multisig by its create-key and returns a
+//! serde [`MultisigView`]; `show` renders it via the shared output layer. A
+//! bogus create-key fails in `squads::resolve` rather than rendering not-found.
 
-use crate::squads::{self, Multisig, Permissions};
-use borsh::BorshDeserialize;
+use crate::cli::output::{boxed_header, emit, field, newline, subfield, OutputMode, Render};
+use crate::squads::{self, Permissions};
 use solana_client::rpc_client::RpcClient;
-use solana_sdk::{pubkey::Pubkey, signature::Signer};
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
 
-/// Show multisig information (fetches on-chain data)
-///
-/// # Arguments
-/// * `create_key_path` - Optional path to the create key keypair used during vault creation
-/// * `multisig_str` - Optional multisig PDA address (must provide one of these)
-/// * `url` - RPC URL
-pub fn show_multisig(
-    create_key_path: Option<String>,
-    multisig_str: Option<String>,
-    url: &str,
-) -> eyre::Result<()> {
-    let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
-
-    // Derive multisig PDA from either create_key or direct address
-    let multisig_pda = match (create_key_path, multisig_str) {
-        (Some(path), None) => {
-            // Load create key and derive PDA
-            let create_key = solana_sdk::signature::read_keypair_file(&path)
-                .map_err(|e| eyre::eyre!("Failed to read create key '{}': {}", path, e))?;
-            let (pda, _) = squads::types::get_multisig_pda(&create_key.pubkey(), &program_id);
-            pda
-        }
-        (None, Some(address)) => {
-            // Parse multisig PDA directly
-            address
-                .parse::<Pubkey>()
-                .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", address, e))?
-        }
-        _ => {
-            return Err(eyre::eyre!(
-                "Must provide either --create-key OR --multisig"
-            ));
-        }
-    };
-
-    // 3. Fetch account
-    let rpc = RpcClient::new(url);
-    let account = rpc.get_account(&multisig_pda).map_err(|e| {
-        eyre::eyre!(
-            "Failed to fetch multisig account at {}: {}",
-            multisig_pda,
-            e
-        )
-    })?;
-
-    // 4. Deserialize account data (skip 8-byte Anchor discriminator)
-    if account.data.len() < 8 {
-        eyre::bail!("Invalid multisig account data (too short)");
-    }
-    // Use deserialize_reader to handle accounts with extra allocated space
-    let mut data_slice = &account.data[8..];
-    let multisig_data = Multisig::deserialize_reader(&mut data_slice)
-        .map_err(|e| eyre::eyre!("Failed to deserialize multisig account: {}", e))?;
-
-    // 5. Derive vault PDA (where funds are held)
-    let (vault_pda, _vault_bump) = squads::types::get_vault_pda(&multisig_pda, 0, &program_id);
-    let vault_balance_lamports = rpc.get_balance(&vault_pda).unwrap_or(0);
-    let vault_balance_sol = vault_balance_lamports as f64 / 1_000_000_000.0;
-
-    // 6. Display information
-    println!("\n╔═══════════════════════════════════════════════════════════════╗");
-    println!("║               Multisig Vault Information                      ║");
-    println!("╚═══════════════════════════════════════════════════════════════╝\n");
-
-    println!("Create Key:      {}", multisig_data.create_key);
-    println!("Multisig PDA:    {}", multisig_pda);
-    println!();
-    println!("Vault PDA:       {}", vault_pda);
-    println!(
-        "  Vault Balance: {:.9} SOL ({} lamports)",
-        vault_balance_sol, vault_balance_lamports
-    );
-    println!();
-    println!(
-        "Threshold:         {}/{}",
-        multisig_data.threshold,
-        multisig_data.members.len()
-    );
-    println!("Next TX Index:     {}", multisig_data.transaction_index);
-    println!(
-        "Stale TX Index:    {}",
-        multisig_data.stale_transaction_index
-    );
-    println!("Time Lock:         {} seconds", multisig_data.time_lock);
-    println!();
-
-    println!("Config Authority:");
-    if multisig_data.config_authority == Pubkey::default() {
-        println!("  Autonomous (no external authority)");
-    } else {
-        println!("  {}", multisig_data.config_authority);
-    }
-    println!();
-
-    println!("Rent Collector:");
-    match multisig_data.rent_collector {
-        Some(rc) => println!("  {}", rc),
-        None => println!("  Disabled"),
-    }
-    println!();
-
-    println!("Members ({}):", multisig_data.members.len());
-    for (i, member) in multisig_data.members.iter().enumerate() {
-        let perms = format_permissions(&member.permissions);
-        println!("  [{}] {} ({})", i + 1, member.key, perms);
-    }
-    println!();
-
-    Ok(())
+#[derive(serde::Serialize)]
+pub struct MemberView {
+    key: String,
+    permissions: Vec<String>,
 }
 
-/// Helper to format permissions as readable string
-fn format_permissions(perms: &Permissions) -> String {
-    let mut parts = Vec::new();
+#[derive(serde::Serialize)]
+pub struct MultisigView {
+    create_key: String,
+    multisig_pda: String,
+    vault_pda: String,
+    vault_balance_sphr: f64,
+    threshold: u16,
+    transaction_index: u64,
+    stale_transaction_index: u64,
+    time_lock: u32,
+    /// `None` = autonomous (no external config authority).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_authority: Option<String>,
+    /// `None` = rent collection disabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rent_collector: Option<String>,
+    members: Vec<MemberView>,
+}
+
+impl Render for MultisigView {
+    fn to_text(&self) -> String {
+        let mut out = boxed_header("Multisig Vault");
+        out.push_str(newline());
+        out.push_str(&field("Create Key", &self.create_key));
+        out.push_str(&field("Multisig PDA", &self.multisig_pda));
+        out.push_str(&field("Vault PDA", &self.vault_pda));
+        out.push_str(&field(
+            "Vault Balance",
+            format!("{:.9} SPHR", self.vault_balance_sphr),
+        ));
+        out.push_str(&field(
+            "Threshold",
+            format!("{}/{}", self.threshold, self.members.len()),
+        ));
+        out.push_str(&field("Next TX Index", self.transaction_index));
+        out.push_str(&field("Stale TX Index", self.stale_transaction_index));
+        out.push_str(&field("Time Lock", format!("{} seconds", self.time_lock)));
+        out.push_str(&field(
+            "Config Authority",
+            self.config_authority.as_deref().unwrap_or("Autonomous"),
+        ));
+        out.push_str(&field(
+            "Rent Collector",
+            self.rent_collector.as_deref().unwrap_or("Disabled"),
+        ));
+        out.push_str(newline());
+        out.push_str(&format!("Members ({}):\n", self.members.len()));
+        for (i, m) in self.members.iter().enumerate() {
+            let perms = if m.permissions.is_empty() {
+                "No permissions".to_string()
+            } else {
+                m.permissions.join(" | ")
+            };
+            out.push_str(&subfield(
+                &format!("[{}]", i + 1),
+                format!("{} ({})", m.key, perms),
+            ));
+        }
+        out
+    }
+}
+
+/// Fetch a multisig vault, referenced by its create-key. Resolves + validates
+/// via [`squads::resolve`] (a bogus create-key errors there), then builds the
+/// view from the returned account — one fetch, no raw PDAs.
+pub fn fetch(rpc_url: &str, create_key: Pubkey) -> eyre::Result<MultisigView> {
+    let rpc = RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
+    let resolved = squads::resolve(&rpc, &create_key)?;
+    let m = &resolved.account;
+
+    // Vault (index 0) holds the funds.
+    let vault_balance = rpc.get_balance(&resolved.vault).unwrap_or(0);
+
+    let config_authority =
+        (m.config_authority != Pubkey::default()).then(|| m.config_authority.to_string());
+
+    let members = m
+        .members
+        .iter()
+        .map(|member| MemberView {
+            key: member.key.to_string(),
+            permissions: permission_list(&member.permissions),
+        })
+        .collect();
+
+    Ok(MultisigView {
+        create_key: m.create_key.to_string(),
+        multisig_pda: resolved.multisig.to_string(),
+        vault_pda: resolved.vault.to_string(),
+        vault_balance_sphr: vault_balance as f64 / 1_000_000_000.0,
+        threshold: m.threshold,
+        transaction_index: m.transaction_index,
+        stale_transaction_index: m.stale_transaction_index,
+        time_lock: m.time_lock,
+        config_authority,
+        rent_collector: m.rent_collector.map(|rc| rc.to_string()),
+        members,
+    })
+}
+
+/// Show a multisig vault, referenced by its create-key (pubkey).
+pub fn show(rpc_url: &str, create_key: String, mode: OutputMode) -> eyre::Result<()> {
+    let create_key = create_key
+        .parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
+    emit(&fetch(rpc_url, create_key)?, mode)
+}
+
+/// The permissions granted to a member, as a list of readable names.
+fn permission_list(perms: &Permissions) -> Vec<String> {
+    let mut out = Vec::new();
     if perms.mask & (squads::types::Permission::Initiate as u8) != 0 {
-        parts.push("Initiate");
+        out.push("Initiate".to_string());
     }
     if perms.mask & (squads::types::Permission::Vote as u8) != 0 {
-        parts.push("Vote");
+        out.push("Vote".to_string());
     }
     if perms.mask & (squads::types::Permission::Execute as u8) != 0 {
-        parts.push("Execute");
+        out.push("Execute".to_string());
     }
-    if parts.is_empty() {
-        "No permissions".to_string()
-    } else {
-        parts.join(" | ")
-    }
+    out
 }

@@ -1,15 +1,15 @@
 //! Utility actions: airdrop, transfer — plus the shared signer-dedup helper
 //! used across command modules.
 
+use crate::cli::authority::Authority;
 use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
+use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
     native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::Keypair, signer::Signer,
 };
 use solana_system_interface::instruction as system_instruction;
-use crate::cli::authority::Authority;
-use crate::squads;
 use std::str::FromStr;
 
 /// Deduplicate signers by pubkey, preserving order (first occurrence wins).
@@ -71,7 +71,10 @@ pub fn request_airdrop(
     // request rate-limited, or the transaction may fail on-chain).
     let before = rpc_client.get_balance(&pubkey)?;
 
-    progress(format!("Requesting airdrop of {} SPHR to {}...", amount, pubkey));
+    progress(format!(
+        "Requesting airdrop of {} SPHR to {}...",
+        amount, pubkey
+    ));
     let signature = rpc_client.request_airdrop(&pubkey, lamports)?;
 
     progress("Confirming airdrop...");
@@ -111,24 +114,47 @@ pub fn airdrop(
     emit(&request_airdrop(rpc_url, pubkey_str, amount)?, mode)
 }
 
-/// Transfer SOL from one account to another
+/// Transfer SOL to a raw address (`to`) or to a multisig's vault (`to_multisig`,
+/// by create-key). Exactly one destination must be given; a multisig create-key
+/// is resolved + validated so funds land in the vault, never the config account.
 pub fn transfer(
     rpc_url: &str,
     from: Authority,
-    destination_str: String,
+    to: Option<String>,
+    to_multisig: Option<String>,
     amount: f64,
 ) -> eyre::Result<()> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
-    // Parse destination pubkey
-    let destination = Pubkey::from_str(&destination_str).map_err(|e| {
-        eyre::eyre!(
-            "Failed to parse destination pubkey {}: {}",
-            destination_str,
-            e
-        )
-    })?;
+    // Resolve the destination: a raw address, or a multisig's vault (validated).
+    let destination = match (to, to_multisig) {
+        (Some(addr), None) => {
+            let dest = Pubkey::from_str(&addr)
+                .map_err(|e| eyre::eyre!("Failed to parse destination pubkey {}: {}", addr, e))?;
+            // A raw --to must not be a multisig config account or create-key —
+            // funds would be lost / mistargeted. Vault addresses are fine.
+            match squads::classify(&rpc_client, &dest)? {
+                Some(squads::MultisigRef::ConfigAccount) => eyre::bail!(
+                    "{dest} is a Squads program account (likely a multisig config account) — \
+                     transferring here would lose the funds. Use --to-multisig <create-key> \
+                     to fund the vault."
+                ),
+                Some(squads::MultisigRef::CreateKey) => eyre::bail!(
+                    "{dest} is the create-key of an existing multisig — funds would land on the \
+                     create-key account, not the vault. Use --to-multisig {dest} instead."
+                ),
+                None => {}
+            }
+            dest
+        }
+        (None, Some(create_key)) => {
+            let create_key = Pubkey::from_str(&create_key)
+                .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
+            squads::resolve(&rpc_client, &create_key)?.vault
+        }
+        _ => return Err(eyre::eyre!("Must provide either --to OR --to-multisig")),
+    };
 
     // Convert SOL to lamports
     let lamports = (amount * LAMPORTS_PER_SOL as f64) as u64;
@@ -175,3 +201,4 @@ pub fn transfer(
 
     Ok(())
 }
+

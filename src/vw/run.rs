@@ -1,6 +1,6 @@
+use crate::cli::authority::Authority;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use crate::cli::authority::Authority;
 use spherenet_validator_whitelist_client::instructions::{
     AddToWhitelistBuilder, RemoveFromWhitelistBuilder, UpdateEndEpochBuilder,
     UpdateStartEpochBuilder,

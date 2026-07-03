@@ -66,7 +66,10 @@ pub fn serve(rpc_url: &str, port: u16) -> eyre::Result<()> {
     let mut banner = String::from(BANNER_ART);
     banner.push_str(newline());
     banner.push_str(newline());
-    banner.push_str(&field("Listening", format!("http://{}:{}", DEFAULT_HOST, port)));
+    banner.push_str(&field(
+        "Listening",
+        format!("http://{}:{}", DEFAULT_HOST, port),
+    ));
     banner.push_str(&field("RPC", rpc_url));
     banner.push_str(newline());
     banner.push_str("Endpoints:");
@@ -82,7 +85,10 @@ pub fn serve(rpc_url: &str, port: u16) -> eyre::Result<()> {
     banner.push_str(&ep("GET  /balance/{pubkey}", "native SPHR balance"));
     banner.push_str(&ep("GET  /vote/{pubkey}", "vote account"));
     banner.push_str(&ep("GET  /stake/{pubkey}", "stake account"));
-    banner.push_str(&ep("POST /airdrop/{pubkey}", "request airdrop (testnet, ?amount=)"));
+    banner.push_str(&ep(
+        "POST /airdrop/{pubkey}",
+        "request airdrop (testnet, ?amount=)",
+    ));
     banner.push_str(newline());
     banner.push_str("Append ?pretty for pretty-printed JSON.");
     println!("{}", banner);
@@ -111,19 +117,28 @@ async fn health() -> impl Responder {
 #[get("/mp")]
 async fn monetary_policy(req: HttpRequest, state: web::Data<ApiState>) -> impl Responder {
     let rpc_url = state.rpc_url.clone();
-    respond(&req, web::block(move || crate::mp::show::fetch(&rpc_url)).await)
+    respond(
+        &req,
+        web::block(move || crate::mp::show::fetch(&rpc_url)).await,
+    )
 }
 
 #[get("/vw")]
 async fn validator_whitelist(req: HttpRequest, state: web::Data<ApiState>) -> impl Responder {
     let rpc_url = state.rpc_url.clone();
-    respond(&req, web::block(move || crate::vw::show::fetch(&rpc_url)).await)
+    respond(
+        &req,
+        web::block(move || crate::vw::show::fetch(&rpc_url)).await,
+    )
 }
 
 #[get("/pw")]
 async fn program_whitelist(req: HttpRequest, state: web::Data<ApiState>) -> impl Responder {
     let rpc_url = state.rpc_url.clone();
-    respond(&req, web::block(move || crate::pw::show::fetch(&rpc_url)).await)
+    respond(
+        &req,
+        web::block(move || crate::pw::show::fetch(&rpc_url)).await,
+    )
 }
 
 #[get("/balance/{pubkey}")]
@@ -143,7 +158,10 @@ async fn balance(
 #[get("/epoch")]
 async fn epoch(req: HttpRequest, state: web::Data<ApiState>) -> impl Responder {
     let rpc_url = state.rpc_url.clone();
-    respond(&req, web::block(move || crate::utils::show::fetch_epoch(&rpc_url)).await)
+    respond(
+        &req,
+        web::block(move || crate::utils::show::fetch_epoch(&rpc_url)).await,
+    )
 }
 
 #[get("/vote/{pubkey}")]
@@ -238,7 +256,9 @@ fn wants_pretty(req: &HttpRequest) -> bool {
 fn json_response<T: serde::Serialize>(value: &T, pretty: bool) -> HttpResponse {
     if pretty {
         match serde_json::to_string_pretty(value) {
-            Ok(body) => HttpResponse::Ok().content_type("application/json").body(body),
+            Ok(body) => HttpResponse::Ok()
+                .content_type("application/json")
+                .body(body),
             Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
         }
     } else {

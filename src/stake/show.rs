@@ -73,9 +73,15 @@ impl Render for StakeView {
         if let Some(d) = &self.delegation {
             out.push_str(newline());
             out.push_str(&field("Delegated Vote Acct", &d.vote_account));
-            out.push_str(&field("Delegated Stake", format!("{:.9} SPHR", d.stake_sphr)));
+            out.push_str(&field(
+                "Delegated Stake",
+                format!("{:.9} SPHR", d.stake_sphr),
+            ));
             out.push_str(&field("Activation Epoch", fmt_epoch(d.activation_epoch)));
-            out.push_str(&field("Deactivation Epoch", fmt_epoch(d.deactivation_epoch)));
+            out.push_str(&field(
+                "Deactivation Epoch",
+                fmt_epoch(d.deactivation_epoch),
+            ));
             out.push_str(&field("Credits Observed", d.credits_observed));
             out.push_str(&field("Status", &d.status));
         }

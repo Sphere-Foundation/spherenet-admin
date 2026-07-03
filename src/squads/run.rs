@@ -1,6 +1,6 @@
 //! Multisig write commands: create a vault, approve and execute proposals.
 
-use crate::cli::output::{progress, TxOutputView};
+use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
 use crate::squads::{self, Member, Permissions};
 use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;
@@ -11,6 +11,27 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use std::str::FromStr;
+
+/// Result of creating a multisig vault — the create-key reference plus the
+/// derived PDAs and the creation signature.
+#[derive(serde::Serialize)]
+pub struct CreatedMultisigView {
+    create_key: String,
+    multisig: String,
+    vault: String,
+    signature: String,
+}
+
+impl Render for CreatedMultisigView {
+    fn to_text(&self) -> String {
+        let mut out = String::from("✅ Multisig vault created\n");
+        out.push_str(&subfield("Create Key", &self.create_key));
+        out.push_str(&subfield("Multisig PDA", &self.multisig));
+        out.push_str(&subfield("Vault PDA", &self.vault));
+        out.push_str(&subfield("Signature", &self.signature));
+        out
+    }
+}
 
 /// Create a new multisig vault
 ///
@@ -30,9 +51,9 @@ pub fn create(
     url: &str,
     time_lock: Option<u32>,
     memo: Option<String>,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
-    println!("Creating Squads v4 multisig vault...");
-    println!();
+    progress("Creating Squads v4 multisig vault...");
 
     // Parse member pubkeys
     let member_pubkeys: Vec<Pubkey> = members_str
@@ -60,22 +81,20 @@ pub fn create(
         );
     }
 
-    // Show what we're creating
-    println!("Configuration:");
-    println!("  Members: {}", member_pubkeys.len());
+    // Echo what we're creating (progress → stderr)
+    progress(format!("Members: {}", member_pubkeys.len()));
     for (i, pk) in member_pubkeys.iter().enumerate() {
-        println!("    [{}] {}", i + 1, pk);
+        progress(format!("  [{}] {}", i + 1, pk));
     }
-    println!("  Threshold: {}/{}", threshold, member_pubkeys.len());
+    progress(format!("Threshold: {}/{}", threshold, member_pubkeys.len()));
     if let Some(tl) = time_lock {
         if tl > 0 {
-            println!("  Time Lock: {} seconds", tl);
+            progress(format!("Time Lock: {} seconds", tl));
         }
     }
     if let Some(ref m) = memo {
-        println!("  Memo: {}", m);
+        progress(format!("Memo: {}", m));
     }
-    println!();
 
     // Load keypairs
     let create_key = solana_sdk::signature::read_keypair_file(&create_key_path)
@@ -136,33 +155,28 @@ pub fn create(
         args,
     )?;
 
-    println!("Sending transaction...");
+    progress("Sending transaction...");
 
     // Send transaction
     let recent_blockhash = rpc.get_latest_blockhash()?;
-
     let tx = Transaction::new_signed_with_payer(
         &[create_ix],
         Some(&payer.pubkey()),
         &[&payer, &create_key], // Both must sign
         recent_blockhash,
     );
+    let signature = rpc.send_and_confirm_transaction(&tx)?;
 
-    let _signature = rpc.send_and_confirm_transaction(&tx)?;
-
-    println!();
-    println!("✅ Multisig vault created successfully!");
-    println!();
-    println!("   Vault Address: {}", multisig_pda);
-    println!();
-    println!("Use this address with --multisig-authority in spherenet-admin commands:");
-    println!(
-        "  spherenet-admin pw add <DEPLOYER> --multisig-authority {} --signer <MEMBER_KEYPAIR>",
-        multisig_pda
-    );
-    println!();
-
-    Ok(())
+    let (vault_pda, _) = squads::types::get_vault_pda(&multisig_pda, 0, &program_id);
+    emit(
+        &CreatedMultisigView {
+            create_key: create_key.pubkey().to_string(),
+            multisig: multisig_pda.to_string(),
+            vault: vault_pda.to_string(),
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }
 
 /// Wrap an arbitrary instruction into a Squads proposal.
@@ -186,8 +200,7 @@ pub fn propose(
     let multisig_account = rpc
         .get_account(multisig)
         .map_err(|e| eyre::eyre!("Failed to fetch multisig account at {}: {}", multisig, e))?;
-    let current_transaction_index =
-        squads::types::parse_transaction_index(&multisig_account.data)?;
+    let current_transaction_index = squads::types::parse_transaction_index(&multisig_account.data)?;
     let next_transaction_index = current_transaction_index
         .checked_add(1)
         .ok_or_else(|| eyre::eyre!("Transaction index overflow"))?;
@@ -256,38 +269,40 @@ pub fn propose(
 /// Approve a multisig proposal
 ///
 /// # Arguments
-/// * `multisig_str` - Multisig PDA address
+/// * `create_key` - The multisig's create-key (pubkey)
 /// * `transaction_index` - Transaction index of the proposal to approve
 /// * `member_path` - Path to the member keypair who is approving
 /// * `url` - RPC URL
-pub fn approve_proposal(
-    multisig_str: String,
+pub fn approve(
+    create_key: String,
     transaction_index: u64,
     member_path: String,
     url: &str,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
-    println!("\nApproving multisig proposal...");
-    println!("  Transaction Index: {}", transaction_index);
-    println!();
+    progress(format!("Approving proposal (tx index {})...", transaction_index));
 
-    // Parse multisig PDA
-    let multisig_pda = multisig_str
+    let create_key = create_key
         .parse::<Pubkey>()
-        .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", multisig_str, e))?;
+        .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
 
     // Load member key
     let member = solana_sdk::signature::read_keypair_file(&member_path)
         .map_err(|e| eyre::eyre!("Failed to read member key: {}", e))?;
 
-    // Parse program ID and derive PDAs
+    let rpc = RpcClient::new(url);
+
+    // Resolve + validate the multisig from its create-key
+    let multisig_pda = squads::resolve(&rpc, &create_key)?.multisig;
+
+    // Derive proposal PDA
     let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
     let (proposal_pda, _) =
         squads::types::get_proposal_pda(&multisig_pda, transaction_index - 1, &program_id);
 
-    println!("  Multisig: {}", multisig_pda);
-    println!("  Proposal: {}", proposal_pda);
-    println!("  Member:   {}", member.pubkey());
-    println!();
+    progress(format!("Multisig: {}", multisig_pda));
+    progress(format!("Proposal: {}", proposal_pda));
+    progress(format!("Member:   {}", member.pubkey()));
 
     // Build approve instruction
     let approve_ix = squads::ixs::build_proposal_approve_ix(
@@ -298,7 +313,6 @@ pub fn approve_proposal(
     )?;
 
     // Send transaction
-    let rpc = RpcClient::new(url);
     let recent_blockhash = rpc.get_latest_blockhash()?;
     let tx = Transaction::new_signed_with_payer(
         &[approve_ix],
@@ -307,44 +321,47 @@ pub fn approve_proposal(
         recent_blockhash,
     );
 
-    println!("Sending approval transaction...");
+    progress("Sending approval transaction...");
     let signature = rpc.send_and_confirm_transaction(&tx)?;
 
-    println!();
-    println!("✅ Proposal approved!");
-    println!("   Signature: {}", signature);
-    println!();
-
-    Ok(())
+    emit(
+        &TxOutputView::Executed {
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }
 
 /// Execute an approved multisig proposal
 ///
 /// # Arguments
-/// * `multisig_str` - Multisig PDA address
+/// * `create_key` - The multisig's create-key (pubkey)
 /// * `transaction_index` - Transaction index of the proposal to execute
 /// * `member_path` - Path to the member keypair who is executing
 /// * `url` - RPC URL
-pub fn execute_proposal(
-    multisig_str: String,
+pub fn execute(
+    create_key: String,
     transaction_index: u64,
     member_path: String,
     url: &str,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
-    println!("\nExecuting multisig proposal...");
-    println!("  Transaction Index: {}", transaction_index);
-    println!();
+    progress(format!("Executing proposal (tx index {})...", transaction_index));
 
-    // Parse multisig PDA
-    let multisig_pda = multisig_str
+    let create_key = create_key
         .parse::<Pubkey>()
-        .map_err(|e| eyre::eyre!("Invalid multisig address '{}': {}", multisig_str, e))?;
+        .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
 
     // Load member key
     let member = solana_sdk::signature::read_keypair_file(&member_path)
         .map_err(|e| eyre::eyre!("Failed to read member key: {}", e))?;
 
-    // Parse program ID and derive PDAs
+    let rpc = RpcClient::new(url);
+
+    // Resolve + validate the multisig from its create-key
+    let multisig_pda = squads::resolve(&rpc, &create_key)?.multisig;
+
+    // Derive PDAs
     let program_id = squads::types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
     let (proposal_pda, _) =
         squads::types::get_proposal_pda(&multisig_pda, transaction_index - 1, &program_id);
@@ -352,7 +369,6 @@ pub fn execute_proposal(
         squads::types::get_vault_transaction_pda(&multisig_pda, transaction_index - 1, &program_id);
 
     // Fetch and parse the vault transaction to get the exact accounts
-    let rpc = RpcClient::new(url);
     let vault_tx_account = rpc
         .get_account(&vault_transaction_pda)
         .map_err(|e| eyre::eyre!("Failed to fetch vault transaction: {}", e))?;
@@ -422,7 +438,6 @@ pub fn execute_proposal(
     )?;
 
     // Send transaction
-    let rpc = RpcClient::new(url);
     let recent_blockhash = rpc.get_latest_blockhash()?;
     let tx = Transaction::new_signed_with_payer(
         &[execute_ix],
@@ -433,9 +448,10 @@ pub fn execute_proposal(
 
     let signature = rpc.send_and_confirm_transaction(&tx)?;
 
-    println!("\n✅ Proposal executed!");
-    println!("   Signature: {}", signature);
-    println!();
-
-    Ok(())
+    emit(
+        &TxOutputView::Executed {
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }

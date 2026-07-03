@@ -56,8 +56,13 @@ pub fn create(
         .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
 
     // Parse non-signing authority pubkeys.
-    let staker = Pubkey::from_str(&stake_authority)
-        .map_err(|e| eyre::eyre!("Invalid stake authority pubkey '{}': {}", stake_authority, e))?;
+    let staker = Pubkey::from_str(&stake_authority).map_err(|e| {
+        eyre::eyre!(
+            "Invalid stake authority pubkey '{}': {}",
+            stake_authority,
+            e
+        )
+    })?;
     let withdrawer = Pubkey::from_str(&withdraw_authority).map_err(|e| {
         eyre::eyre!(
             "Invalid withdraw authority pubkey '{}': {}",
@@ -194,7 +199,10 @@ pub fn delegate(
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     println!("\n✅ Stake delegated successfully!");
-    println!("   Stake Account: {} → Vote Account: {}", stake_pubkey, vote_pubkey);
+    println!(
+        "   Stake Account: {} → Vote Account: {}",
+        stake_pubkey, vote_pubkey
+    );
     println!("   Signature:     {}", signature);
 
     Ok(())
@@ -282,9 +290,10 @@ fn preflight_stake_account(
             "Stake account {} is uninitialized — create it with `stake create`",
             stake_pubkey
         )),
-        StakeStateV2::RewardsPool => {
-            Err(eyre::eyre!("{} is a rewards pool, not delegatable", stake_pubkey))
-        }
+        StakeStateV2::RewardsPool => Err(eyre::eyre!(
+            "{} is a rewards pool, not delegatable",
+            stake_pubkey
+        )),
     }
 }
 
@@ -387,9 +396,10 @@ fn preflight_deactivate(
             "Stake account {} is not delegated — nothing to deactivate",
             stake_pubkey
         )),
-        StakeStateV2::Uninitialized => {
-            Err(eyre::eyre!("Stake account {} is uninitialized", stake_pubkey))
-        }
+        StakeStateV2::Uninitialized => Err(eyre::eyre!(
+            "Stake account {} is uninitialized",
+            stake_pubkey
+        )),
         StakeStateV2::RewardsPool => Err(eyre::eyre!("{} is a rewards pool", stake_pubkey)),
     }
 }
@@ -465,7 +475,11 @@ pub fn withdraw(
     println!(
         "  Amount:            {:.9} SPHR{}",
         lamports as f64 / LAMPORTS_PER_SOL as f64,
-        if all { " (entire balance — closes account)" } else { "" }
+        if all {
+            " (entire balance — closes account)"
+        } else {
+            ""
+        }
     );
     println!("  Withdraw Authority:{}", withdrawer.pubkey());
     println!("  Fee Payer:         {}", payer.pubkey());
@@ -523,9 +537,7 @@ fn preflight_withdraw(
                 stake_pubkey
             ))
         }
-        StakeStateV2::RewardsPool => {
-            return Err(eyre::eyre!("{} is a rewards pool", stake_pubkey))
-        }
+        StakeStateV2::RewardsPool => return Err(eyre::eyre!("{} is a rewards pool", stake_pubkey)),
     };
 
     if account_withdrawer != *withdrawer {

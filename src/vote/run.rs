@@ -72,8 +72,13 @@ pub fn create(
         .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
 
     // Parse non-signing authority pubkeys.
-    let authorized_voter = Pubkey::from_str(&authorized_voter)
-        .map_err(|e| eyre::eyre!("Invalid authorized voter pubkey '{}': {}", authorized_voter, e))?;
+    let authorized_voter = Pubkey::from_str(&authorized_voter).map_err(|e| {
+        eyre::eyre!(
+            "Invalid authorized voter pubkey '{}': {}",
+            authorized_voter,
+            e
+        )
+    })?;
     let authorized_withdrawer = Pubkey::from_str(&authorized_withdrawer).map_err(|e| {
         eyre::eyre!(
             "Invalid authorized withdrawer pubkey '{}': {}",

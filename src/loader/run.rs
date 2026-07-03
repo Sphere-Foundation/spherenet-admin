@@ -1,5 +1,6 @@
 //! Program deployment operations: deploy, upgrade, and extend.
 
+use crate::cli::authority::Authority;
 use crate::pw::run::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
@@ -9,7 +10,6 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use solana_sdk_ids::bpf_loader_upgradeable;
-use crate::cli::authority::Authority;
 #[allow(deprecated)]
 use spherenet_whitelisted_loader_v3_interface::{
     instruction::{
@@ -126,8 +126,12 @@ pub fn deploy(
     // Warn if no max-data-len specified (important for multisig scenarios)
     if !max_data_len_provided {
         println!("\n⚠️  WARNING: No --max-data-len specified, using program size as capacity.");
-        println!("   If you plan to transfer upgrade authority to multisig, you CANNOT extend later!");
-        println!("   Consider deploying with generous --max-data-len (e.g., --max-data-len 500000)");
+        println!(
+            "   If you plan to transfer upgrade authority to multisig, you CANNOT extend later!"
+        );
+        println!(
+            "   Consider deploying with generous --max-data-len (e.g., --max-data-len 500000)"
+        );
         println!();
     }
 
@@ -449,13 +453,16 @@ pub fn extend_program(
     // Note: Payer must be instruction_authority (vault PDA) for multisig so vault can pay
     let extend_ix = extend_program_checked(
         &program_id,
-        &instruction_authority,       // Authority required - vault PDA for multisig
+        &instruction_authority, // Authority required - vault PDA for multisig
         Some(&instruction_authority), // Payer also vault PDA for multisig consistency
         additional_bytes,
     );
 
     // Execute instruction through authority (single-sig or multi-sig)
-    let description = format!("Extend program {} by {} bytes", program_id, additional_bytes);
+    let description = format!(
+        "Extend program {} by {} bytes",
+        program_id, additional_bytes
+    );
     let result = upgrade_authority.execute_instruction(&rpc_client, extend_ix, &description)?;
 
     // Only show "extended successfully" for single-sig (immediate execution)
