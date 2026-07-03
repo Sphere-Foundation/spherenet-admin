@@ -427,6 +427,23 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 payer,
                 mode,
             )?,
+            VoteAction::Withdraw {
+                vote_account,
+                destination,
+                amount,
+                all,
+                withdraw_authority,
+                payer,
+            } => vote::run::withdraw(
+                &cli.url,
+                vote_account,
+                destination,
+                amount,
+                all,
+                withdraw_authority,
+                payer,
+                mode,
+            )?,
         },
         Commands::Stake { action } => match action {
             StakeAction::Show { stake_account } => {

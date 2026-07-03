@@ -6,7 +6,7 @@
 //! collapse them. Callers that want one key to play several roles pass the same
 //! keypair/pubkey for each; duplicate *signers* are deduplicated automatically.
 
-use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
+use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
@@ -16,7 +16,7 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use solana_vote_interface::{
-    instruction::{create_account_with_config, CreateVoteAccountConfig},
+    instruction::{create_account_with_config, withdraw as withdraw_ix, CreateVoteAccountConfig},
     state::VoteInit,
 };
 use std::str::FromStr;
@@ -164,6 +164,118 @@ pub fn create(
     emit(
         &VoteAccountCreatedView {
             vote_account: vote_account.pubkey().to_string(),
+            signature: signature.to_string(),
+        },
+        mode,
+    )
+}
+
+/// Withdraw lamports from a vote account to a destination.
+///
+/// Signed by the vote account's **authorized withdrawer** (the drain key).
+/// `--all` withdraws the entire balance, which closes the account.
+///
+/// * `vote_account` - pubkey of the vote account.
+/// * `destination`  - pubkey that receives the lamports.
+/// * `amount`       - SPHR to withdraw; ignored when `all` is set.
+/// * `all`          - withdraw the entire balance (closes the account).
+/// * `withdraw_authority_path` - keypair of the authorized withdrawer; signs.
+/// * `payer_path`   - keypair that pays transaction fees.
+#[allow(clippy::too_many_arguments)]
+pub fn withdraw(
+    rpc_url: &str,
+    vote_account: String,
+    destination: String,
+    amount: Option<f64>,
+    all: bool,
+    withdraw_authority_path: String,
+    payer_path: String,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    if amount.is_none() && !all {
+        return Err(eyre::eyre!("Provide either --amount <SPHR> or --all"));
+    }
+
+    let rpc_client =
+        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
+
+    let vote_pubkey = Pubkey::from_str(&vote_account)
+        .map_err(|e| eyre::eyre!("Invalid vote account pubkey '{}': {}", vote_account, e))?;
+    let destination = Pubkey::from_str(&destination)
+        .map_err(|e| eyre::eyre!("Invalid destination pubkey '{}': {}", destination, e))?;
+
+    let withdrawer = read_keypair_file(&withdraw_authority_path).map_err(|e| {
+        eyre::eyre!(
+            "Failed to read withdraw authority keypair from {}: {}",
+            withdraw_authority_path,
+            e
+        )
+    })?;
+    let payer = read_keypair_file(&payer_path)
+        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+
+    // Preflight: the account must exist and be a vote account. The on-chain
+    // program enforces the withdraw authority. Also resolves the balance for `--all`.
+    let vote_program = Pubkey::from(solana_vote_interface::program::id().to_bytes());
+    let account = rpc_client.get_account(&vote_pubkey).map_err(|_| {
+        eyre::eyre!(
+            "Vote account {} not found — create it first (`vote create`)",
+            vote_pubkey
+        )
+    })?;
+    if account.owner != vote_program {
+        return Err(eyre::eyre!(
+            "{} is not a vote account (owner: {})",
+            vote_pubkey,
+            account.owner
+        ));
+    }
+    let balance = account.lamports;
+
+    let lamports = if all {
+        balance
+    } else {
+        (amount.unwrap() * LAMPORTS_PER_SOL as f64) as u64
+    };
+    if lamports == 0 {
+        return Err(eyre::eyre!("Nothing to withdraw (amount resolves to 0)"));
+    }
+    if lamports > balance {
+        return Err(eyre::eyre!(
+            "Requested {:.9} SPHR exceeds the account balance of {:.9} SPHR",
+            lamports as f64 / LAMPORTS_PER_SOL as f64,
+            balance as f64 / LAMPORTS_PER_SOL as f64
+        ));
+    }
+
+    progress("Withdrawing from vote account:");
+    progress(format!("Vote Account:      {}", vote_pubkey));
+    progress(format!("Destination:       {}", destination));
+    progress(format!(
+        "Amount:            {:.9} SPHR{}",
+        lamports as f64 / LAMPORTS_PER_SOL as f64,
+        if all {
+            " (entire balance — closes account)"
+        } else {
+            ""
+        }
+    ));
+    progress(format!("Withdraw Authority:{}", withdrawer.pubkey()));
+    progress(format!("Fee Payer:         {}", payer.pubkey()));
+
+    let instruction = withdraw_ix(&vote_pubkey, &withdrawer.pubkey(), lamports, &destination);
+
+    let signers = crate::utils::run::dedupe_signers(&[&payer, &withdrawer]);
+
+    let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
+    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+
+    if all {
+        progress(format!("Vote account {} closed.", vote_pubkey));
+    }
+    emit(
+        &TxOutputView::Executed {
             signature: signature.to_string(),
         },
         mode,

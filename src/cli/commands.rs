@@ -604,6 +604,27 @@ pub enum VoteAction {
         #[arg(long, alias = "fee-payer")]
         payer: String,
     },
+    /// Withdraw lamports from a vote account (signed by the withdraw authority)
+    Withdraw {
+        /// Vote account pubkey
+        #[arg(long)]
+        vote_account: String,
+        /// Destination pubkey that receives the withdrawn SPHR
+        #[arg(long)]
+        destination: String,
+        /// Amount of SPHR to withdraw (mutually exclusive with --all)
+        #[arg(long, conflicts_with = "all")]
+        amount: Option<f64>,
+        /// Withdraw the entire balance and close the account
+        #[arg(long)]
+        all: bool,
+        /// Path to the withdraw authority keypair; signs the withdrawal
+        #[arg(long)]
+        withdraw_authority: String,
+        /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer")]
+        payer: String,
+    },
 }
 
 #[derive(Subcommand)]
