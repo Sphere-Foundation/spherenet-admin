@@ -2,18 +2,36 @@
 //!
 //! Routes parsed CLI commands to appropriate domain modules.
 
-use crate::{cli, loader, mp, pw, stake, utils, vote, vw};
+use crate::cli::output::OutputMode;
+use crate::{cli, loader, mp, pw, server, stake, utils, vote, vw};
 use clap::Parser;
 
+use crate::squads;
 use cli::commands::*;
-use spherenet_authority::squads;
 
 pub fn run() -> eyre::Result<()> {
     let cli = Cli::parse();
+    let mode = cli.output;
+
+    let result = dispatch(cli);
+
+    // In JSON mode, surface errors as a JSON object on stderr (exit nonzero) so
+    // downstream tooling never has to parse eyre's human-readable report.
+    if let Err(e) = &result {
+        if mode == OutputMode::Json {
+            eprintln!("{}", serde_json::json!({ "error": e.to_string() }));
+            std::process::exit(1);
+        }
+    }
+    result
+}
+
+fn dispatch(cli: Cli) -> eyre::Result<()> {
+    let mode = cli.output;
 
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
-            ValidatorWhitelistAction::Show => vw::whitelist::show(&cli.url)?,
+            ValidatorWhitelistAction::Show => vw::show::show(&cli.url, mode)?,
             ValidatorWhitelistAction::Add {
                 vote_account,
                 start_epoch,
@@ -22,9 +40,13 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                vw::whitelist::add(&cli.url, vote_account, start_epoch, end_epoch, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::run::add(&cli.url, vote_account, start_epoch, end_epoch, auth, mode)?
             }
             ValidatorWhitelistAction::Remove {
                 vote_account,
@@ -32,9 +54,13 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                vw::whitelist::remove(&cli.url, vote_account, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::run::remove(&cli.url, vote_account, auth, mode)?
             }
             ValidatorWhitelistAction::UpdateStartEpoch {
                 vote_account,
@@ -43,9 +69,13 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                vw::whitelist::update_start_epoch(&cli.url, vote_account, epoch, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::run::update_start_epoch(&cli.url, vote_account, epoch, auth, mode)?
             }
             ValidatorWhitelistAction::UpdateEndEpoch {
                 vote_account,
@@ -54,72 +84,98 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                vw::whitelist::update_end_epoch(&cli.url, vote_account, epoch, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::run::update_end_epoch(&cli.url, vote_account, epoch, auth, mode)?
             }
             ValidatorWhitelistAction::ProposeAuthority {
                 new_authority,
+                new_multisig,
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                vw::authority::propose_authority(&cli.url, new_authority, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::auth::propose_authority(&cli.url, new_authority, new_multisig, auth, mode)?
             }
             ValidatorWhitelistAction::AcceptAuthority {
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                vw::authority::accept_authority(&cli.url, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::auth::accept_authority(&cli.url, auth, mode)?
             }
             ValidatorWhitelistAction::CancelAuthority {
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                vw::authority::cancel_authority(&cli.url, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::auth::cancel_authority(&cli.url, auth, mode)?
             }
         },
         Commands::MonetaryPolicy { action } => match action {
-            MonetaryPolicyAction::Show => mp::policy::show(&cli.url)?,
-            MonetaryPolicyAction::Create { authority, payer } => {
-                mp::create::create(&cli.url, authority, payer)?
-            }
-            MonetaryPolicyAction::Auth => mp::authority::auth(&cli.url)?,
+            MonetaryPolicyAction::Show => mp::show::show(&cli.url, mode)?,
             MonetaryPolicyAction::ProposeAuthority {
                 new_authority,
+                new_multisig,
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::authority::propose_authority(&cli.url, new_authority, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                mp::auth::propose_authority(&cli.url, new_authority, new_multisig, auth, mode)?
             }
             MonetaryPolicyAction::AcceptAuthority {
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::authority::accept_authority(&cli.url, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                mp::auth::accept_authority(&cli.url, auth, mode)?
             }
             MonetaryPolicyAction::CancelAuthority {
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::authority::cancel_authority(&cli.url, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                mp::auth::cancel_authority(&cli.url, auth, mode)?
             }
             MonetaryPolicyAction::UpdateInflationRate {
                 new_rate_bips,
@@ -127,9 +183,13 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::policy::update_inflation_rate_bips(&cli.url, new_rate_bips, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                mp::run::update_inflation_rate_bips(&cli.url, new_rate_bips, auth, mode)?
             }
             MonetaryPolicyAction::UpdateLamportsPerSignature {
                 new_lamports_per_signature,
@@ -137,13 +197,13 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::policy::update_lamports_per_signature(
+                let auth = cli::authority::from_cli_args(
                     &cli.url,
-                    new_lamports_per_signature,
-                    auth,
-                )?
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                mp::run::update_lamports_per_signature(&cli.url, new_lamports_per_signature, auth, mode)?
             }
             MonetaryPolicyAction::UpdateBurnPercent {
                 new_percent,
@@ -151,9 +211,13 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::policy::update_burn_percent(&cli.url, new_percent, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                mp::run::update_burn_percent(&cli.url, new_percent, auth, mode)?
             }
             MonetaryPolicyAction::UpdateVatLamportsPerEpoch {
                 new_vat_lamports,
@@ -161,22 +225,30 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                mp::policy::update_vat_lamports_per_epoch(&cli.url, new_vat_lamports, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                mp::run::update_vat_lamports_per_epoch(&cli.url, new_vat_lamports, auth, mode)?
             }
         },
         Commands::ProgramWhitelist { action } => match action {
-            ProgramWhitelistAction::Show => pw::whitelist::show(&cli.url)?,
+            ProgramWhitelistAction::Show => pw::show::show(&cli.url, mode)?,
             ProgramWhitelistAction::Add {
                 program_authority,
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                pw::whitelist::add(&cli.url, program_authority, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                pw::run::add(&cli.url, program_authority, auth, mode)?
             }
             ProgramWhitelistAction::Remove {
                 program_authority,
@@ -184,37 +256,54 @@ pub fn run() -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                pw::whitelist::remove(&cli.url, program_authority, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                pw::run::remove(&cli.url, program_authority, auth, mode)?
             }
             ProgramWhitelistAction::ProposeAuthority {
                 new_authority,
+                new_multisig,
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                pw::authority::propose_authority(&cli.url, new_authority, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                pw::auth::propose_authority(&cli.url, new_authority, new_multisig, auth, mode)?
             }
             ProgramWhitelistAction::AcceptAuthority {
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                pw::authority::accept_authority(&cli.url, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                pw::auth::accept_authority(&cli.url, auth, mode)?
             }
             ProgramWhitelistAction::CancelAuthority {
                 authority,
                 multisig,
                 multisig_authority,
             } => {
-                let auth =
-                    cli::authority_builder::from_cli_args(authority, multisig, multisig_authority)?;
-                pw::authority::cancel_authority(&cli.url, auth)?
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                pw::auth::cancel_authority(&cli.url, auth, mode)?
             }
         },
         Commands::Program { action } => match action {
@@ -224,13 +313,14 @@ pub fn run() -> eyre::Result<()> {
                 upgrade_authority,
                 payer,
                 max_data_len,
-            } => loader::deploy::deploy(
+            } => loader::run::deploy(
                 &cli.url,
                 program_so,
                 program_keypair,
                 upgrade_authority,
                 payer,
                 max_data_len,
+                mode,
             )?,
             ProgramAction::Upgrade {
                 program_id,
@@ -241,13 +331,14 @@ pub fn run() -> eyre::Result<()> {
                 payer,
                 spill,
             } => {
-                let auth = cli::authority_builder::from_cli_args(
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
                     upgrade_authority,
                     multisig,
                     multisig_authority,
                 )?;
-                loader::upgrade::upgrade_program(
-                    &cli.url, program_id, program_so, auth, payer, spill,
+                loader::run::upgrade_program(
+                    &cli.url, program_id, program_so, auth, payer, spill, mode,
                 )?
             }
             ProgramAction::Extend {
@@ -258,29 +349,41 @@ pub fn run() -> eyre::Result<()> {
                 multisig_authority,
                 payer,
             } => {
-                let auth = cli::authority_builder::from_cli_args(
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
                     upgrade_authority,
                     multisig,
                     multisig_authority,
                 )?;
-                loader::extend::extend_program(&cli.url, program_id, bytes, auth, payer)?
+                loader::run::extend_program(&cli.url, program_id, bytes, auth, payer, mode)?
+            }
+            ProgramAction::SetUpgradeAuthority {
+                program_id,
+                new_authority,
+                new_multisig,
+                make_final,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                loader::run::set_upgrade_authority(
+                    &cli.url,
+                    program_id,
+                    auth,
+                    new_authority,
+                    new_multisig,
+                    make_final,
+                    mode,
+                )?
             }
         },
         Commands::Multisig { action } => match action {
-            MultisigAction::ProgramConfigInit {
-                authority,
-                treasury,
-                creation_fee,
-                initializer,
-                payer,
-            } => squads::commands::program_config_init(
-                authority,
-                treasury,
-                creation_fee,
-                initializer,
-                payer,
-                &cli.url,
-            )?,
             MultisigAction::Create {
                 members,
                 threshold,
@@ -288,26 +391,23 @@ pub fn run() -> eyre::Result<()> {
                 payer,
                 time_lock,
                 memo,
-            } => squads::commands::create(
-                members, threshold, create_key, payer, &cli.url, time_lock, memo,
+            } => squads::run::create(
+                members, threshold, create_key, payer, &cli.url, time_lock, memo, mode,
             )?,
-            MultisigAction::Show {
-                create_key,
-                multisig,
-            } => squads::commands::show_multisig(create_key, multisig, &cli.url)?,
+            MultisigAction::Show { create_key } => squads::show::show(&cli.url, create_key, mode)?,
             MultisigAction::Approve {
-                multisig,
+                create_key,
                 transaction_index,
                 member,
-            } => squads::commands::approve_proposal(multisig, transaction_index, member, &cli.url)?,
+            } => squads::run::approve(create_key, transaction_index, member, &cli.url, mode)?,
             MultisigAction::Execute {
-                multisig,
+                create_key,
                 transaction_index,
                 member,
-            } => squads::commands::execute_proposal(multisig, transaction_index, member, &cli.url)?,
+            } => squads::run::execute(create_key, transaction_index, member, &cli.url, mode)?,
         },
         Commands::Vote { action } => match action {
-            VoteAction::Show { vote_account } => vote::show::show(&cli.url, vote_account)?,
+            VoteAction::Show { vote_account } => vote::show::show(&cli.url, vote_account, mode)?,
             VoteAction::Create {
                 vote_account,
                 identity,
@@ -316,7 +416,7 @@ pub fn run() -> eyre::Result<()> {
                 commission,
                 from,
                 payer,
-            } => vote::create::create(
+            } => vote::run::create(
                 &cli.url,
                 vote_account,
                 identity,
@@ -325,10 +425,30 @@ pub fn run() -> eyre::Result<()> {
                 commission,
                 from,
                 payer,
+                mode,
+            )?,
+            VoteAction::Withdraw {
+                vote_account,
+                destination,
+                amount,
+                all,
+                withdraw_authority,
+                payer,
+            } => vote::run::withdraw(
+                &cli.url,
+                vote_account,
+                destination,
+                amount,
+                all,
+                withdraw_authority,
+                payer,
+                mode,
             )?,
         },
         Commands::Stake { action } => match action {
-            StakeAction::Show { stake_account } => stake::show::show(&cli.url, stake_account)?,
+            StakeAction::Show { stake_account } => {
+                stake::show::show(&cli.url, stake_account, mode)?
+            }
             StakeAction::Create {
                 stake_account,
                 amount,
@@ -336,7 +456,7 @@ pub fn run() -> eyre::Result<()> {
                 withdraw_authority,
                 from,
                 payer,
-            } => stake::create::create(
+            } => stake::run::create(
                 &cli.url,
                 stake_account,
                 amount,
@@ -344,24 +464,26 @@ pub fn run() -> eyre::Result<()> {
                 withdraw_authority,
                 from,
                 payer,
+                mode,
             )?,
             StakeAction::Delegate {
                 stake_account,
                 vote_account,
                 stake_authority,
                 payer,
-            } => stake::delegate::delegate(
+            } => stake::run::delegate(
                 &cli.url,
                 stake_account,
                 vote_account,
                 stake_authority,
                 payer,
+                mode,
             )?,
             StakeAction::Deactivate {
                 stake_account,
                 stake_authority,
                 payer,
-            } => stake::deactivate::deactivate(&cli.url, stake_account, stake_authority, payer)?,
+            } => stake::run::deactivate(&cli.url, stake_account, stake_authority, payer, mode)?,
             StakeAction::Withdraw {
                 stake_account,
                 destination,
@@ -369,7 +491,7 @@ pub fn run() -> eyre::Result<()> {
                 all,
                 withdraw_authority,
                 payer,
-            } => stake::withdraw::withdraw(
+            } => stake::run::withdraw(
                 &cli.url,
                 stake_account,
                 destination,
@@ -377,20 +499,25 @@ pub fn run() -> eyre::Result<()> {
                 all,
                 withdraw_authority,
                 payer,
+                mode,
             )?,
         },
-        Commands::Balance { pubkey } => utils::balance::balance(&cli.url, pubkey)?,
-        Commands::Epoch => utils::epoch::epoch(&cli.url)?,
-        Commands::Airdrop { pubkey, amount } => utils::airdrop::airdrop(&cli.url, pubkey, amount)?,
+        Commands::Balance { pubkey } => utils::show::balance(&cli.url, pubkey, mode)?,
+        Commands::Epoch => utils::show::epoch(&cli.url, mode)?,
+        Commands::Server { port } => server::run::serve(&cli.url, port)?,
+        Commands::Airdrop { pubkey, amount } => {
+            utils::run::airdrop(&cli.url, pubkey, amount, mode)?
+        }
         Commands::Transfer {
-            destination,
+            to,
+            to_multisig,
             amount,
             from,
             multisig,
             multisig_authority,
         } => {
-            let auth = cli::authority_builder::from_cli_args(from, multisig, multisig_authority)?;
-            utils::transfer::transfer(&cli.url, auth, destination, amount)?
+            let auth = cli::authority::from_cli_args(&cli.url, from, multisig, multisig_authority)?;
+            utils::run::transfer(&cli.url, auth, to, to_multisig, amount, mode)?
         }
     }
 
