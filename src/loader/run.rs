@@ -1,6 +1,7 @@
 //! Program deployment operations: deploy, upgrade, and extend.
 
 use crate::cli::authority::Authority;
+use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::pw::run::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
@@ -23,6 +24,24 @@ use std::{fs, str::FromStr};
 /// Conservative chunk size for writing program data to avoid transaction size limits
 const MAX_WRITE_SIZE: usize = 900;
 
+/// Result of a `deploy` — the program address and its upgrade authority.
+#[derive(serde::Serialize)]
+pub struct DeployedProgramView {
+    program_id: String,
+    upgrade_authority: String,
+    signature: String,
+}
+
+impl Render for DeployedProgramView {
+    fn to_text(&self) -> String {
+        let mut out = String::from("✅ Program deployed\n");
+        out.push_str(&subfield("Program ID", &self.program_id));
+        out.push_str(&subfield("Upgrade Authority", &self.upgrade_authority));
+        out.push_str(&subfield("Signature", &self.signature));
+        out
+    }
+}
+
 /// Writes program data to a buffer account in chunks.
 ///
 /// Program data is split into MAX_WRITE_SIZE chunks (900 bytes) to avoid hitting
@@ -41,12 +60,6 @@ fn write_buffer(
 
     for (i, chunk) in chunks.into_iter().enumerate() {
         let offset = i * MAX_WRITE_SIZE;
-        print!(
-            "  Writing chunk {}/{} ({} bytes)...",
-            i + 1,
-            total_chunks,
-            chunk.len()
-        );
 
         let write_ix = write(buffer, authority, offset as u32, chunk.to_vec());
 
@@ -57,10 +70,15 @@ fn write_buffer(
         );
         rpc_client.send_and_confirm_transaction(&transaction)?;
 
-        println!(" ✅");
+        progress(format!(
+            "Writing chunk {}/{} ({} bytes) ✅",
+            i + 1,
+            total_chunks,
+            chunk.len()
+        ));
     }
 
-    println!("  ✅ Program data written successfully");
+    progress("✅ Program data written successfully");
     Ok(())
 }
 
@@ -72,8 +90,9 @@ pub fn deploy(
     upgrade_authority_path: String,
     payer_keypair_path: String,
     max_data_len: Option<usize>,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
-    println!("🚀 Deploying program to SphereNet...");
+    progress("🚀 Deploying program to SphereNet...");
 
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
@@ -103,14 +122,14 @@ pub fn deploy(
     })?;
     let upgrade_authority = upgrade_authority_keypair.pubkey();
 
-    println!("  Program ID: {}", program_id);
-    println!("  Payer: {}", payer.pubkey());
-    println!("  Upgrade Authority: {}", upgrade_authority);
+    progress(format!("Program ID: {}", program_id));
+    progress(format!("Payer: {}", payer.pubkey()));
+    progress(format!("Upgrade Authority: {}", upgrade_authority));
 
     // Read program .so file
     let program_data = fs::read(&program_so_path)
         .map_err(|e| eyre::eyre!("Failed to read program file {}: {}", program_so_path, e))?;
-    println!("  Program size: {} bytes", program_data.len());
+    progress(format!("Program size: {} bytes", program_data.len()));
 
     // Determine max data length
     let max_data_len_provided = max_data_len.is_some();
@@ -125,28 +144,23 @@ pub fn deploy(
 
     // Warn if no max-data-len specified (important for multisig scenarios)
     if !max_data_len_provided {
-        println!("\n⚠️  WARNING: No --max-data-len specified, using program size as capacity.");
-        println!(
-            "   If you plan to transfer upgrade authority to multisig, you CANNOT extend later!"
-        );
-        println!(
-            "   Consider deploying with generous --max-data-len (e.g., --max-data-len 500000)"
-        );
-        println!();
+        progress("⚠️  WARNING: No --max-data-len specified, using program size as capacity.");
+        progress("   If you plan to transfer upgrade authority to multisig, you CANNOT extend later!");
+        progress("   Consider deploying with generous --max-data-len (e.g., --max-data-len 500000)");
     }
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
     let whitelist_entry = require_whitelist_entry(&rpc_client, upgrade_authority)?;
 
     // Create and write buffer
-    println!("\n📝 Creating buffer account...");
+    progress("📝 Creating buffer account...");
     let buffer_keypair = Keypair::new();
     let buffer_pubkey = buffer_keypair.pubkey();
     let buffer_size = UpgradeableLoaderState::size_of_buffer(program_data.len());
     let buffer_lamports = rpc_client.get_minimum_balance_for_rent_exemption(buffer_size)?;
 
-    println!("  Buffer size: {} bytes", buffer_size);
-    println!("  Buffer rent: {} lamports", buffer_lamports);
+    progress(format!("Buffer size: {} bytes", buffer_size));
+    progress(format!("Buffer rent: {} lamports", buffer_lamports));
 
     // Create and initialize buffer account with UPGRADE AUTHORITY as authority
     // (required for deployment - buffer authority must match program's upgrade authority)
@@ -166,10 +180,10 @@ pub fn deploy(
     );
     rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("  ✅ Buffer account created: {}", buffer_pubkey);
+    progress(format!("✅ Buffer account created: {}", buffer_pubkey));
 
     // Write program data to buffer in chunks (upgrade authority signs as buffer authority)
-    println!("\n📤 Writing program data to buffer...");
+    progress("📤 Writing program data to buffer...");
     write_buffer(
         &rpc_client,
         &payer,
@@ -180,7 +194,7 @@ pub fn deploy(
     )?;
 
     // Deploy program with whitelist validation
-    println!("\n🎯 Deploying program...");
+    progress("🎯 Deploying program...");
     let program_lamports = rpc_client
         .get_minimum_balance_for_rent_exemption(UpgradeableLoaderState::size_of_program())?;
 
@@ -200,13 +214,16 @@ pub fn deploy(
         &[&payer, &program_keypair, &upgrade_authority_keypair],
         rpc_client.get_latest_blockhash()?,
     );
-    rpc_client.send_and_confirm_transaction(&transaction)?;
+    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("\n✅ Program deployed successfully!");
-    println!("   Program ID: {}", program_id);
-    println!("   Upgrade Authority: {}", upgrade_authority);
-
-    Ok(())
+    emit(
+        &DeployedProgramView {
+            program_id: program_id.to_string(),
+            upgrade_authority: upgrade_authority.to_string(),
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }
 
 /// Upgrade an existing program on SphereNet
@@ -217,8 +234,9 @@ pub fn upgrade_program(
     upgrade_authority: Authority,
     payer_keypair_path: String,
     spill_address_str: Option<String>,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
-    println!("🔄 Upgrading program on SphereNet...");
+    progress("🔄 Upgrading program on SphereNet...");
 
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
@@ -245,14 +263,14 @@ pub fn upgrade_program(
     // Get instruction authority early for display and later use
     let instruction_authority = upgrade_authority.instruction_authority_pubkey()?;
 
-    println!("  Program ID: {}", program_id);
-    println!("  Payer: {}", payer.pubkey());
-    println!("  Upgrade Authority: {}", instruction_authority);
-    println!("  Spill Account: {}", spill_address);
+    progress(format!("Program ID: {}", program_id));
+    progress(format!("Payer: {}", payer.pubkey()));
+    progress(format!("Upgrade Authority: {}", instruction_authority));
+    progress(format!("Spill Account: {}", spill_address));
 
     // Verify program exists
     match rpc_client.get_account(&program_id) {
-        Ok(_) => println!("  ✅ Program exists"),
+        Ok(_) => progress("✅ Program exists"),
         Err(_) => {
             return Err(eyre::eyre!(
                 "❌ Program {} does not exist! Use 'program deploy' to deploy a new program.",
@@ -264,10 +282,10 @@ pub fn upgrade_program(
     // Read program .so file
     let program_data = fs::read(&program_so_path)
         .map_err(|e| eyre::eyre!("Failed to read program file {}: {}", program_so_path, e))?;
-    println!("  New program size: {} bytes", program_data.len());
+    progress(format!("New program size: {} bytes", program_data.len()));
 
     // Verify program data account is large enough for the new program (fail-fast)
-    println!("\n🔍 Checking program capacity...");
+    progress("🔍 Checking program capacity...");
     let (programdata_address, _) =
         Pubkey::find_program_address(&[program_id.as_ref()], &bpf_loader_upgradeable::id());
 
@@ -288,8 +306,8 @@ pub fn upgrade_program(
         .len()
         .saturating_sub(programdata_metadata_len);
 
-    println!("  Current max capacity: {} bytes", current_max_len);
-    println!("  Required capacity:    {} bytes", program_data.len());
+    progress(format!("Current max capacity: {} bytes", current_max_len));
+    progress(format!("Required capacity:    {} bytes", program_data.len()));
 
     if program_data.len() > current_max_len {
         let additional_bytes = program_data.len() - current_max_len;
@@ -333,20 +351,20 @@ pub fn upgrade_program(
         ));
     }
 
-    println!("  ✅ Program capacity sufficient");
+    progress("✅ Program capacity sufficient");
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
     let whitelist_entry = require_whitelist_entry(&rpc_client, instruction_authority)?;
 
     // Create and write buffer
-    println!("\n📝 Creating buffer account...");
+    progress("📝 Creating buffer account...");
     let buffer_keypair = Keypair::new();
     let buffer_pubkey = buffer_keypair.pubkey();
     let buffer_size = UpgradeableLoaderState::size_of_buffer(program_data.len());
     let buffer_lamports = rpc_client.get_minimum_balance_for_rent_exemption(buffer_size)?;
 
-    println!("  Buffer size: {} bytes", buffer_size);
-    println!("  Buffer rent: {} lamports", buffer_lamports);
+    progress(format!("Buffer size: {} bytes", buffer_size));
+    progress(format!("Buffer rent: {} lamports", buffer_lamports));
 
     // Create and initialize buffer account with PAYER as buffer authority
     // (payer can write to buffer, then upgrade authority authorizes the upgrade)
@@ -366,10 +384,10 @@ pub fn upgrade_program(
     );
     rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("  ✅ Buffer account created: {}", buffer_pubkey);
+    progress(format!("✅ Buffer account created: {}", buffer_pubkey));
 
     // Write program data to buffer in chunks (payer signs buffer writes)
-    println!("\n📤 Writing program data to buffer...");
+    progress("📤 Writing program data to buffer...");
     write_buffer(
         &rpc_client,
         &payer,
@@ -380,7 +398,7 @@ pub fn upgrade_program(
     )?;
 
     // Transfer buffer authority to upgrade authority (required for multisig upgrades)
-    println!("\n🔐 Transferring buffer authority...");
+    progress("🔐 Transferring buffer authority...");
     let set_buffer_authority_ix = set_buffer_authority(
         &buffer_pubkey,
         &payer.pubkey(),        // Current buffer authority (payer)
@@ -391,10 +409,10 @@ pub fn upgrade_program(
         Transaction::new_with_payer(&[set_buffer_authority_ix], Some(&payer.pubkey()));
     set_authority_tx.sign(&[&payer], rpc_client.get_latest_blockhash()?);
     rpc_client.send_and_confirm_transaction(&set_authority_tx)?;
-    println!("  ✅ Buffer authority transferred to upgrade authority");
+    progress("✅ Buffer authority transferred to upgrade authority");
 
     // Upgrade program with whitelist validation
-    println!("\n🎯 Upgrading program...");
+    progress("🎯 Upgrading program...");
 
     #[allow(deprecated)]
     let upgrade_ix = upgrade(
@@ -408,15 +426,7 @@ pub fn upgrade_program(
     // Execute upgrade through authority (single-sig or multi-sig)
     let description = format!("Upgrade program {}", program_id);
     let result = upgrade_authority.execute_instruction(&rpc_client, upgrade_ix, &description)?;
-
-    // Only show "upgraded successfully" for single-sig (immediate execution)
-    if matches!(result, crate::cli::output::TxOutputView::Executed { .. }) {
-        println!("\n✅ Program upgraded successfully!");
-        println!("   Program ID: {}", program_id);
-        println!("   Upgrade Authority: {}", instruction_authority);
-    }
-
-    Ok(())
+    emit(&result, mode)
 }
 
 /// Extend a program's data account to accommodate larger programs
@@ -431,8 +441,9 @@ pub fn extend_program(
     additional_bytes: u32,
     upgrade_authority: Authority,
     _payer_keypair_path: String,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
-    println!("🔧 Extending program data account...");
+    progress("🔧 Extending program data account...");
 
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
@@ -444,10 +455,10 @@ pub fn extend_program(
     // Get instruction authority (vault PDA for multisig, keypair pubkey for single-sig)
     let instruction_authority = upgrade_authority.instruction_authority_pubkey()?;
 
-    println!("  Program ID:         {}", program_id);
-    println!("  Additional Bytes:   {}", additional_bytes);
-    println!("  Upgrade Authority:  {}", instruction_authority);
-    println!("  Payer:              {}", instruction_authority);
+    progress(format!("Program ID:         {}", program_id));
+    progress(format!("Additional Bytes:   {}", additional_bytes));
+    progress(format!("Upgrade Authority:  {}", instruction_authority));
+    progress(format!("Payer:              {}", instruction_authority));
 
     // Build extend_program_checked instruction (CPI-safe, works with multisig!)
     // Note: Payer must be instruction_authority (vault PDA) for multisig so vault can pay
@@ -464,11 +475,5 @@ pub fn extend_program(
         program_id, additional_bytes
     );
     let result = upgrade_authority.execute_instruction(&rpc_client, extend_ix, &description)?;
-
-    // Only show "extended successfully" for single-sig (immediate execution)
-    if matches!(result, crate::cli::output::TxOutputView::Executed { .. }) {
-        println!("\n✅ Program data account extended successfully!");
-    }
-
-    Ok(())
+    emit(&result, mode)
 }

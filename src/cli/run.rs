@@ -320,6 +320,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 upgrade_authority,
                 payer,
                 max_data_len,
+                mode,
             )?,
             ProgramAction::Upgrade {
                 program_id,
@@ -336,7 +337,9 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                loader::run::upgrade_program(&cli.url, program_id, program_so, auth, payer, spill)?
+                loader::run::upgrade_program(
+                    &cli.url, program_id, program_so, auth, payer, spill, mode,
+                )?
             }
             ProgramAction::Extend {
                 program_id,
@@ -352,7 +355,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                loader::run::extend_program(&cli.url, program_id, bytes, auth, payer)?
+                loader::run::extend_program(&cli.url, program_id, bytes, auth, payer, mode)?
             }
         },
         Commands::Multisig { action } => match action {
@@ -397,6 +400,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 commission,
                 from,
                 payer,
+                mode,
             )?,
         },
         Commands::Stake { action } => match action {
@@ -418,6 +422,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 withdraw_authority,
                 from,
                 payer,
+                mode,
             )?,
             StakeAction::Delegate {
                 stake_account,
@@ -430,12 +435,13 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 vote_account,
                 stake_authority,
                 payer,
+                mode,
             )?,
             StakeAction::Deactivate {
                 stake_account,
                 stake_authority,
                 payer,
-            } => stake::run::deactivate(&cli.url, stake_account, stake_authority, payer)?,
+            } => stake::run::deactivate(&cli.url, stake_account, stake_authority, payer, mode)?,
             StakeAction::Withdraw {
                 stake_account,
                 destination,
@@ -451,6 +457,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 all,
                 withdraw_authority,
                 payer,
+                mode,
             )?,
         },
         Commands::Balance { pubkey } => utils::show::balance(&cli.url, pubkey, mode)?,

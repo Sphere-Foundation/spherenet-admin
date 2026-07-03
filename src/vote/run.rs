@@ -6,6 +6,7 @@
 //! collapse them. Callers that want one key to play several roles pass the same
 //! keypair/pubkey for each; duplicate *signers* are deduplicated automatically.
 
+use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
@@ -19,6 +20,22 @@ use solana_vote_interface::{
     state::VoteInit,
 };
 use std::str::FromStr;
+
+/// Result of `vote create` — the new account address and creation signature.
+#[derive(serde::Serialize)]
+pub struct VoteAccountCreatedView {
+    vote_account: String,
+    signature: String,
+}
+
+impl Render for VoteAccountCreatedView {
+    fn to_text(&self) -> String {
+        let mut out = String::from("✅ Vote account created\n");
+        out.push_str(&subfield("Vote Account", &self.vote_account));
+        out.push_str(&subfield("Signature", &self.signature));
+        out
+    }
+}
 
 /// Create and initialize a vote account.
 ///
@@ -40,6 +57,7 @@ pub fn create(
     commission: u8,
     from_path: String,
     payer_path: String,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     if commission > 100 {
         return Err(eyre::eyre!(
@@ -101,29 +119,29 @@ pub fn create(
         commission,
     };
 
-    println!("\nCreating vote account:");
-    println!("  Vote Account:    {}", vote_account.pubkey());
-    println!("  Identity (node): {}", identity.pubkey());
-    println!("  Auth Voter:      {}", authorized_voter);
-    println!("  Auth Withdrawer: {}", authorized_withdrawer);
-    println!("  Commission:      {}%", commission);
-    println!("  Funder (from):   {}", from.pubkey());
-    println!("  Fee Payer:       {}", payer.pubkey());
-    println!(
-        "  Rent reserve:    {:.9} SPHR ({} lamports, {} bytes)",
+    progress("Creating vote account:");
+    progress(format!("Vote Account:    {}", vote_account.pubkey()));
+    progress(format!("Identity (node): {}", identity.pubkey()));
+    progress(format!("Auth Voter:      {}", authorized_voter));
+    progress(format!("Auth Withdrawer: {}", authorized_withdrawer));
+    progress(format!("Commission:      {}%", commission));
+    progress(format!("Funder (from):   {}", from.pubkey()));
+    progress(format!("Fee Payer:       {}", payer.pubkey()));
+    progress(format!(
+        "Rent reserve:    {:.9} SPHR ({} lamports, {} bytes)",
         rent as f64 / LAMPORTS_PER_SOL as f64,
         rent,
         config.space
-    );
+    ));
 
     // The vote account's withdraw authority can drain it. Setting it equal to
     // the validator identity (a hot key on the validator host) is a known
     // footgun; warn but do not block — separation of roles is the caller's call.
     if authorized_withdrawer == identity.pubkey() {
-        println!(
-            "\n⚠️  WARNING: authorized withdrawer equals the validator identity.\n   \
-             The identity key is hot on the validator host and can drain the vote\n   \
-             account. Prefer a distinct, cold withdraw authority."
+        progress(
+            "⚠️  WARNING: authorized withdrawer equals the validator identity. The identity \
+             key is hot on the validator host and can drain the vote account. Prefer a \
+             distinct, cold withdraw authority.",
         );
     }
 
@@ -143,9 +161,11 @@ pub fn create(
     transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("\n✅ Vote account created successfully!");
-    println!("   Vote Account: {}", vote_account.pubkey());
-    println!("   Signature:    {}", signature);
-
-    Ok(())
+    emit(
+        &VoteAccountCreatedView {
+            vote_account: vote_account.pubkey().to_string(),
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }

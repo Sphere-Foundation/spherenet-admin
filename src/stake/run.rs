@@ -4,6 +4,7 @@
 //! `create` sets authorities as pubkeys (no signature); `delegate`/`deactivate`
 //! are signed by the staker; `withdraw` by the withdraw authority.
 
+use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
@@ -17,6 +18,22 @@ use spherenet_stake_interface::{
     state::{Authorized, Lockup, StakeStateV2},
 };
 use std::str::FromStr;
+
+/// Result of `stake create` — the new account address and creation signature.
+#[derive(serde::Serialize)]
+pub struct StakeAccountCreatedView {
+    stake_account: String,
+    signature: String,
+}
+
+impl Render for StakeAccountCreatedView {
+    fn to_text(&self) -> String {
+        let mut out = String::from("✅ Stake account created\n");
+        out.push_str(&subfield("Stake Account", &self.stake_account));
+        out.push_str(&subfield("Signature", &self.signature));
+        out
+    }
+}
 
 // ══════════════════════════════════════════════════════════════════════════ //
 //                                  CREATE                                      //
@@ -38,6 +55,7 @@ pub fn create(
     withdraw_authority: String,
     from_path: String,
     payer_path: String,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
@@ -88,25 +106,25 @@ pub fn create(
     let authorized = Authorized { staker, withdrawer };
     let lockup = Lockup::default();
 
-    println!("\nCreating stake account:");
-    println!("  Stake Account:     {}", stake_account.pubkey());
-    println!(
-        "  Funding:           {:.9} SPHR ({} lamports)",
+    progress("Creating stake account:");
+    progress(format!("Stake Account:     {}", stake_account.pubkey()));
+    progress(format!(
+        "Funding:           {:.9} SPHR ({} lamports)",
         lamports as f64 / LAMPORTS_PER_SOL as f64,
         lamports
-    );
-    println!(
-        "    Rent reserve:    {:.9} SPHR",
+    ));
+    progress(format!(
+        "  Rent reserve:    {:.9} SPHR",
         rent as f64 / LAMPORTS_PER_SOL as f64
-    );
-    println!(
-        "    Delegatable:     {:.9} SPHR (staked on delegate)",
+    ));
+    progress(format!(
+        "  Delegatable:     {:.9} SPHR (staked on delegate)",
         delegatable as f64 / LAMPORTS_PER_SOL as f64
-    );
-    println!("  Stake Authority:   {}", staker);
-    println!("  Withdraw Authority:{}", withdrawer);
-    println!("  Funder (from):     {}", from.pubkey());
-    println!("  Fee Payer:         {}", payer.pubkey());
+    ));
+    progress(format!("Stake Authority:   {}", staker));
+    progress(format!("Withdraw Authority:{}", withdrawer));
+    progress(format!("Funder (from):     {}", from.pubkey()));
+    progress(format!("Fee Payer:         {}", payer.pubkey()));
 
     let instructions = create_account(
         &from.pubkey(),
@@ -124,12 +142,14 @@ pub fn create(
     transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("\n✅ Stake account created successfully!");
-    println!("   Stake Account: {}", stake_account.pubkey());
-    println!("   Signature:     {}", signature);
-    println!("\n   Not delegated yet — run `stake delegate` to delegate to a vote account.");
-
-    Ok(())
+    progress("Not delegated yet — run `stake delegate` to delegate to a vote account.");
+    emit(
+        &StakeAccountCreatedView {
+            stake_account: stake_account.pubkey().to_string(),
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }
 
 // ══════════════════════════════════════════════════════════════════════════ //
@@ -152,6 +172,7 @@ pub fn delegate(
     vote_account: String,
     stake_authority_path: String,
     payer_path: String,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
@@ -177,12 +198,12 @@ pub fn delegate(
     preflight_whitelisted(&rpc_client, &vote_pubkey, &whitelist_entry)?;
     preflight_stake_account(&rpc_client, &stake_pubkey, &stake_authority.pubkey())?;
 
-    println!("\nDelegating stake:");
-    println!("  Stake Account:   {}", stake_pubkey);
-    println!("  Vote Account:    {}", vote_pubkey);
-    println!("  Whitelist Entry: {}", whitelist_entry);
-    println!("  Stake Authority: {}", stake_authority.pubkey());
-    println!("  Fee Payer:       {}", payer.pubkey());
+    progress("Delegating stake:");
+    progress(format!("Stake Account:   {}", stake_pubkey));
+    progress(format!("Vote Account:    {}", vote_pubkey));
+    progress(format!("Whitelist Entry: {}", whitelist_entry));
+    progress(format!("Stake Authority: {}", stake_authority.pubkey()));
+    progress(format!("Fee Payer:       {}", payer.pubkey()));
 
     let instruction = delegate_stake(
         &stake_pubkey,
@@ -198,14 +219,12 @@ pub fn delegate(
     transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("\n✅ Stake delegated successfully!");
-    println!(
-        "   Stake Account: {} → Vote Account: {}",
-        stake_pubkey, vote_pubkey
-    );
-    println!("   Signature:     {}", signature);
-
-    Ok(())
+    emit(
+        &TxOutputView::Executed {
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }
 
 /// The vote account must exist and be owned by the vote program.
@@ -314,6 +333,7 @@ pub fn deactivate(
     stake_account: String,
     stake_authority_path: String,
     payer_path: String,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
@@ -334,10 +354,10 @@ pub fn deactivate(
     // Preflight: must be a delegated stake account authorized for this staker.
     preflight_deactivate(&rpc_client, &stake_pubkey, &stake_authority.pubkey())?;
 
-    println!("\nDeactivating stake:");
-    println!("  Stake Account:   {}", stake_pubkey);
-    println!("  Stake Authority: {}", stake_authority.pubkey());
-    println!("  Fee Payer:       {}", payer.pubkey());
+    progress("Deactivating stake:");
+    progress(format!("Stake Account:   {}", stake_pubkey));
+    progress(format!("Stake Authority: {}", stake_authority.pubkey()));
+    progress(format!("Fee Payer:       {}", payer.pubkey()));
 
     let instruction = deactivate_stake(&stake_pubkey, &stake_authority.pubkey());
 
@@ -347,15 +367,16 @@ pub fn deactivate(
     transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("\n✅ Stake deactivation submitted!");
-    println!("   Stake Account: {}", stake_pubkey);
-    println!("   Signature:     {}", signature);
-    println!(
-        "\n   Stake cools down over the rest of this epoch; withdraw with the\n   \
-         withdraw authority once it is fully inactive (`stake show` to track)."
+    progress(
+        "Stake cools down over the rest of this epoch; withdraw with the withdraw \
+         authority once it is fully inactive (`stake show` to track).",
     );
-
-    Ok(())
+    emit(
+        &TxOutputView::Executed {
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }
 
 /// The stake account must exist, be stake-program-owned, currently delegated,
@@ -426,6 +447,7 @@ pub fn withdraw(
     all: bool,
     withdraw_authority_path: String,
     payer_path: String,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     if amount.is_none() && !all {
         return Err(eyre::eyre!("Provide either --amount <SPHR> or --all"));
@@ -469,20 +491,20 @@ pub fn withdraw(
         ));
     }
 
-    println!("\nWithdrawing from stake account:");
-    println!("  Stake Account:     {}", stake_pubkey);
-    println!("  Destination:       {}", destination);
-    println!(
-        "  Amount:            {:.9} SPHR{}",
+    progress("Withdrawing from stake account:");
+    progress(format!("Stake Account:     {}", stake_pubkey));
+    progress(format!("Destination:       {}", destination));
+    progress(format!(
+        "Amount:            {:.9} SPHR{}",
         lamports as f64 / LAMPORTS_PER_SOL as f64,
         if all {
             " (entire balance — closes account)"
         } else {
             ""
         }
-    );
-    println!("  Withdraw Authority:{}", withdrawer.pubkey());
-    println!("  Fee Payer:         {}", payer.pubkey());
+    ));
+    progress(format!("Withdraw Authority:{}", withdrawer.pubkey()));
+    progress(format!("Fee Payer:         {}", payer.pubkey()));
 
     let instruction = withdraw_ix(
         &stake_pubkey,
@@ -498,13 +520,15 @@ pub fn withdraw(
     transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("\n✅ Withdrawal successful!");
-    println!("   Signature: {}", signature);
     if all {
-        println!("   Stake account {} closed.", stake_pubkey);
+        progress(format!("Stake account {} closed.", stake_pubkey));
     }
-
-    Ok(())
+    emit(
+        &TxOutputView::Executed {
+            signature: signature.to_string(),
+        },
+        mode,
+    )
 }
 
 /// Validate the account and authority; return the account balance (lamports).
@@ -552,10 +576,10 @@ fn preflight_withdraw(
     // withdrawable — surface it rather than letting the on-chain error confuse.
     if let StakeStateV2::Stake(_, stake, _) = &state {
         if stake.delegation.deactivation_epoch == u64::MAX {
-            println!(
-                "\n⚠️  WARNING: this stake account is still delegated and not deactivated.\n   \
-                 Only lamports above the effective stake (+ rent) are withdrawable.\n   \
-                 Run `stake deactivate` and wait for cooldown to withdraw the full balance."
+            progress(
+                "⚠️  WARNING: this stake account is still delegated and not deactivated. \
+                 Only lamports above the effective stake (+ rent) are withdrawable. Run \
+                 `stake deactivate` and wait for cooldown to withdraw the full balance.",
             );
         }
     }
