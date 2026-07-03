@@ -47,6 +47,7 @@ impl Render for StakeAccountCreatedView {
 /// * `withdraw_authority` - pubkey set as the withdrawer (signs withdrawals later).
 /// * `from_path`          - keypair that funds the deposited SPHR.
 /// * `payer_path`         - keypair that pays transaction fees.
+#[allow(clippy::too_many_arguments)]
 pub fn create(
     rpc_url: &str,
     stake_account_path: String,
@@ -439,6 +440,7 @@ fn preflight_deactivate(
 /// * `all`           - withdraw the entire balance (closes the account).
 /// * `withdraw_authority_path` - keypair of the withdraw authority; signs.
 /// * `payer_path`    - keypair that pays transaction fees.
+#[allow(clippy::too_many_arguments)]
 pub fn withdraw(
     rpc_url: &str,
     stake_account: String,

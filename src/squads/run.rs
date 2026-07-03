@@ -43,6 +43,7 @@ impl Render for CreatedMultisigView {
 /// * `url` - RPC URL
 /// * `time_lock` - Optional time delay (seconds)
 /// * `memo` - Optional description
+#[allow(clippy::too_many_arguments)]
 pub fn create(
     members_str: String,
     threshold: u16,
