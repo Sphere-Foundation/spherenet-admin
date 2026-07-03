@@ -57,10 +57,10 @@ fn write_buffer(
         );
         rpc_client.send_and_confirm_transaction(&transaction)?;
 
-        println!(" ✓");
+        println!(" ✅");
     }
 
-    println!("  ✓ Program data written successfully");
+    println!("  ✅ Program data written successfully");
     Ok(())
 }
 
@@ -166,7 +166,7 @@ pub fn deploy(
     );
     rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("  ✓ Buffer account created: {}", buffer_pubkey);
+    println!("  ✅ Buffer account created: {}", buffer_pubkey);
 
     // Write program data to buffer in chunks (upgrade authority signs as buffer authority)
     println!("\n📤 Writing program data to buffer...");
@@ -252,7 +252,7 @@ pub fn upgrade_program(
 
     // Verify program exists
     match rpc_client.get_account(&program_id) {
-        Ok(_) => println!("  ✓ Program exists"),
+        Ok(_) => println!("  ✅ Program exists"),
         Err(_) => {
             return Err(eyre::eyre!(
                 "❌ Program {} does not exist! Use 'program deploy' to deploy a new program.",
@@ -333,7 +333,7 @@ pub fn upgrade_program(
         ));
     }
 
-    println!("  ✓ Program capacity sufficient");
+    println!("  ✅ Program capacity sufficient");
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
     let whitelist_entry = require_whitelist_entry(&rpc_client, instruction_authority)?;
@@ -366,7 +366,7 @@ pub fn upgrade_program(
     );
     rpc_client.send_and_confirm_transaction(&transaction)?;
 
-    println!("  ✓ Buffer account created: {}", buffer_pubkey);
+    println!("  ✅ Buffer account created: {}", buffer_pubkey);
 
     // Write program data to buffer in chunks (payer signs buffer writes)
     println!("\n📤 Writing program data to buffer...");
@@ -391,7 +391,7 @@ pub fn upgrade_program(
         Transaction::new_with_payer(&[set_buffer_authority_ix], Some(&payer.pubkey()));
     set_authority_tx.sign(&[&payer], rpc_client.get_latest_blockhash()?);
     rpc_client.send_and_confirm_transaction(&set_authority_tx)?;
-    println!("  ✓ Buffer authority transferred to upgrade authority");
+    println!("  ✅ Buffer authority transferred to upgrade authority");
 
     // Upgrade program with whitelist validation
     println!("\n🎯 Upgrading program...");

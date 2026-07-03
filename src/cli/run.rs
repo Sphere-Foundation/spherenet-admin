@@ -46,7 +46,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                vw::run::add(&cli.url, vote_account, start_epoch, end_epoch, auth)?
+                vw::run::add(&cli.url, vote_account, start_epoch, end_epoch, auth, mode)?
             }
             ValidatorWhitelistAction::Remove {
                 vote_account,
@@ -60,7 +60,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                vw::run::remove(&cli.url, vote_account, auth)?
+                vw::run::remove(&cli.url, vote_account, auth, mode)?
             }
             ValidatorWhitelistAction::UpdateStartEpoch {
                 vote_account,
@@ -75,7 +75,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                vw::run::update_start_epoch(&cli.url, vote_account, epoch, auth)?
+                vw::run::update_start_epoch(&cli.url, vote_account, epoch, auth, mode)?
             }
             ValidatorWhitelistAction::UpdateEndEpoch {
                 vote_account,
@@ -90,10 +90,11 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                vw::run::update_end_epoch(&cli.url, vote_account, epoch, auth)?
+                vw::run::update_end_epoch(&cli.url, vote_account, epoch, auth, mode)?
             }
             ValidatorWhitelistAction::ProposeAuthority {
                 new_authority,
+                new_multisig,
                 authority,
                 multisig,
                 multisig_authority,
@@ -104,7 +105,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                vw::auth::propose_authority(&cli.url, new_authority, auth)?
+                vw::auth::propose_authority(&cli.url, new_authority, new_multisig, auth, mode)?
             }
             ValidatorWhitelistAction::AcceptAuthority {
                 authority,
@@ -117,7 +118,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                vw::auth::accept_authority(&cli.url, auth)?
+                vw::auth::accept_authority(&cli.url, auth, mode)?
             }
             ValidatorWhitelistAction::CancelAuthority {
                 authority,
@@ -130,13 +131,14 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                vw::auth::cancel_authority(&cli.url, auth)?
+                vw::auth::cancel_authority(&cli.url, auth, mode)?
             }
         },
         Commands::MonetaryPolicy { action } => match action {
             MonetaryPolicyAction::Show => mp::show::show(&cli.url, mode)?,
             MonetaryPolicyAction::ProposeAuthority {
                 new_authority,
+                new_multisig,
                 authority,
                 multisig,
                 multisig_authority,
@@ -147,7 +149,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                mp::auth::propose_authority(&cli.url, new_authority, auth)?
+                mp::auth::propose_authority(&cli.url, new_authority, new_multisig, auth, mode)?
             }
             MonetaryPolicyAction::AcceptAuthority {
                 authority,
@@ -160,7 +162,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                mp::auth::accept_authority(&cli.url, auth)?
+                mp::auth::accept_authority(&cli.url, auth, mode)?
             }
             MonetaryPolicyAction::CancelAuthority {
                 authority,
@@ -173,7 +175,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                mp::auth::cancel_authority(&cli.url, auth)?
+                mp::auth::cancel_authority(&cli.url, auth, mode)?
             }
             MonetaryPolicyAction::UpdateInflationRate {
                 new_rate_bips,
@@ -187,7 +189,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                mp::run::update_inflation_rate_bips(&cli.url, new_rate_bips, auth)?
+                mp::run::update_inflation_rate_bips(&cli.url, new_rate_bips, auth, mode)?
             }
             MonetaryPolicyAction::UpdateLamportsPerSignature {
                 new_lamports_per_signature,
@@ -201,7 +203,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                mp::run::update_lamports_per_signature(&cli.url, new_lamports_per_signature, auth)?
+                mp::run::update_lamports_per_signature(&cli.url, new_lamports_per_signature, auth, mode)?
             }
             MonetaryPolicyAction::UpdateBurnPercent {
                 new_percent,
@@ -215,7 +217,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                mp::run::update_burn_percent(&cli.url, new_percent, auth)?
+                mp::run::update_burn_percent(&cli.url, new_percent, auth, mode)?
             }
             MonetaryPolicyAction::UpdateVatLamportsPerEpoch {
                 new_vat_lamports,
@@ -229,7 +231,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                mp::run::update_vat_lamports_per_epoch(&cli.url, new_vat_lamports, auth)?
+                mp::run::update_vat_lamports_per_epoch(&cli.url, new_vat_lamports, auth, mode)?
             }
         },
         Commands::ProgramWhitelist { action } => match action {
@@ -246,7 +248,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                pw::run::add(&cli.url, program_authority, auth)?
+                pw::run::add(&cli.url, program_authority, auth, mode)?
             }
             ProgramWhitelistAction::Remove {
                 program_authority,
@@ -260,10 +262,11 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                pw::run::remove(&cli.url, program_authority, auth)?
+                pw::run::remove(&cli.url, program_authority, auth, mode)?
             }
             ProgramWhitelistAction::ProposeAuthority {
                 new_authority,
+                new_multisig,
                 authority,
                 multisig,
                 multisig_authority,
@@ -274,7 +277,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                pw::auth::propose_authority(&cli.url, new_authority, auth)?
+                pw::auth::propose_authority(&cli.url, new_authority, new_multisig, auth, mode)?
             }
             ProgramWhitelistAction::AcceptAuthority {
                 authority,
@@ -287,7 +290,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                pw::auth::accept_authority(&cli.url, auth)?
+                pw::auth::accept_authority(&cli.url, auth, mode)?
             }
             ProgramWhitelistAction::CancelAuthority {
                 authority,
@@ -300,7 +303,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                pw::auth::cancel_authority(&cli.url, auth)?
+                pw::auth::cancel_authority(&cli.url, auth, mode)?
             }
         },
         Commands::Program { action } => match action {
@@ -465,7 +468,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             multisig_authority,
         } => {
             let auth = cli::authority::from_cli_args(&cli.url, from, multisig, multisig_authority)?;
-            utils::run::transfer(&cli.url, auth, to, to_multisig, amount)?
+            utils::run::transfer(&cli.url, auth, to, to_multisig, amount, mode)?
         }
     }
 

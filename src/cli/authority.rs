@@ -139,3 +139,48 @@ pub fn from_cli_args(
         )),
     }
 }
+
+/// Resolve a "target" pubkey — a transfer destination, a new authority, etc. —
+/// from either a raw address or a multisig create-key. This is the shared
+/// safety gate for any command that points funds or authority at an account:
+///
+/// - **raw address**: guarded via [`squads::classify`] — a multisig config
+///   account or create-key is rejected (funds/authority would be lost or
+///   unusable), directing the user to `multisig_flag`. A plain wallet or a vault
+///   PDA passes through.
+/// - **create-key**: resolved + validated to the multisig's vault.
+///
+/// `raw_flag` / `multisig_flag` name the two CLI flags, for error messages.
+pub fn resolve_target(
+    rpc: &RpcClient,
+    raw: Option<String>,
+    multisig_create_key: Option<String>,
+    raw_flag: &str,
+    multisig_flag: &str,
+) -> eyre::Result<Pubkey> {
+    match (raw, multisig_create_key) {
+        (Some(addr), None) => {
+            let dest = addr
+                .parse::<Pubkey>()
+                .map_err(|e| eyre::eyre!("Invalid pubkey '{}': {}", addr, e))?;
+            match squads::classify(rpc, &dest)? {
+                Some(squads::MultisigRef::ConfigAccount) => eyre::bail!(
+                    "{dest} is a Squads multisig config account — use {multisig_flag} \
+                     <create-key> instead (funds/authority would otherwise be lost)."
+                ),
+                Some(squads::MultisigRef::CreateKey) => eyre::bail!(
+                    "{dest} is a multisig create-key — use {multisig_flag} {dest} to target \
+                     its vault, not the create-key account."
+                ),
+                None => Ok(dest),
+            }
+        }
+        (None, Some(create_key)) => {
+            let create_key = create_key
+                .parse::<Pubkey>()
+                .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
+            Ok(squads::resolve(rpc, &create_key)?.vault)
+        }
+        _ => eyre::bail!("Must provide either {raw_flag} OR {multisig_flag}"),
+    }
+}

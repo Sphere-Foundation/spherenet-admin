@@ -1,4 +1,5 @@
 use crate::cli::authority::Authority;
+use crate::cli::output::{emit, progress, OutputMode};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use spherenet_validator_whitelist_client::instructions::{
@@ -32,6 +33,7 @@ pub fn add(
     start_epoch: Option<u64>,
     end_epoch: Option<u64>,
     authority: Authority,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -60,24 +62,22 @@ pub fn add(
 
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
-
-    // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+    let instruction_authority = authority.instruction_authority_pubkey()?;
 
-    println!("\nAdding validator to whitelist:");
-    println!("  Vote Account:    {}", vote_account_pubkey);
-    println!("  Whitelist Entry: {}", whitelist_entry_pda);
-    println!("  Start Epoch:     {}", start_epoch);
-    println!(
-        "  End Epoch:       {}",
+    progress("Adding validator to whitelist:");
+    progress(format!("Vote Account:    {}", vote_account_pubkey));
+    progress(format!("Whitelist Entry: {}", whitelist_entry_pda));
+    progress(format!("Start Epoch:     {}", start_epoch));
+    progress(format!(
+        "End Epoch:       {}",
         if end_epoch == u64::MAX {
             "∞".to_string()
         } else {
             end_epoch.to_string()
         }
-    );
-    let instruction_authority = authority.instruction_authority_pubkey()?;
-    println!("  Authority:       {}", instruction_authority);
+    ));
+    progress(format!("Authority:       {}", instruction_authority));
 
     // Build the instruction
     let instruction = AddToWhitelistBuilder::new()
@@ -91,55 +91,16 @@ pub fn add(
         .end_epoch(end_epoch.to_le_bytes())
         .instruction();
 
-    // Execute instruction through authority (single-sig or multi-sig)
     let description = format!("Add validator {} to whitelist", vote_account_pubkey);
-    authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    Ok(())
+    let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
+    emit(&result, mode)
 }
 
-pub fn remove(rpc_url: &str, vote_account: String, authority: Authority) -> eyre::Result<()> {
-    let rpc_client = RpcClient::new(rpc_url);
-
-    // Parse vote account pubkey
-    let vote_account_pubkey = vote_account
-        .parse::<Pubkey>()
-        .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
-
-    // Derive the whitelist entry PDA
-    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
-
-    // Get the validator whitelist account
-    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-
-    let instruction_authority = authority.instruction_authority_pubkey()?;
-
-    println!("\nRemoving validator from whitelist:");
-    println!("  Vote Account:    {}", vote_account_pubkey);
-    println!("  Whitelist Entry: {}", whitelist_entry_pda);
-    println!("  Authority:       {}", instruction_authority);
-
-    // Build the instruction
-    let instruction = RemoveFromWhitelistBuilder::new()
-        .payer(instruction_authority)
-        .whitelist_authority(instruction_authority)
-        .validator_whitelist(whitelist_pubkey)
-        .whitelist_entry(whitelist_entry_pda)
-        .vote_account_pubkey(vote_account_pubkey)
-        .instruction();
-
-    // Execute instruction through authority (single-sig or multi-sig)
-    let description = format!("Remove validator {} from whitelist", vote_account_pubkey);
-    authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    Ok(())
-}
-
-pub fn update_start_epoch(
+pub fn remove(
     rpc_url: &str,
     vote_account: String,
-    epoch: u64,
     authority: Authority,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -150,17 +111,52 @@ pub fn update_start_epoch(
 
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
-
-    // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-
     let instruction_authority = authority.instruction_authority_pubkey()?;
 
-    println!("\nUpdating validator start epoch:");
-    println!("  Vote Account:    {}", vote_account_pubkey);
-    println!("  Whitelist Entry: {}", whitelist_entry_pda);
-    println!("  New Start Epoch: {}", epoch);
-    println!("  Authority:       {}", instruction_authority);
+    progress("Removing validator from whitelist:");
+    progress(format!("Vote Account:    {}", vote_account_pubkey));
+    progress(format!("Whitelist Entry: {}", whitelist_entry_pda));
+    progress(format!("Authority:       {}", instruction_authority));
+
+    // Build the instruction
+    let instruction = RemoveFromWhitelistBuilder::new()
+        .payer(instruction_authority)
+        .whitelist_authority(instruction_authority)
+        .validator_whitelist(whitelist_pubkey)
+        .whitelist_entry(whitelist_entry_pda)
+        .vote_account_pubkey(vote_account_pubkey)
+        .instruction();
+
+    let description = format!("Remove validator {} from whitelist", vote_account_pubkey);
+    let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
+    emit(&result, mode)
+}
+
+pub fn update_start_epoch(
+    rpc_url: &str,
+    vote_account: String,
+    epoch: u64,
+    authority: Authority,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
+
+    // Parse vote account pubkey
+    let vote_account_pubkey = vote_account
+        .parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid vote account pubkey: {}", e))?;
+
+    // Derive the whitelist entry PDA
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
+    progress("Updating validator start epoch:");
+    progress(format!("Vote Account:    {}", vote_account_pubkey));
+    progress(format!("Whitelist Entry: {}", whitelist_entry_pda));
+    progress(format!("New Start Epoch: {}", epoch));
+    progress(format!("Authority:       {}", instruction_authority));
 
     // Build the instruction
     let instruction = UpdateStartEpochBuilder::new()
@@ -172,14 +168,12 @@ pub fn update_start_epoch(
         .vote_account_pubkey(vote_account_pubkey)
         .instruction();
 
-    // Execute instruction through authority (single-sig or multi-sig)
     let description = format!(
         "Update validator {} start epoch to {}",
         vote_account_pubkey, epoch
     );
-    authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    Ok(())
+    let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
+    emit(&result, mode)
 }
 
 pub fn update_end_epoch(
@@ -187,6 +181,7 @@ pub fn update_end_epoch(
     vote_account: String,
     epoch: u64,
     authority: Authority,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
@@ -197,24 +192,20 @@ pub fn update_end_epoch(
 
     // Derive the whitelist entry PDA
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&vote_account_pubkey);
-
-    // Get the validator whitelist account
     let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-
-    println!("\nUpdating validator end epoch:");
-    println!("  Vote Account:    {}", vote_account_pubkey);
-    println!("  Whitelist Entry: {}", whitelist_entry_pda);
-    println!(
-        "  New End Epoch:   {}",
-        if epoch == u64::MAX {
-            "∞".to_string()
-        } else {
-            epoch.to_string()
-        }
-    );
-
     let instruction_authority = authority.instruction_authority_pubkey()?;
-    println!("  Authority:       {}", instruction_authority);
+
+    let epoch_display = if epoch == u64::MAX {
+        "∞".to_string()
+    } else {
+        epoch.to_string()
+    };
+
+    progress("Updating validator end epoch:");
+    progress(format!("Vote Account:    {}", vote_account_pubkey));
+    progress(format!("Whitelist Entry: {}", whitelist_entry_pda));
+    progress(format!("New End Epoch:   {}", epoch_display));
+    progress(format!("Authority:       {}", instruction_authority));
 
     // Build the instruction
     let instruction = UpdateEndEpochBuilder::new()
@@ -226,17 +217,10 @@ pub fn update_end_epoch(
         .vote_account_pubkey(vote_account_pubkey)
         .instruction();
 
-    // Execute instruction through authority (single-sig or multi-sig)
     let description = format!(
         "Update validator {} end epoch to {}",
-        vote_account_pubkey,
-        if epoch == u64::MAX {
-            "∞".to_string()
-        } else {
-            epoch.to_string()
-        }
+        vote_account_pubkey, epoch_display
     );
-    authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    Ok(())
+    let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
+    emit(&result, mode)
 }

@@ -2,7 +2,7 @@
 //! used across command modules.
 
 use crate::cli::authority::Authority;
-use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
+use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
@@ -114,7 +114,7 @@ pub fn airdrop(
     emit(&request_airdrop(rpc_url, pubkey_str, amount)?, mode)
 }
 
-/// Transfer SOL to a raw address (`to`) or to a multisig's vault (`to_multisig`,
+/// Transfer SPHR to a raw address (`to`) or to a multisig's vault (`to_multisig`,
 /// by create-key). Exactly one destination must be given; a multisig create-key
 /// is resolved + validated so funds land in the vault, never the config account.
 pub fn transfer(
@@ -123,82 +123,49 @@ pub fn transfer(
     to: Option<String>,
     to_multisig: Option<String>,
     amount: f64,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client =
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
-    // Resolve the destination: a raw address, or a multisig's vault (validated).
-    let destination = match (to, to_multisig) {
-        (Some(addr), None) => {
-            let dest = Pubkey::from_str(&addr)
-                .map_err(|e| eyre::eyre!("Failed to parse destination pubkey {}: {}", addr, e))?;
-            // A raw --to must not be a multisig config account or create-key —
-            // funds would be lost / mistargeted. Vault addresses are fine.
-            match squads::classify(&rpc_client, &dest)? {
-                Some(squads::MultisigRef::ConfigAccount) => eyre::bail!(
-                    "{dest} is a Squads program account (likely a multisig config account) — \
-                     transferring here would lose the funds. Use --to-multisig <create-key> \
-                     to fund the vault."
-                ),
-                Some(squads::MultisigRef::CreateKey) => eyre::bail!(
-                    "{dest} is the create-key of an existing multisig — funds would land on the \
-                     create-key account, not the vault. Use --to-multisig {dest} instead."
-                ),
-                None => {}
-            }
-            dest
-        }
-        (None, Some(create_key)) => {
-            let create_key = Pubkey::from_str(&create_key)
-                .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
-            squads::resolve(&rpc_client, &create_key)?.vault
-        }
-        _ => return Err(eyre::eyre!("Must provide either --to OR --to-multisig")),
-    };
+    // Resolve the destination (raw address or a multisig's vault) through the
+    // shared multisig-safety gate.
+    let destination =
+        crate::cli::authority::resolve_target(&rpc_client, to, to_multisig, "--to", "--to-multisig")?;
 
-    // Convert SOL to lamports
+    // Convert SPHR to lamports
     let lamports = (amount * LAMPORTS_PER_SOL as f64) as u64;
 
-    println!("\nTransferring {} SOL to {}", amount, destination);
+    progress(format!("Transferring {} SPHR to {}", amount, destination));
 
-    // Display different info based on authority type
+    // Show the source (progress → stderr).
     match &from {
         crate::cli::authority::Authority::SingleSig { keypair } => {
-            println!("  From:        {}", keypair.pubkey());
+            progress(format!("From:     {}", keypair.pubkey()));
         }
         crate::cli::authority::Authority::MultiSig { multisig, member } => {
-            println!("  Proposer:    {}", member.pubkey());
-            println!("  Multisig:    {}", multisig);
-
-            // Derive and show vault PDA (where funds will come from)
+            progress(format!("Proposer: {}", member.pubkey()));
+            progress(format!("Multisig: {}", multisig));
+            // Funds come from the vault PDA, not the config account.
             let program_id =
                 squads::types::SQUADS_PROGRAM_ID.parse::<solana_sdk::pubkey::Pubkey>()?;
             let (vault_pda, _) = squads::types::get_vault_pda(multisig, 0, &program_id);
-
-            // Get vault balance
             let vault_balance = rpc_client.get_balance(&vault_pda).unwrap_or(0);
-            let vault_balance_sol = vault_balance as f64 / LAMPORTS_PER_SOL as f64;
-
-            println!("  Vault PDA:   {}", vault_pda);
-            println!("    Balance:   {:.9} SOL", vault_balance_sol);
+            progress(format!(
+                "Vault:    {} ({:.9} SPHR)",
+                vault_pda,
+                vault_balance as f64 / LAMPORTS_PER_SOL as f64
+            ));
         }
     }
-    println!();
 
-    // Build system transfer instruction
-    // For multisig, we need the vault PDA (not the multisig PDA) as the "from" address
+    // Build system transfer instruction (from = vault PDA for multisig).
     let from_pubkey = from.instruction_authority_pubkey()?;
     let instruction = system_instruction::transfer(&from_pubkey, &destination, lamports);
 
-    // Execute instruction through authority (single-sig or multi-sig)
-    let description = format!("Transfer {} SOL to {}", amount, destination);
+    let description = format!("Transfer {} SPHR to {}", amount, destination);
     let result = from.execute_instruction(&rpc_client, instruction, &description)?;
 
-    // Only show "executed successfully" for single-sig (immediate execution)
-    if matches!(result, TxOutputView::Executed { .. }) {
-        println!("\n✅ Transfer executed successfully!");
-    }
-
-    Ok(())
+    emit(&result, mode)
 }
 

@@ -82,11 +82,11 @@ pub enum Commands {
         /// Account pubkey to receive the airdrop
         #[arg(long)]
         pubkey: String,
-        /// Amount in SOL to airdrop
+        /// Amount in SPHR to airdrop
         #[arg(long, default_value = "1.0")]
         amount: f64,
     },
-    /// Transfer SOL from one account to another
+    /// Transfer SPHR from one account to another
     Transfer {
         /// Destination account pubkey (mutually exclusive with --to-multisig)
         #[arg(long, conflicts_with = "to_multisig")]
@@ -95,7 +95,7 @@ pub enum Commands {
         /// (mutually exclusive with --to)
         #[arg(long, conflicts_with = "to")]
         to_multisig: Option<String>,
-        /// Amount in SOL to transfer
+        /// Amount in SPHR to transfer
         #[arg(long)]
         amount: f64,
         /// Single-sig: path to source keypair (mutually exclusive with --multisig)
@@ -176,7 +176,13 @@ pub enum ValidatorWhitelistAction {
     },
     /// Propose a new authority
     ProposeAuthority {
-        new_authority: String,
+        /// New authority pubkey (mutually exclusive with --new-multisig)
+        #[arg(long, conflicts_with = "new_multisig")]
+        new_authority: Option<String>,
+        /// New authority is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --new-authority)
+        #[arg(long, conflicts_with = "new_authority")]
+        new_multisig: Option<String>,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
         #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
@@ -245,7 +251,13 @@ pub enum ProgramWhitelistAction {
     },
     /// Propose a new authority
     ProposeAuthority {
-        new_authority: String,
+        /// New authority pubkey (mutually exclusive with --new-multisig)
+        #[arg(long, conflicts_with = "new_multisig")]
+        new_authority: Option<String>,
+        /// New authority is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --new-authority)
+        #[arg(long, conflicts_with = "new_authority")]
+        new_multisig: Option<String>,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
         #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,
@@ -434,7 +446,13 @@ pub enum MonetaryPolicyAction {
     Show,
     /// Propose a new authority
     ProposeAuthority {
-        new_authority: String,
+        /// New authority pubkey (mutually exclusive with --new-multisig)
+        #[arg(long, conflicts_with = "new_multisig")]
+        new_authority: Option<String>,
+        /// New authority is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --new-authority)
+        #[arg(long, conflicts_with = "new_authority")]
+        new_multisig: Option<String>,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
         #[arg(long = "authority", alias = "auth", conflicts_with = "multisig")]
         authority: Option<String>,

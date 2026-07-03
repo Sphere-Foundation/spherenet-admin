@@ -1,4 +1,5 @@
-use crate::cli::authority::Authority;
+use crate::cli::authority::{resolve_target, Authority};
+use crate::cli::output::{emit, progress, OutputMode};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use spherenet_monetary_policy_client::instructions::{
@@ -9,86 +10,79 @@ use spherenet_monetary_policy_interface::account_solana;
 
 pub fn propose_authority(
     rpc_url: &str,
-    new_authority: String,
+    new_authority: Option<String>,
+    new_multisig: Option<String>,
     authority: Authority,
+    mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
-    // Parse new authority pubkey
-    let new_authority_pubkey = new_authority
-        .parse::<Pubkey>()
-        .map_err(|e| eyre::eyre!("Invalid new authority pubkey: {}", e))?;
+    // Resolve the new authority — a raw pubkey, or a multisig's vault (validated).
+    // A multisig must be given by create-key so the authority lands on the vault
+    // (the account that can actually sign), never the config account.
+    let new_authority_pubkey = resolve_target(
+        &rpc_client,
+        new_authority,
+        new_multisig,
+        "--new-authority",
+        "--new-multisig",
+    )?;
 
-    // Get the monetary policy account
     let account_pubkey = Pubkey::from(account_solana::id().to_bytes());
-
     let instruction_authority = authority.instruction_authority_pubkey()?;
 
-    println!("\nProposing authority transfer:");
-    println!("  Monetary Policy Account: {}", account_pubkey);
-    println!("  Current Authority:       {}", instruction_authority);
-    println!("  New Authority:           {}", new_authority_pubkey);
+    progress("Proposing authority transfer:");
+    progress(format!("Monetary Policy Account: {}", account_pubkey));
+    progress(format!("Current Authority:       {}", instruction_authority));
+    progress(format!("New Authority:           {}", new_authority_pubkey));
 
-    // Build the instruction
     let instruction = InitiateAuthorityTransferBuilder::new()
         .monetary_policy_account(account_pubkey)
         .monetary_policy_authority(instruction_authority)
         .new_authority(new_authority_pubkey)
         .instruction();
 
-    // Execute instruction through authority (single-sig or multi-sig)
     let description = format!("Propose authority transfer to {}", new_authority_pubkey);
-    authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    Ok(())
+    let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
+    emit(&result, mode)
 }
 
-pub fn accept_authority(rpc_url: &str, authority: Authority) -> eyre::Result<()> {
+pub fn accept_authority(rpc_url: &str, authority: Authority, mode: OutputMode) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
-    // Get the monetary policy account
     let account_pubkey = Pubkey::from(account_solana::id().to_bytes());
-
     let instruction_authority = authority.instruction_authority_pubkey()?;
 
-    println!("\nAccepting authority transfer:");
-    println!("  Monetary Policy Account: {}", account_pubkey);
-    println!("  New Authority:           {}", instruction_authority);
+    progress("Accepting authority transfer:");
+    progress(format!("Monetary Policy Account: {}", account_pubkey));
+    progress(format!("New Authority:           {}", instruction_authority));
 
-    // Build the instruction
     let instruction = AcceptAuthorityTransferBuilder::new()
         .monetary_policy_account(account_pubkey)
         .pending_monetary_policy_authority(instruction_authority)
         .instruction();
 
-    // Execute instruction through authority (single-sig or multi-sig)
     let description = String::from("Accept authority transfer");
-    authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    Ok(())
+    let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
+    emit(&result, mode)
 }
 
-pub fn cancel_authority(rpc_url: &str, authority: Authority) -> eyre::Result<()> {
+pub fn cancel_authority(rpc_url: &str, authority: Authority, mode: OutputMode) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
-    // Get the monetary policy account
     let account_pubkey = Pubkey::from(account_solana::id().to_bytes());
-
     let instruction_authority = authority.instruction_authority_pubkey()?;
 
-    println!("\nCancelling authority transfer:");
-    println!("  Monetary Policy Account: {}", account_pubkey);
-    println!("  Authority:               {}", instruction_authority);
+    progress("Cancelling authority transfer:");
+    progress(format!("Monetary Policy Account: {}", account_pubkey));
+    progress(format!("Authority:               {}", instruction_authority));
 
-    // Build the instruction
     let instruction = CancelAuthorityTransferBuilder::new()
         .monetary_policy_account(account_pubkey)
         .monetary_policy_authority(instruction_authority)
         .instruction();
 
-    // Execute instruction through authority (single-sig or multi-sig)
     let description = String::from("Cancel authority transfer");
-    authority.execute_instruction(&rpc_client, instruction, &description)?;
-
-    Ok(())
+    let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
+    emit(&result, mode)
 }
