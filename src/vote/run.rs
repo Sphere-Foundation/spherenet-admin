@@ -16,8 +16,11 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use solana_vote_interface::{
-    instruction::{create_account_with_config_v2, withdraw as withdraw_ix, CreateVoteAccountConfig},
-    state::VoteInitV2,
+    instruction::{
+        create_account_with_config, create_account_with_config_v2, withdraw as withdraw_ix,
+        CreateVoteAccountConfig,
+    },
+    state::{VoteInit, VoteInitV2},
 };
 use std::str::FromStr;
 
@@ -57,6 +60,7 @@ pub fn create(
     commission: u8,
     from_path: String,
     payer_path: String,
+    no_bls: bool,
     mode: OutputMode,
 ) -> eyre::Result<()> {
     if commission > 100 {
@@ -112,28 +116,20 @@ pub fn create(
     let config = CreateVoteAccountConfig::default();
     let rent = rpc_client.get_minimum_balance_for_rent_exemption(config.space as usize)?;
 
-    // Derive the identity's BLS key and a proof of possession bound to this vote
-    // account (Alpenglow / SIMD-0464). SphereNet vote accounts always use the V2
-    // instruction so they land in the VoteStateV4 layout that genesis bakes into
-    // the bootstrap validators — a layout-compatibility choice, not a consensus
-    // requirement.
-    let bls = crate::vote::bls::derive_pubkey_and_pop(&identity, &vote_account.pubkey())?;
-
-    // `commission` (0-100%) maps to inflation-rewards commission in basis points.
-    let inflation_rewards_commission_bps = (commission as u16).saturating_mul(100);
-
-    let vote_init = VoteInitV2 {
-        node_pubkey: identity.pubkey(),
-        authorized_voter,
-        authorized_voter_bls_pubkey: bls.pubkey,
-        authorized_voter_bls_proof_of_possession: bls.proof_of_possession,
-        authorized_withdrawer,
-        inflation_rewards_commission_bps,
-        // Rewards accrue to the vote account; block revenue to the identity —
-        // the same defaults the client applies when these aren't specified.
-        inflation_rewards_collector: vote_account.pubkey(),
-        block_revenue_commission_bps: 10_000,
-        block_revenue_collector: identity.pubkey(),
+    // Default to a V2 vote account (VoteInitV2, sets the BLS key), matching the
+    // layout genesis bakes into the bootstrap validators. `--no-bls` falls back to
+    // the legacy V1 instruction for networks where the vote-account-initialize-v2
+    // feature (SIMD-0464) is not yet active — the V2 instruction is rejected there
+    // with "invalid instruction data". Note: the stored account is VoteStateV4-
+    // layout either way on current builds; the feature only gates whether the BLS
+    // key can be populated at init.
+    let bls = if no_bls {
+        None
+    } else {
+        Some(crate::vote::bls::derive_pubkey_and_pop(
+            &identity,
+            &vote_account.pubkey(),
+        )?)
     };
 
     progress("Creating vote account:");
@@ -142,7 +138,10 @@ pub fn create(
     progress(format!("Auth Voter:      {}", authorized_voter));
     progress(format!("Auth Withdrawer: {}", authorized_withdrawer));
     progress(format!("Commission:      {}%", commission));
-    progress(format!("BLS Pubkey:      {}", bls.display));
+    match &bls {
+        Some(b) => progress(format!("BLS Pubkey:      {}", b.display)),
+        None => progress("BLS Pubkey:      (none — V1 account, --no-bls)"),
+    }
     progress(format!("Funder (from):   {}", from.pubkey()));
     progress(format!("Fee Payer:       {}", payer.pubkey()));
     progress(format!(
@@ -163,13 +162,46 @@ pub fn create(
         );
     }
 
-    let instructions = create_account_with_config_v2(
-        &from.pubkey(),
-        &vote_account.pubkey(),
-        &vote_init,
-        rent,
-        config,
-    );
+    let instructions = match &bls {
+        Some(b) => {
+            // `commission` (0-100%) maps to inflation-rewards commission in bps.
+            let vote_init = VoteInitV2 {
+                node_pubkey: identity.pubkey(),
+                authorized_voter,
+                authorized_voter_bls_pubkey: b.pubkey,
+                authorized_voter_bls_proof_of_possession: b.proof_of_possession,
+                authorized_withdrawer,
+                inflation_rewards_commission_bps: (commission as u16).saturating_mul(100),
+                // Rewards accrue to the vote account; block revenue to the
+                // identity — the same defaults the client applies.
+                inflation_rewards_collector: vote_account.pubkey(),
+                block_revenue_commission_bps: 10_000,
+                block_revenue_collector: identity.pubkey(),
+            };
+            create_account_with_config_v2(
+                &from.pubkey(),
+                &vote_account.pubkey(),
+                &vote_init,
+                rent,
+                config,
+            )
+        }
+        None => {
+            let vote_init = VoteInit {
+                node_pubkey: identity.pubkey(),
+                authorized_voter,
+                authorized_withdrawer,
+                commission,
+            };
+            create_account_with_config(
+                &from.pubkey(),
+                &vote_account.pubkey(),
+                &vote_init,
+                rent,
+                config,
+            )
+        }
+    };
 
     // Sign with every required signer, deduplicated by pubkey. The fee payer
     // must come first so it is the transaction's payer.

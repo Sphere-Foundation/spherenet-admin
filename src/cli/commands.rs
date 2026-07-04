@@ -620,6 +620,10 @@ pub enum VoteAction {
         /// Path to keypair that pays transaction fees
         #[arg(long, alias = "fee-payer", value_name = "PAYER_KEYPAIR")]
         payer: String,
+        /// Create a legacy V1 vote account (no BLS key). Use on networks where
+        /// the vote-account-initialize-v2 feature (SIMD-0464) is not yet active.
+        #[arg(long)]
+        no_bls: bool,
     },
     /// Withdraw lamports from a vote account (signed by the withdraw authority)
     Withdraw {
