@@ -108,15 +108,21 @@ The `mp` config account is created at genesis, not by this CLI.
 Direct keypair-file signing (the new account + validator identity must sign — doesn't fit the multisig abstraction).
 
 ```bash
+# Defaults to a V2 account (VoteInitV2), deriving a BLS key from the identity
 spherenet-admin vote create \
   --vote-account ./vote-account.json --identity ./identity.json \
   --authorized-voter <PUBKEY> --authorized-withdrawer <PUBKEY> \
   --commission 100 --from ./funder.json --payer ./payer.json
 
+# --no-bls: legacy V1 account, for networks where SIMD-0464 isn't active yet
+spherenet-admin vote create ... --no-bls
+
 # Withdraw (signed by the withdraw authority; --all drains & closes)
 spherenet-admin vote withdraw --vote-account <PUBKEY> --destination <PUBKEY> --all \
   --withdraw-authority ./withdrawer.json --payer ./payer.json
 ```
+
+`vote create` derives a BLS key deterministically from `--identity` and sets it via `VoteInitV2` by default. That requires the `vote-account-initialize-v2` feature (SIMD-0464) active on the target network — where it isn't, the V2 instruction is rejected, so pass `--no-bls` to create a legacy V1 account (no BLS key). `vote show` displays the compressed BLS pubkey when set.
 
 Keep `--authorized-withdrawer` distinct from `--identity` (the identity is a hot key; a warning is printed if they match).
 

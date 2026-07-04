@@ -20,10 +20,11 @@ serde_json = { version = "1.0" }
 sha2 = { version = "0.10" }
 solana-client = { version = "3.1.8" }
 solana-commitment-config = { version = "3.0.0" }
+solana-bls-signatures = { version = "3.0.0", features = ["solana-signer-derive"] }
 solana-sdk = { version = "3.0.0" }
 solana-sdk-ids = { version = "3.0.0" }
 solana-system-interface = { version = "=2.0", features = ["bincode"] }
-solana-vote-interface = { version = "4.0.4", features = ["bincode"] }
+solana-vote-interface = { version = "5.0.0", features = ["bincode"] }
 spherenet-monetary-policy-client = { version = "=0.3.1" }
 spherenet-monetary-policy-interface = { version = "=0.3.1", features = [ "solana-p" ] }
 spherenet-program-whitelist-client = { version = "=0.2.2" }
