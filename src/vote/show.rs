@@ -8,6 +8,7 @@
 use crate::cli::output::{boxed_header, emit, field, newline, NotFound, OutputMode, Render};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
+use solana_bls_signatures::PubkeyCompressed;
 use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
 use solana_vote_interface::state::VoteStateVersions;
 use std::str::FromStr;
@@ -29,9 +30,10 @@ pub struct VoteView {
     authorized_voter: Option<String>,
     authorized_withdrawer: String,
     commission: String,
-    /// Only meaningful for V4 (None for older versions).
+    /// Compressed BLS pubkey in base64 — the on-chain value. `None` for pre-V4
+    /// versions, or a V4 account with no BLS key set.
     #[serde(skip_serializing_if = "Option::is_none")]
-    bls_pubkey_set: Option<bool>,
+    bls_pubkey: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     root_slot: Option<u64>,
     recent_votes: usize,
@@ -54,8 +56,8 @@ impl Render for VoteView {
         ));
         out.push_str(&field("Authorized Withdraw", &self.authorized_withdrawer));
         out.push_str(&field("Commission", &self.commission));
-        if let Some(bls) = self.bls_pubkey_set {
-            out.push_str(&field("BLS Pubkey", if bls { "set" } else { "(none)" }));
+        if let Some(bls) = &self.bls_pubkey {
+            out.push_str(&field("BLS Pubkey", bls));
         }
         out.push_str(newline());
         out.push_str(&field(
@@ -139,7 +141,7 @@ fn build_view(state: &VoteStateVersions, pubkey: String, lamports: u64) -> VoteV
                 .map(|(_, pk)| Pubkey::from(pk.to_bytes()).to_string()),
             authorized_withdrawer: Pubkey::from(s.authorized_withdrawer.to_bytes()).to_string(),
             commission: format!("{}%", s.commission),
-            bls_pubkey_set: None,
+            bls_pubkey: None,
             root_slot: s.root_slot,
             recent_votes: s.votes.len(),
             latest_credits: latest(&s.epoch_credits),
@@ -155,7 +157,7 @@ fn build_view(state: &VoteStateVersions, pubkey: String, lamports: u64) -> VoteV
                 .map(|(_, pk)| Pubkey::from(pk.to_bytes()).to_string()),
             authorized_withdrawer: Pubkey::from(s.authorized_withdrawer.to_bytes()).to_string(),
             commission: format!("{}%", s.commission),
-            bls_pubkey_set: None,
+            bls_pubkey: None,
             root_slot: s.root_slot,
             recent_votes: s.votes.len(),
             latest_credits: latest(&s.epoch_credits),
@@ -174,7 +176,9 @@ fn build_view(state: &VoteStateVersions, pubkey: String, lamports: u64) -> VoteV
                 "{}bps inflation / {}bps block-revenue",
                 s.inflation_rewards_commission_bps, s.block_revenue_commission_bps
             ),
-            bls_pubkey_set: Some(s.bls_pubkey_compressed.is_some()),
+            bls_pubkey: s
+                .bls_pubkey_compressed
+                .map(|b| PubkeyCompressed(b).to_string()),
             root_slot: s.root_slot,
             recent_votes: s.votes.len(),
             latest_credits: latest(&s.epoch_credits),
@@ -189,7 +193,7 @@ fn build_view(state: &VoteStateVersions, pubkey: String, lamports: u64) -> VoteV
             authorized_voter: None,
             authorized_withdrawer: "(uninitialized)".to_string(),
             commission: "(n/a)".to_string(),
-            bls_pubkey_set: None,
+            bls_pubkey: None,
             root_slot: None,
             recent_votes: 0,
             latest_credits: None,
