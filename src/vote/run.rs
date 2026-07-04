@@ -113,9 +113,10 @@ pub fn create(
     let rent = rpc_client.get_minimum_balance_for_rent_exemption(config.space as usize)?;
 
     // Derive the identity's BLS key and a proof of possession bound to this vote
-    // account (Alpenglow / SIMD-0464). SphereNet vote accounts are always created
-    // with the V2 instruction so they carry the BLS pubkey from block 0, matching
-    // genesis and the `spherenet` client's `create-vote-account`.
+    // account (Alpenglow / SIMD-0464). SphereNet vote accounts always use the V2
+    // instruction so they land in the VoteStateV4 layout that genesis bakes into
+    // the bootstrap validators — a layout-compatibility choice, not a consensus
+    // requirement.
     let bls = crate::vote::bls::derive_pubkey_and_pop(&identity, &vote_account.pubkey())?;
 
     // `commission` (0-100%) maps to inflation-rewards commission in basis points.

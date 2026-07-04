@@ -1,9 +1,10 @@
 //! BLS keypair derivation for vote accounts (Alpenglow / SIMD-0464).
 //!
-//! SphereNet vote accounts carry a BLS pubkey derived deterministically from the
-//! validator identity, plus a proof of possession bound to the vote account. This
-//! mirrors what genesis and the `spherenet` client's `create-vote-account` do, so
-//! that `spherenet-admin vote create` produces identical, consensus-ready accounts.
+//! SphereNet vote accounts use the `VoteStateV4` layout, which carries a BLS
+//! pubkey derived deterministically from the validator identity plus a proof of
+//! possession bound to the vote account. Deriving it here lets `vote create`
+//! produce the same V4-layout accounts that genesis bakes into the bootstrap
+//! validators — a layout-compatibility choice, not a consensus requirement.
 //!
 //! Two values are lifted verbatim from the client (`agave-votor-messages` and
 //! `solana-vote-program`), neither of which is published as a standalone crate:
