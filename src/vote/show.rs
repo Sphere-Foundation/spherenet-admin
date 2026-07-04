@@ -179,18 +179,20 @@ fn build_view(state: &VoteStateVersions, pubkey: String, lamports: u64) -> VoteV
             recent_votes: s.votes.len(),
             latest_credits: latest(&s.epoch_credits),
         },
-        VoteStateVersions::V0_23_5(s) => VoteView {
+        // Owned by the vote program but not yet initialized — no authorities or
+        // voting state to report.
+        VoteStateVersions::Uninitialized => VoteView {
             pubkey,
             balance_sphr,
-            state_version: "V0_23_5".to_string(),
-            identity: Pubkey::from(s.node_pubkey.to_bytes()).to_string(),
-            authorized_voter: Some(Pubkey::from(s.authorized_voter.to_bytes()).to_string()),
-            authorized_withdrawer: Pubkey::from(s.authorized_withdrawer.to_bytes()).to_string(),
-            commission: format!("{}%", s.commission),
+            state_version: "Uninitialized".to_string(),
+            identity: "(uninitialized)".to_string(),
+            authorized_voter: None,
+            authorized_withdrawer: "(uninitialized)".to_string(),
+            commission: "(n/a)".to_string(),
             bls_pubkey_set: None,
-            root_slot: s.root_slot,
-            recent_votes: s.votes.len(),
-            latest_credits: latest(&s.epoch_credits),
+            root_slot: None,
+            recent_votes: 0,
+            latest_credits: None,
         },
     }
 }

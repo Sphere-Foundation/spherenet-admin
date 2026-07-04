@@ -16,8 +16,8 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use solana_vote_interface::{
-    instruction::{create_account_with_config, withdraw as withdraw_ix, CreateVoteAccountConfig},
-    state::VoteInit,
+    instruction::{create_account_with_config_v2, withdraw as withdraw_ix, CreateVoteAccountConfig},
+    state::VoteInitV2,
 };
 use std::str::FromStr;
 
@@ -112,11 +112,27 @@ pub fn create(
     let config = CreateVoteAccountConfig::default();
     let rent = rpc_client.get_minimum_balance_for_rent_exemption(config.space as usize)?;
 
-    let vote_init = VoteInit {
+    // Derive the identity's BLS key and a proof of possession bound to this vote
+    // account (Alpenglow / SIMD-0464). SphereNet vote accounts are always created
+    // with the V2 instruction so they carry the BLS pubkey from block 0, matching
+    // genesis and the `spherenet` client's `create-vote-account`.
+    let bls = crate::vote::bls::derive_pubkey_and_pop(&identity, &vote_account.pubkey())?;
+
+    // `commission` (0-100%) maps to inflation-rewards commission in basis points.
+    let inflation_rewards_commission_bps = (commission as u16).saturating_mul(100);
+
+    let vote_init = VoteInitV2 {
         node_pubkey: identity.pubkey(),
         authorized_voter,
+        authorized_voter_bls_pubkey: bls.pubkey,
+        authorized_voter_bls_proof_of_possession: bls.proof_of_possession,
         authorized_withdrawer,
-        commission,
+        inflation_rewards_commission_bps,
+        // Rewards accrue to the vote account; block revenue to the identity —
+        // the same defaults the client applies when these aren't specified.
+        inflation_rewards_collector: vote_account.pubkey(),
+        block_revenue_commission_bps: 10_000,
+        block_revenue_collector: identity.pubkey(),
     };
 
     progress("Creating vote account:");
@@ -125,6 +141,7 @@ pub fn create(
     progress(format!("Auth Voter:      {}", authorized_voter));
     progress(format!("Auth Withdrawer: {}", authorized_withdrawer));
     progress(format!("Commission:      {}%", commission));
+    progress(format!("BLS Pubkey:      {}", bls.display));
     progress(format!("Funder (from):   {}", from.pubkey()));
     progress(format!("Fee Payer:       {}", payer.pubkey()));
     progress(format!(
@@ -145,7 +162,7 @@ pub fn create(
         );
     }
 
-    let instructions = create_account_with_config(
+    let instructions = create_account_with_config_v2(
         &from.pubkey(),
         &vote_account.pubkey(),
         &vote_init,
