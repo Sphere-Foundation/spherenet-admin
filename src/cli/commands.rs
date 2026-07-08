@@ -13,9 +13,19 @@ use clap::{Parser, Subcommand};
 /// Default RPC_URL
 pub const RPC_URL: &str = "https://api.test.sphere.net";
 
+/// ASCII banner shown at the top of `--help` — the same Small Slant "SphereNet"
+/// art as the read-API banner in `server::run`, tagged `admin`.
+pub const BANNER_ART: &str = concat!(
+    "\n",
+    r"   ____     __               _  __    __
+  / __/__  / /  ___ _______ / |/ /__ / /_
+ _\ \/ _ \/ _ \/ -_) __/ -_)    / -_) __/
+/___/ .__/_//_/\__/_/  \__/_/|_/\__/\__/
+   /_/                         a d m i n",
+);
+
 #[derive(Parser)]
-#[command(name = "spherenet-admin")]
-#[command(about = "SphereNet administration CLI", long_about = None)]
+#[command(name = "spherenet-admin", about = BANNER_ART)]
 pub struct Cli {
     /// RPC URL to connect to
     #[arg(long, global = true, default_value = RPC_URL, value_name = "URL")]
