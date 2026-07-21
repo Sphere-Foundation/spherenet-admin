@@ -5396,9 +5396,9 @@ dependencies = [
 
 [[package]]
 name = "spherenet-program-whitelist-client"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b84b01159a358c9db0e497d4f03de0c9482d34c9dc57e196b2a73ad426d8b92a"
+checksum = "c324924571cd149a02630f7c3ec0c5491d9616b3d8b6f038347ec89c0a70751b"
 dependencies = [
  "borsh",
  "num-derive",
@@ -5414,9 +5414,9 @@ dependencies = [
 
 [[package]]
 name = "spherenet-program-whitelist-interface"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef6d6f2d7521eabd01ec3da80141bb2479bc2fb34a8e0c29131fc57f71e2c1d4"
+checksum = "36f6423809d195726ee5192fa8f9e8440d87fd013e660731f749361efd0f0a95"
 dependencies = [
  "bytemuck",
  "pinocchio 0.9.2",

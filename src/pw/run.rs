@@ -2,8 +2,16 @@ use crate::cli::authority::Authority;
 use crate::cli::output::{emit, progress, OutputMode};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use spherenet_program_whitelist_client::instructions::{AddEntryBuilder, RemoveEntryBuilder};
-use spherenet_program_whitelist_interface::{account_solana, program_solana};
+use solana_sdk::signature::read_keypair_file;
+use solana_sdk::signer::Signer;
+use spherenet_program_whitelist_client::instructions::{
+    ApproveWhitelistEntryBuilder, RejectWhitelistEntryBuilder, RemoveWhitelistEntryBuilder,
+    RequestWhitelistEntryBuilder,
+};
+use spherenet_program_whitelist_interface::{
+    account_solana, program_solana,
+    state::{load, whitelist_entry::ProgramWhitelistEntry, EntryState},
+};
 use std::sync::LazyLock;
 
 pub static SYSTEM_PROGRAM: LazyLock<Pubkey> = LazyLock::new(Pubkey::default);
@@ -28,80 +36,167 @@ pub fn derive_whitelist_entry(deployer_authority: &Pubkey) -> (Pubkey, u8) {
     )
 }
 
-pub fn add(
+/// Step 1 of the two-step flow: **request** a deployer whitelist entry.
+///
+/// Creates a `Pending` entry the whitelist authority must later `approve`. The
+/// deploy authority must **co-sign** to prove control of the key, so this is
+/// single-sig only (the `authority`/payer keypair signs + pays; the deploy
+/// authority keypair co-signs). A multisig cannot carry the co-signature.
+pub fn request(
     rpc_url: &str,
-    program_authority: String,
+    deploy_authority_keypair: String,
     authority: Authority,
     mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
-    // Parse deployer authority (who can deploy/upgrade programs)
-    let deployer_pubkey = program_authority
-        .parse::<Pubkey>()
-        .map_err(|e| eyre::eyre!("Invalid deployer authority: {}", e))?;
+    // The deploy authority co-signs to prove control — load its keypair.
+    let deploy_authority = read_keypair_file(&deploy_authority_keypair).map_err(|e| {
+        eyre::eyre!(
+            "Failed to load deploy authority keypair from {}: {}",
+            deploy_authority_keypair,
+            e
+        )
+    })?;
+    let deploy_authority_pubkey = deploy_authority.pubkey();
 
-    // Derive the whitelist entry PDA
-    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deployer_pubkey);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deploy_authority_pubkey);
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+    let payer = authority.instruction_authority_pubkey()?;
+
+    progress("Requesting program whitelist entry:");
+    progress(format!("Deploy Authority:    {}", deploy_authority_pubkey));
+    progress(format!("Whitelist Entry PDA: {}", whitelist_entry_pda));
+    progress(format!("Payer:               {}", payer));
+
+    let instruction = RequestWhitelistEntryBuilder::new()
+        .payer(payer)
+        .deploy_authority(deploy_authority_pubkey)
+        .whitelist_account(whitelist_pubkey)
+        .whitelist_entry_account(whitelist_entry_pda)
+        .system_program(*SYSTEM_PROGRAM)
+        .instruction();
+
+    let description = format!(
+        "Request program whitelist entry for {}",
+        deploy_authority_pubkey
+    );
+    let result = authority.execute_instruction_with_cosigners(
+        &rpc_client,
+        instruction,
+        &[&deploy_authority],
+        &description,
+    )?;
+    emit(&result, mode)
+}
+
+/// Step 2 of the two-step flow: **approve** a pending deployer whitelist entry
+/// (authority action — moves it from `Pending` to `Approved`). Single-sig or
+/// multisig.
+pub fn approve(
+    rpc_url: &str,
+    deploy_authority: String,
+    authority: Authority,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
+
+    let deploy_authority_pubkey = deploy_authority
+        .parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid deploy authority: {}", e))?;
+
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deploy_authority_pubkey);
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let instruction_authority = authority.instruction_authority_pubkey()?;
 
-    progress("Whitelisting deployer authority:");
-    progress(format!("Deployer Authority:  {}", deployer_pubkey));
+    progress("Approving deployer whitelist entry:");
+    progress(format!("Deploy Authority:    {}", deploy_authority_pubkey));
     progress(format!("Whitelist Entry PDA: {}", whitelist_entry_pda));
     progress(format!("Whitelist Authority: {}", instruction_authority));
 
-    // Build the instruction
-    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-    let instruction = AddEntryBuilder::new()
-        .whitelist_account(whitelist_pubkey)
-        .whitelist_authority(instruction_authority)
-        .whitelist_entry_account(whitelist_entry_pda)
+    let instruction = ApproveWhitelistEntryBuilder::new()
         .payer(instruction_authority)
-        .system_program(*SYSTEM_PROGRAM)
-        .program_authority(deployer_pubkey)
+        .whitelist_authority(instruction_authority)
+        .whitelist_account(whitelist_pubkey)
+        .whitelist_entry_account(whitelist_entry_pda)
+        .deploy_authority(deploy_authority_pubkey)
         .instruction();
 
-    let description = format!("Whitelist deployer authority {}", deployer_pubkey);
+    let description = format!("Approve deployer whitelist entry for {}", deploy_authority_pubkey);
     let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
     emit(&result, mode)
 }
 
-pub fn remove(
+/// Reject a pending deployer whitelist entry (authority action). Single-sig or
+/// multisig.
+pub fn reject(
     rpc_url: &str,
-    program_authority: String,
+    deploy_authority: String,
     authority: Authority,
     mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client = RpcClient::new(rpc_url);
 
-    // Parse deployer authority (who can deploy/upgrade programs)
-    let deployer_pubkey = program_authority
+    let deploy_authority_pubkey = deploy_authority
         .parse::<Pubkey>()
-        .map_err(|e| eyre::eyre!("Invalid deployer authority: {}", e))?;
+        .map_err(|e| eyre::eyre!("Invalid deploy authority: {}", e))?;
 
-    // Derive the whitelist entry PDA
-    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deployer_pubkey);
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deploy_authority_pubkey);
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
     let instruction_authority = authority.instruction_authority_pubkey()?;
 
-    progress("Removing deployer authority from whitelist:");
-    progress(format!("Deployer Authority:  {}", deployer_pubkey));
+    progress("Rejecting deployer whitelist entry:");
+    progress(format!("Deploy Authority:    {}", deploy_authority_pubkey));
     progress(format!("Whitelist Entry PDA: {}", whitelist_entry_pda));
     progress(format!("Whitelist Authority: {}", instruction_authority));
 
-    // Build the instruction
-    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
-    let instruction = RemoveEntryBuilder::new()
-        .whitelist_account(whitelist_pubkey)
+    let instruction = RejectWhitelistEntryBuilder::new()
+        .payer(instruction_authority)
         .whitelist_authority(instruction_authority)
+        .whitelist_account(whitelist_pubkey)
         .whitelist_entry_account(whitelist_entry_pda)
-        .destination_account(instruction_authority) // Reclaim lamports to authority
-        .system_program(*SYSTEM_PROGRAM)
-        .program_authority(deployer_pubkey)
+        .deploy_authority(deploy_authority_pubkey)
+        .instruction();
+
+    let description = format!("Reject deployer whitelist entry for {}", deploy_authority_pubkey);
+    let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
+    emit(&result, mode)
+}
+
+/// Remove a deployer whitelist entry (authority action; works on `Pending` or
+/// `Approved`). Reclaimed rent goes to the payer. Single-sig or multisig.
+pub fn remove(
+    rpc_url: &str,
+    deploy_authority: String,
+    authority: Authority,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    let rpc_client = RpcClient::new(rpc_url);
+
+    let deploy_authority_pubkey = deploy_authority
+        .parse::<Pubkey>()
+        .map_err(|e| eyre::eyre!("Invalid deploy authority: {}", e))?;
+
+    let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deploy_authority_pubkey);
+    let whitelist_pubkey = Pubkey::from(account_solana::id().to_bytes());
+    let instruction_authority = authority.instruction_authority_pubkey()?;
+
+    progress("Removing deployer authority from whitelist:");
+    progress(format!("Deploy Authority:    {}", deploy_authority_pubkey));
+    progress(format!("Whitelist Entry PDA: {}", whitelist_entry_pda));
+    progress(format!("Whitelist Authority: {}", instruction_authority));
+
+    let instruction = RemoveWhitelistEntryBuilder::new()
+        .payer(instruction_authority)
+        .whitelist_authority(instruction_authority)
+        .whitelist_account(whitelist_pubkey)
+        .whitelist_entry_account(whitelist_entry_pda)
+        .deploy_authority(deploy_authority_pubkey)
         .instruction();
 
     let description = format!(
         "Remove deployer authority {} from whitelist",
-        deployer_pubkey
+        deploy_authority_pubkey
     );
     let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
     emit(&result, mode)
@@ -132,18 +227,33 @@ pub fn require_whitelist_entry(
 
     progress(format!("Whitelist entry PDA: {}", whitelist_entry_pda));
 
-    // Verify whitelist entry account exists on-chain
+    // Verify the whitelist entry exists AND is Approved. Under the two-step flow
+    // a `Pending` entry also exists on-chain (created at request time) but is NOT
+    // valid for deployment — the loader gates on Approved, so fail-fast here too.
     match rpc_client.get_account(&whitelist_entry_pda) {
-        Ok(_) => {
-            progress("✅ Upgrade authority is whitelisted");
-            Ok(whitelist_entry_pda)
+        Ok(account) => {
+            let entry = load::<ProgramWhitelistEntry>(&account.data).map_err(|e| {
+                eyre::eyre!(
+                    "Failed to read whitelist entry {}: {:?}",
+                    whitelist_entry_pda,
+                    e
+                )
+            })?;
+            if entry.state == EntryState::Approved as u8 {
+                progress("✅ Upgrade authority is whitelisted (approved)");
+                Ok(whitelist_entry_pda)
+            } else {
+                Err(eyre::eyre!(
+                    "❌ Upgrade authority {} has a PENDING (not yet approved) whitelist entry.\n   An authority must approve it first:\n     spherenet-admin pw approve {} --auth <AUTHORITY>",
+                    upgrade_authority,
+                    upgrade_authority
+                ))
+            }
         }
-        Err(_) => {
-            Err(eyre::eyre!(
-                "❌ Upgrade authority {} is not whitelisted!\n   Run: spherenet-admin pw add {} --auth <AUTHORITY>",
-                upgrade_authority,
-                upgrade_authority
-            ))
-        }
+        Err(_) => Err(eyre::eyre!(
+            "❌ Upgrade authority {} is not whitelisted!\n   The deployer requests, then an authority approves:\n     spherenet-admin pw request <DEPLOY_AUTHORITY_KEYPAIR> --auth <PAYER>\n     spherenet-admin pw approve {} --auth <AUTHORITY>",
+            upgrade_authority,
+            upgrade_authority
+        )),
     }
 }

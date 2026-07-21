@@ -27,8 +27,8 @@ solana-system-interface = { version = "=2.0", features = ["bincode"] }
 solana-vote-interface = { version = "5.0.0", features = ["bincode"] }
 spherenet-monetary-policy-client = { version = "=0.3.1" }
 spherenet-monetary-policy-interface = { version = "=0.3.1", features = [ "solana-p" ] }
-spherenet-program-whitelist-client = { version = "=0.2.2" }
-spherenet-program-whitelist-interface = { version = "=0.2.2", features = [ "solana-p" ] }
+spherenet-program-whitelist-client = { version = "=0.3.0" }
+spherenet-program-whitelist-interface = { version = "=0.3.0", features = [ "solana-p" ] }
 spherenet-stake-interface = { version = "=0.3.2", features = ["bincode"] }
 spherenet-validator-whitelist-client = { version = "=0.5.0" }
 spherenet-validator-whitelist-interface = { version = "=0.5.0", features = [ "solana-p" ] }

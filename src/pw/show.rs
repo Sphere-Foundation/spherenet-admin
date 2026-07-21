@@ -10,12 +10,31 @@ use spherenet_program_whitelist_interface::{
 };
 
 #[derive(serde::Serialize)]
+pub struct DeployerView {
+    deploy_authority: String,
+    /// Lifecycle state of the entry: `Pending` (requested, awaiting approval) or
+    /// `Approved` (active — may deploy/upgrade).
+    state: String,
+}
+
+/// Human label for the `EntryState` byte carried on each whitelist entry
+/// (`Uninitialized` / `Pending` / `Approved`).
+fn entry_state_label(state: u8) -> String {
+    match state {
+        0 => "Uninitialized".to_string(),
+        1 => "Pending".to_string(),
+        2 => "Approved".to_string(),
+        other => format!("Unknown({other})"),
+    }
+}
+
+#[derive(serde::Serialize)]
 pub struct ProgramWhitelistView {
     program_id: String,
     account: String,
     authority: String,
     pending_authority: String,
-    deployers: Vec<String>,
+    deployers: Vec<DeployerView>,
 }
 
 impl Render for ProgramWhitelistView {
@@ -37,7 +56,8 @@ impl Render for ProgramWhitelistView {
             out.push_str("  (none)");
         } else {
             for d in &self.deployers {
-                out.push_str(&subfield("Deployer Authority", d));
+                out.push_str(&subfield("Deploy Authority", &d.deploy_authority));
+                out.push_str(&subfield("State", &d.state));
             }
         }
         out
@@ -62,7 +82,10 @@ pub fn fetch(rpc_url: &str) -> eyre::Result<ProgramWhitelistView> {
             continue; // skip the main whitelist account itself
         }
         if let Ok(entry) = load::<ProgramWhitelistEntry>(&account.data) {
-            deployers.push(Pubkey::from(entry.entry_address).to_string());
+            deployers.push(DeployerView {
+                deploy_authority: Pubkey::from(entry.entry_address).to_string(),
+                state: entry_state_label(entry.state),
+            });
         }
     }
 

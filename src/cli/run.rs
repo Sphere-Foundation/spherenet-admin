@@ -273,8 +273,8 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
         },
         Commands::ProgramWhitelist { action } => match action {
             ProgramWhitelistAction::Show => pw::show::show(&cli.url, mode)?,
-            ProgramWhitelistAction::Add {
-                program_authority,
+            ProgramWhitelistAction::Request {
+                deploy_authority_keypair,
                 authority,
                 multisig,
                 multisig_authority,
@@ -285,10 +285,38 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                pw::run::add(&cli.url, program_authority, auth, mode)?
+                pw::run::request(&cli.url, deploy_authority_keypair, auth, mode)?
+            }
+            ProgramWhitelistAction::Approve {
+                deploy_authority,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                pw::run::approve(&cli.url, deploy_authority, auth, mode)?
+            }
+            ProgramWhitelistAction::Reject {
+                deploy_authority,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                pw::run::reject(&cli.url, deploy_authority, auth, mode)?
             }
             ProgramWhitelistAction::Remove {
-                program_authority,
+                deploy_authority,
                 authority,
                 multisig,
                 multisig_authority,
@@ -299,7 +327,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                pw::run::remove(&cli.url, program_authority, auth, mode)?
+                pw::run::remove(&cli.url, deploy_authority, auth, mode)?
             }
             ProgramWhitelistAction::ProposeAuthority {
                 new_authority,
