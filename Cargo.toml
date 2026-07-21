@@ -30,6 +30,6 @@ spherenet-monetary-policy-interface = { version = "=0.3.1", features = [ "solana
 spherenet-program-whitelist-client = { version = "=0.2.2" }
 spherenet-program-whitelist-interface = { version = "=0.2.2", features = [ "solana-p" ] }
 spherenet-stake-interface = { version = "=0.3.2", features = ["bincode"] }
-spherenet-validator-whitelist-client = { version = "=0.3.1" }
-spherenet-validator-whitelist-interface = { version = "=0.3.1", features = [ "solana-p" ] }
+spherenet-validator-whitelist-client = { version = "=0.5.0" }
+spherenet-validator-whitelist-interface = { version = "=0.5.0", features = [ "solana-p" ] }
 spherenet-whitelisted-loader-v3-interface = { version = "=0.2.1", features = ["bincode"] }

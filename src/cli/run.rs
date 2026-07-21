@@ -32,7 +32,30 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
     match cli.command {
         Commands::ValidatorWhitelist { action } => match action {
             ValidatorWhitelistAction::Show => vw::show::show(&cli.url, mode)?,
-            ValidatorWhitelistAction::Add {
+            ValidatorWhitelistAction::Request {
+                vote_account_keypair,
+                start_epoch,
+                end_epoch,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::run::request(
+                    &cli.url,
+                    vote_account_keypair,
+                    start_epoch,
+                    end_epoch,
+                    auth,
+                    mode,
+                )?
+            }
+            ValidatorWhitelistAction::Approve {
                 vote_account,
                 start_epoch,
                 end_epoch,
@@ -46,7 +69,21 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                vw::run::add(&cli.url, vote_account, start_epoch, end_epoch, auth, mode)?
+                vw::run::approve(&cli.url, vote_account, start_epoch, end_epoch, auth, mode)?
+            }
+            ValidatorWhitelistAction::Reject {
+                vote_account,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = cli::authority::from_cli_args(
+                    &cli.url,
+                    authority,
+                    multisig,
+                    multisig_authority,
+                )?;
+                vw::run::reject(&cli.url, vote_account, auth, mode)?
             }
             ValidatorWhitelistAction::Remove {
                 vote_account,

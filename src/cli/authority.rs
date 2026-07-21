@@ -80,6 +80,48 @@ impl Authority {
             }
         }
     }
+
+    /// Execute an instruction that requires **additional** signers beyond the
+    /// authority — e.g. `request_whitelist_entry`, where the validator vote
+    /// account must co-sign to prove control.
+    ///
+    /// Single-sig only: a multisig proposal cannot atomically carry an external
+    /// keypair's signature, so `MultiSig` is rejected here rather than silently
+    /// dropping the co-signer.
+    pub fn execute_instruction_with_cosigners(
+        &self,
+        rpc: &RpcClient,
+        instruction: Instruction,
+        cosigners: &[&Keypair],
+        description: &str,
+    ) -> eyre::Result<TxOutputView> {
+        match self {
+            Authority::SingleSig { keypair } => {
+                progress(format!("Executing: {}", description));
+
+                let recent_blockhash = rpc.get_latest_blockhash()?;
+                let mut signers: Vec<&Keypair> = Vec::with_capacity(1 + cosigners.len());
+                signers.push(keypair);
+                signers.extend_from_slice(cosigners);
+                let tx = Transaction::new_signed_with_payer(
+                    &[instruction],
+                    Some(&keypair.pubkey()),
+                    &signers,
+                    recent_blockhash,
+                );
+                let signature = rpc.send_and_confirm_transaction(&tx)?;
+
+                Ok(TxOutputView::Executed {
+                    signature: signature.to_string(),
+                })
+            }
+            Authority::MultiSig { .. } => eyre::bail!(
+                "This action requires a single-sig authority: an external account (the vote \
+                 account) must co-sign, which a multisig proposal cannot carry atomically. \
+                 Use --authority."
+            ),
+        }
+    }
 }
 
 /// Build an [`Authority`] from CLI arguments.
