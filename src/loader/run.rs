@@ -12,10 +12,10 @@ use solana_sdk::{
 };
 use solana_sdk_ids::bpf_loader_upgradeable;
 #[allow(deprecated)]
-use spherenet_whitelisted_loader_v3_interface::{
+use spherenet_loader_v3_interface::{
     instruction::{
-        create_buffer, deploy_with_max_program_len, extend_program_checked, set_buffer_authority,
-        set_upgrade_authority as set_upgrade_authority_ix, upgrade, write,
+        create_buffer, deploy_with_max_program_len, extend_program as extend_program_ix,
+        set_buffer_authority, set_upgrade_authority as set_upgrade_authority_ix, upgrade, write,
     },
     state::UpgradeableLoaderState,
 };
@@ -198,15 +198,14 @@ pub fn deploy(
     let program_lamports = rpc_client
         .get_minimum_balance_for_rent_exemption(UpgradeableLoaderState::size_of_program())?;
 
-    #[allow(deprecated)]
     let deploy_instructions = deploy_with_max_program_len(
         &payer.pubkey(),
         &program_id,
         &buffer_pubkey,
         &upgrade_authority,
-        &whitelist_entry,
         program_lamports,
         max_data_len,
+        &whitelist_entry,
     )?;
 
     let mut transaction = Transaction::new_with_payer(&deploy_instructions, Some(&payer.pubkey()));
@@ -460,12 +459,13 @@ pub fn extend_program(
     progress(format!("Upgrade Authority:  {}", instruction_authority));
     progress(format!("Payer:              {}", instruction_authority));
 
-    // Build extend_program_checked instruction (CPI-safe, works with multisig!)
-    // Note: Payer must be instruction_authority (vault PDA) for multisig so vault can pay
-    let extend_ix = extend_program_checked(
+    // Build extend_program instruction. loader-v3 7.0.0 made extend permissionless
+    // (no authority account — extending only grows the data buffer; the payer
+    // covers the added rent). Payer is instruction_authority (the vault PDA for
+    // multisig, so the vault pays).
+    let extend_ix = extend_program_ix(
         &program_id,
-        &instruction_authority, // Authority required - vault PDA for multisig
-        Some(&instruction_authority), // Payer also vault PDA for multisig consistency
+        Some(&instruction_authority),
         additional_bytes,
     );
 

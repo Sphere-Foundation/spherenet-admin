@@ -15,6 +15,20 @@ pub struct WhitelistEntryView {
     start_epoch: u64,
     /// `None` = no end (on-chain sentinel `u64::MAX`, shown as ∞).
     end_epoch: Option<u64>,
+    /// Lifecycle state of the entry: `Pending` (requested, awaiting approval) or
+    /// `Approved` (active on the whitelist).
+    state: String,
+}
+
+/// Human label for the `EntryState` byte carried on each whitelist entry
+/// (`Uninitialized` / `Pending` / `Approved`).
+fn entry_state_label(state: u8) -> String {
+    match state {
+        0 => "Uninitialized".to_string(),
+        1 => "Pending".to_string(),
+        2 => "Approved".to_string(),
+        other => format!("Unknown({other})"),
+    }
 }
 
 #[derive(serde::Serialize)]
@@ -48,6 +62,7 @@ impl Render for WhitelistView {
             for e in &self.validators {
                 out.push_str(newline());
                 out.push_str(&subfield("Vote Account", &e.vote_account));
+                out.push_str(&subfield("State", &e.state));
                 out.push_str(&subfield("Start Epoch", e.start_epoch));
                 out.push_str(&subfield(
                     "End Epoch",
@@ -88,6 +103,7 @@ pub fn fetch(rpc_url: &str) -> eyre::Result<WhitelistView> {
                     vote_account: Pubkey::from(entry.pubkey).to_string(),
                     start_epoch: u64::from_le_bytes(entry.start_epoch),
                     end_epoch: (end_epoch != u64::MAX).then_some(end_epoch),
+                    state: entry_state_label(entry.state),
                 });
             }
         }

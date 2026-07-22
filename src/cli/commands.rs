@@ -130,14 +130,49 @@ pub enum Commands {
 pub enum ValidatorWhitelistAction {
     /// Show validator whitelist account (authority and entries)
     Show,
-    /// Add a validator to the whitelist
-    Add {
+    /// Request a validator whitelist entry (step 1 of 2 — creates a Pending
+    /// entry the authority must approve). The vote account co-signs to prove
+    /// control, so this is single-sig only (multisig cannot co-sign).
+    Request {
+        /// Path to the validator vote-account keypair (co-signs to prove control)
+        #[arg(value_name = "VOTE_ACCOUNT_KEYPAIR")]
+        vote_account_keypair: String,
+        #[arg(long, value_name = "EPOCH")]
+        start_epoch: Option<u64>,
+        #[arg(long, value_name = "EPOCH")]
+        end_epoch: Option<u64>,
+        /// Single-sig: path to authority/payer keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
+        multisig_authority: Option<String>,
+    },
+    /// Approve a pending validator whitelist entry (step 2 of 2 — authority action)
+    Approve {
         #[arg(value_name = "VOTE_ACCOUNT_PUBKEY")]
         vote_account: String,
         #[arg(long, value_name = "EPOCH")]
         start_epoch: Option<u64>,
         #[arg(long, value_name = "EPOCH")]
         end_epoch: Option<u64>,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
+        multisig_authority: Option<String>,
+    },
+    /// Reject a pending validator whitelist entry (authority action)
+    Reject {
+        #[arg(value_name = "VOTE_ACCOUNT_PUBKEY")]
+        vote_account: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
         #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
         authority: Option<String>,
@@ -243,10 +278,41 @@ pub enum ValidatorWhitelistAction {
 pub enum ProgramWhitelistAction {
     /// Show program whitelist account (authority + deployers)
     Show,
-    /// Whitelist a deployer authority (who can deploy/upgrade programs)
-    Add {
+    /// Request a deployer whitelist entry (step 1 of 2 — creates a Pending entry
+    /// the authority must approve). The deploy authority co-signs to prove
+    /// control, so this is single-sig only (multisig cannot co-sign).
+    Request {
+        /// Path to the deploy-authority keypair (co-signs to prove control)
+        #[arg(value_name = "DEPLOY_AUTHORITY_KEYPAIR")]
+        deploy_authority_keypair: String,
+        /// Single-sig: path to authority/payer keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
+        multisig_authority: Option<String>,
+    },
+    /// Approve a pending deployer whitelist entry (step 2 of 2 — authority action)
+    Approve {
         #[arg(value_name = "DEPLOYER_PUBKEY")]
-        program_authority: String,
+        deploy_authority: String,
+        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
+        multisig_authority: Option<String>,
+    },
+    /// Reject a pending deployer whitelist entry (authority action)
+    Reject {
+        #[arg(value_name = "DEPLOYER_PUBKEY")]
+        deploy_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
         #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
         authority: Option<String>,
@@ -260,7 +326,7 @@ pub enum ProgramWhitelistAction {
     /// Remove a deployer authority from the whitelist
     Remove {
         #[arg(value_name = "DEPLOYER_PUBKEY")]
-        program_authority: String,
+        deploy_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
         #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
         authority: Option<String>,
