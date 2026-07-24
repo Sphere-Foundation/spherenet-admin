@@ -33,3 +33,6 @@ spherenet-stake-interface = { version = "0.5.0", features = ["bincode"] }
 spherenet-validator-whitelist-client = { version = "0.5.0" }
 spherenet-validator-whitelist-interface = { version = "0.5.0", features = [ "solana-p" ] }
 spherenet-loader-v3-interface = { version = "0.3.0", features = ["bincode"] }
+
+[profile.release]
+strip = true
