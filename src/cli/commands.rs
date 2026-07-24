@@ -25,7 +25,7 @@ pub const BANNER_ART: &str = concat!(
 );
 
 #[derive(Parser)]
-#[command(name = "spherenet-admin", about = BANNER_ART)]
+#[command(name = "spherenet-admin", about = BANNER_ART, version)]
 pub struct Cli {
     /// RPC URL to connect to
     #[arg(long, global = true, default_value = RPC_URL, value_name = "URL")]
