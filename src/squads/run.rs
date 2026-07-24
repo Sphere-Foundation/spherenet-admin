@@ -281,7 +281,10 @@ pub fn approve(
     url: &str,
     mode: OutputMode,
 ) -> eyre::Result<()> {
-    progress(format!("Approving proposal (tx index {})...", transaction_index));
+    progress(format!(
+        "Approving proposal (tx index {})...",
+        transaction_index
+    ));
 
     let create_key = create_key
         .parse::<Pubkey>()
@@ -347,7 +350,10 @@ pub fn execute(
     url: &str,
     mode: OutputMode,
 ) -> eyre::Result<()> {
-    progress(format!("Executing proposal (tx index {})...", transaction_index));
+    progress(format!(
+        "Executing proposal (tx index {})...",
+        transaction_index
+    ));
 
     let create_key = create_key
         .parse::<Pubkey>()

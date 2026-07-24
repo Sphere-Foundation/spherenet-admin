@@ -240,7 +240,12 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     multisig,
                     multisig_authority,
                 )?;
-                mp::run::update_lamports_per_signature(&cli.url, new_lamports_per_signature, auth, mode)?
+                mp::run::update_lamports_per_signature(
+                    &cli.url,
+                    new_lamports_per_signature,
+                    auth,
+                    mode,
+                )?
             }
             MonetaryPolicyAction::UpdateBurnPercent {
                 new_percent,

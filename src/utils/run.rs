@@ -130,8 +130,13 @@ pub fn transfer(
 
     // Resolve the destination (raw address or a multisig's vault) through the
     // shared multisig-safety gate.
-    let destination =
-        crate::cli::authority::resolve_target(&rpc_client, to, to_multisig, "--to", "--to-multisig")?;
+    let destination = crate::cli::authority::resolve_target(
+        &rpc_client,
+        to,
+        to_multisig,
+        "--to",
+        "--to-multisig",
+    )?;
 
     // Convert SPHR to lamports
     let lamports = (amount * LAMPORTS_PER_SOL as f64) as u64;
@@ -168,4 +173,3 @@ pub fn transfer(
 
     emit(&result, mode)
 }
-

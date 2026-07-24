@@ -145,8 +145,12 @@ pub fn deploy(
     // Warn if no max-data-len specified (important for multisig scenarios)
     if !max_data_len_provided {
         progress("⚠️  WARNING: No --max-data-len specified, using program size as capacity.");
-        progress("   If you plan to transfer upgrade authority to multisig, you CANNOT extend later!");
-        progress("   Consider deploying with generous --max-data-len (e.g., --max-data-len 500000)");
+        progress(
+            "   If you plan to transfer upgrade authority to multisig, you CANNOT extend later!",
+        );
+        progress(
+            "   Consider deploying with generous --max-data-len (e.g., --max-data-len 500000)",
+        );
     }
 
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
@@ -306,7 +310,10 @@ pub fn upgrade_program(
         .saturating_sub(programdata_metadata_len);
 
     progress(format!("Current max capacity: {} bytes", current_max_len));
-    progress(format!("Required capacity:    {} bytes", program_data.len()));
+    progress(format!(
+        "Required capacity:    {} bytes",
+        program_data.len()
+    ));
 
     if program_data.len() > current_max_len {
         let additional_bytes = program_data.len() - current_max_len;
@@ -463,11 +470,7 @@ pub fn extend_program(
     // (no authority account — extending only grows the data buffer; the payer
     // covers the added rent). Payer is instruction_authority (the vault PDA for
     // multisig, so the vault pays).
-    let extend_ix = extend_program_ix(
-        &program_id,
-        Some(&instruction_authority),
-        additional_bytes,
-    );
+    let extend_ix = extend_program_ix(&program_id, Some(&instruction_authority), additional_bytes);
 
     // Execute instruction through authority (single-sig or multi-sig)
     let description = format!(

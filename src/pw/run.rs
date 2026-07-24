@@ -122,7 +122,10 @@ pub fn approve(
         .deploy_authority(deploy_authority_pubkey)
         .instruction();
 
-    let description = format!("Approve deployer whitelist entry for {}", deploy_authority_pubkey);
+    let description = format!(
+        "Approve deployer whitelist entry for {}",
+        deploy_authority_pubkey
+    );
     let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
     emit(&result, mode)
 }
@@ -158,7 +161,10 @@ pub fn reject(
         .deploy_authority(deploy_authority_pubkey)
         .instruction();
 
-    let description = format!("Reject deployer whitelist entry for {}", deploy_authority_pubkey);
+    let description = format!(
+        "Reject deployer whitelist entry for {}",
+        deploy_authority_pubkey
+    );
     let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
     emit(&result, mode)
 }

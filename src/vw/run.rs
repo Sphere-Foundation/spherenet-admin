@@ -178,7 +178,10 @@ pub fn approve(
         .end_epoch(end_epoch.to_le_bytes())
         .instruction();
 
-    let description = format!("Approve whitelist entry for validator {}", vote_account_pubkey);
+    let description = format!(
+        "Approve whitelist entry for validator {}",
+        vote_account_pubkey
+    );
     let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
     emit(&result, mode)
 }
@@ -214,7 +217,10 @@ pub fn reject(
         .vote_account_pubkey(vote_account_pubkey)
         .instruction();
 
-    let description = format!("Reject whitelist entry for validator {}", vote_account_pubkey);
+    let description = format!(
+        "Reject whitelist entry for validator {}",
+        vote_account_pubkey
+    );
     let result = authority.execute_instruction(&rpc_client, instruction, &description)?;
     emit(&result, mode)
 }
