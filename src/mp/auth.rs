@@ -33,7 +33,10 @@ pub fn propose_authority(
 
     progress("Proposing authority transfer:");
     progress(format!("Monetary Policy Account: {}", account_pubkey));
-    progress(format!("Current Authority:       {}", instruction_authority));
+    progress(format!(
+        "Current Authority:       {}",
+        instruction_authority
+    ));
     progress(format!("New Authority:           {}", new_authority_pubkey));
 
     let instruction = InitiateAuthorityTransferBuilder::new()
@@ -55,7 +58,10 @@ pub fn accept_authority(rpc_url: &str, authority: Authority, mode: OutputMode) -
 
     progress("Accepting authority transfer:");
     progress(format!("Monetary Policy Account: {}", account_pubkey));
-    progress(format!("New Authority:           {}", instruction_authority));
+    progress(format!(
+        "New Authority:           {}",
+        instruction_authority
+    ));
 
     let instruction = AcceptAuthorityTransferBuilder::new()
         .monetary_policy_account(account_pubkey)
@@ -75,7 +81,10 @@ pub fn cancel_authority(rpc_url: &str, authority: Authority, mode: OutputMode) -
 
     progress("Cancelling authority transfer:");
     progress(format!("Monetary Policy Account: {}", account_pubkey));
-    progress(format!("Authority:               {}", instruction_authority));
+    progress(format!(
+        "Authority:               {}",
+        instruction_authority
+    ));
 
     let instruction = CancelAuthorityTransferBuilder::new()
         .monetary_policy_account(account_pubkey)

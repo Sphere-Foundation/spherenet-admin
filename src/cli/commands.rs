@@ -105,7 +105,11 @@ pub enum Commands {
     /// Transfer SPHR from one account to another
     Transfer {
         /// Destination account pubkey (mutually exclusive with --to-multisig)
-        #[arg(long, conflicts_with = "to_multisig", value_name = "DESTINATION_PUBKEY")]
+        #[arg(
+            long,
+            conflicts_with = "to_multisig",
+            value_name = "DESTINATION_PUBKEY"
+        )]
         to: Option<String>,
         /// Destination multisig by create-key — funds go to its vault, validated
         /// (mutually exclusive with --to)
@@ -118,7 +122,11 @@ pub enum Commands {
         #[arg(long, conflicts_with = "multisig", value_name = "FROM_KEYPAIR")]
         from: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -142,10 +150,19 @@ pub enum ValidatorWhitelistAction {
         #[arg(long, value_name = "EPOCH")]
         end_epoch: Option<u64>,
         /// Single-sig: path to authority/payer keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -160,10 +177,19 @@ pub enum ValidatorWhitelistAction {
         #[arg(long, value_name = "EPOCH")]
         end_epoch: Option<u64>,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -174,10 +200,19 @@ pub enum ValidatorWhitelistAction {
         #[arg(value_name = "VOTE_ACCOUNT_PUBKEY")]
         vote_account: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -188,10 +223,19 @@ pub enum ValidatorWhitelistAction {
         #[arg(value_name = "VOTE_ACCOUNT_PUBKEY")]
         vote_account: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -204,10 +248,19 @@ pub enum ValidatorWhitelistAction {
         #[arg(long, value_name = "EPOCH")]
         epoch: u64,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -220,10 +273,19 @@ pub enum ValidatorWhitelistAction {
         #[arg(long, value_name = "EPOCH")]
         epoch: u64,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -232,17 +294,34 @@ pub enum ValidatorWhitelistAction {
     /// Propose a new authority
     ProposeAuthority {
         /// New authority pubkey (mutually exclusive with --new-multisig)
-        #[arg(long, conflicts_with = "new_multisig", value_name = "NEW_AUTHORITY_PUBKEY")]
+        #[arg(
+            long,
+            conflicts_with = "new_multisig",
+            value_name = "NEW_AUTHORITY_PUBKEY"
+        )]
         new_authority: Option<String>,
         /// New authority is a multisig, by create-key — resolves to its vault
         /// (mutually exclusive with --new-authority)
-        #[arg(long, conflicts_with = "new_authority", value_name = "NEW_MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            conflicts_with = "new_authority",
+            value_name = "NEW_MULTISIG_CREATE_KEY"
+        )]
         new_multisig: Option<String>,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -251,10 +330,19 @@ pub enum ValidatorWhitelistAction {
     /// Accept pending authority transfer
     AcceptAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -263,10 +351,19 @@ pub enum ValidatorWhitelistAction {
     /// Cancel pending authority transfer
     CancelAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -286,10 +383,19 @@ pub enum ProgramWhitelistAction {
         #[arg(value_name = "DEPLOY_AUTHORITY_KEYPAIR")]
         deploy_authority_keypair: String,
         /// Single-sig: path to authority/payer keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -300,10 +406,19 @@ pub enum ProgramWhitelistAction {
         #[arg(value_name = "DEPLOYER_PUBKEY")]
         deploy_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -314,10 +429,19 @@ pub enum ProgramWhitelistAction {
         #[arg(value_name = "DEPLOYER_PUBKEY")]
         deploy_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -328,10 +452,19 @@ pub enum ProgramWhitelistAction {
         #[arg(value_name = "DEPLOYER_PUBKEY")]
         deploy_authority: String,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -340,17 +473,34 @@ pub enum ProgramWhitelistAction {
     /// Propose a new authority
     ProposeAuthority {
         /// New authority pubkey (mutually exclusive with --new-multisig)
-        #[arg(long, conflicts_with = "new_multisig", value_name = "NEW_AUTHORITY_PUBKEY")]
+        #[arg(
+            long,
+            conflicts_with = "new_multisig",
+            value_name = "NEW_AUTHORITY_PUBKEY"
+        )]
         new_authority: Option<String>,
         /// New authority is a multisig, by create-key — resolves to its vault
         /// (mutually exclusive with --new-authority)
-        #[arg(long, conflicts_with = "new_authority", value_name = "NEW_MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            conflicts_with = "new_authority",
+            value_name = "NEW_MULTISIG_CREATE_KEY"
+        )]
         new_multisig: Option<String>,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -359,10 +509,19 @@ pub enum ProgramWhitelistAction {
     /// Accept pending authority transfer
     AcceptAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -371,10 +530,19 @@ pub enum ProgramWhitelistAction {
     /// Cancel pending authority transfer
     CancelAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -417,11 +585,19 @@ pub enum ProgramAction {
         program_so: String,
 
         /// Single-sig: path to upgrade authority keypair (mutually exclusive with --multisig)
-        #[arg(long, conflicts_with = "multisig", value_name = "UPGRADE_AUTHORITY_KEYPAIR")]
+        #[arg(
+            long,
+            conflicts_with = "multisig",
+            value_name = "UPGRADE_AUTHORITY_KEYPAIR"
+        )]
         upgrade_authority: Option<String>,
 
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
 
         /// Multi-sig: path to signer keypair that pays for proposal creation
@@ -447,11 +623,19 @@ pub enum ProgramAction {
         bytes: u32,
 
         /// Single-sig: path to upgrade authority keypair (mutually exclusive with --multisig)
-        #[arg(long, conflicts_with = "multisig", value_name = "UPGRADE_AUTHORITY_KEYPAIR")]
+        #[arg(
+            long,
+            conflicts_with = "multisig",
+            value_name = "UPGRADE_AUTHORITY_KEYPAIR"
+        )]
         upgrade_authority: Option<String>,
 
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
 
         /// Multi-sig: path to signer keypair that pays for proposal creation
@@ -469,11 +653,19 @@ pub enum ProgramAction {
         program_id: String,
 
         /// New authority pubkey (mutually exclusive with --new-multisig)
-        #[arg(long, conflicts_with = "new_multisig", value_name = "NEW_AUTHORITY_PUBKEY")]
+        #[arg(
+            long,
+            conflicts_with = "new_multisig",
+            value_name = "NEW_AUTHORITY_PUBKEY"
+        )]
         new_authority: Option<String>,
         /// New authority is a multisig, by create-key — resolves to its vault
         /// (mutually exclusive with --new-authority)
-        #[arg(long, conflicts_with = "new_authority", value_name = "NEW_MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            conflicts_with = "new_authority",
+            value_name = "NEW_MULTISIG_CREATE_KEY"
+        )]
         new_multisig: Option<String>,
         /// Renounce upgradeability — set the authority to none (program becomes
         /// permanently immutable). Mutually exclusive with --new-authority/--new-multisig.
@@ -481,10 +673,19 @@ pub enum ProgramAction {
         make_final: bool,
 
         /// Single-sig: path to the current upgrade authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -563,17 +764,34 @@ pub enum MonetaryPolicyAction {
     /// Propose a new authority
     ProposeAuthority {
         /// New authority pubkey (mutually exclusive with --new-multisig)
-        #[arg(long, conflicts_with = "new_multisig", value_name = "NEW_AUTHORITY_PUBKEY")]
+        #[arg(
+            long,
+            conflicts_with = "new_multisig",
+            value_name = "NEW_AUTHORITY_PUBKEY"
+        )]
         new_authority: Option<String>,
         /// New authority is a multisig, by create-key — resolves to its vault
         /// (mutually exclusive with --new-authority)
-        #[arg(long, conflicts_with = "new_authority", value_name = "NEW_MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            conflicts_with = "new_authority",
+            value_name = "NEW_MULTISIG_CREATE_KEY"
+        )]
         new_multisig: Option<String>,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -582,10 +800,19 @@ pub enum MonetaryPolicyAction {
     /// Accept pending authority transfer
     AcceptAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -594,10 +821,19 @@ pub enum MonetaryPolicyAction {
     /// Cancel pending authority transfer
     CancelAuthority {
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -609,10 +845,19 @@ pub enum MonetaryPolicyAction {
         #[arg(value_name = "BIPS")]
         new_rate_bips: u64,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -624,10 +869,19 @@ pub enum MonetaryPolicyAction {
         #[arg(value_name = "LAMPORTS")]
         new_lamports_per_signature: u64,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -639,10 +893,19 @@ pub enum MonetaryPolicyAction {
         #[arg(value_name = "PERCENT")]
         new_percent: u8,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
@@ -654,10 +917,19 @@ pub enum MonetaryPolicyAction {
         #[arg(value_name = "LAMPORTS")]
         new_vat_lamports: u64,
         /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
-        #[arg(long = "authority", alias = "auth", conflicts_with = "multisig", value_name = "AUTHORITY_KEYPAIR")]
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
         authority: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(long, requires = "multisig_authority", value_name = "MULTISIG_CREATE_KEY")]
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
         multisig: Option<String>,
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]

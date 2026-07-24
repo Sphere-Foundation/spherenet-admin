@@ -21,7 +21,10 @@ pub fn update_inflation_rate_bips(
 
     progress("Updating inflation rate:");
     progress(format!("Monetary Policy Account: {}", account_pubkey));
-    progress(format!("Authority:               {}", instruction_authority));
+    progress(format!(
+        "Authority:               {}",
+        instruction_authority
+    ));
     progress(format!(
         "New Rate:                {} bips ({:.2}%)",
         new_rate_bips,
@@ -52,7 +55,10 @@ pub fn update_lamports_per_signature(
 
     progress("Updating lamports per signature:");
     progress(format!("Monetary Policy Account: {}", account_pubkey));
-    progress(format!("Authority:               {}", instruction_authority));
+    progress(format!(
+        "Authority:               {}",
+        instruction_authority
+    ));
     progress(format!(
         "New Fee:                 {} lamports",
         new_lamports_per_signature
@@ -85,7 +91,10 @@ pub fn update_burn_percent(
 
     progress("Updating burn percent:");
     progress(format!("Monetary Policy Account: {}", account_pubkey));
-    progress(format!("Authority:               {}", instruction_authority));
+    progress(format!(
+        "Authority:               {}",
+        instruction_authority
+    ));
     progress(format!("New Burn Percent:        {}%", new_percent));
 
     let instruction = UpdateBurnPercentBuilder::new()
@@ -112,8 +121,14 @@ pub fn update_vat_lamports_per_epoch(
 
     progress("Updating VAT lamports per epoch:");
     progress(format!("Monetary Policy Account: {}", account_pubkey));
-    progress(format!("Authority:               {}", instruction_authority));
-    progress(format!("New VAT cost:            {} lamports", new_vat_lamports));
+    progress(format!(
+        "Authority:               {}",
+        instruction_authority
+    ));
+    progress(format!(
+        "New VAT cost:            {} lamports",
+        new_vat_lamports
+    ));
 
     let instruction = UpdateVatLamportsPerEpochBuilder::new()
         .monetary_policy_account(account_pubkey)

@@ -6,9 +6,9 @@
 //! render a not-found (CLI) or a 404 (API).
 
 use crate::cli::output::{boxed_header, emit, field, newline, NotFound, OutputMode, Render};
+use solana_bls_signatures::PubkeyCompressed;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_bls_signatures::PubkeyCompressed;
 use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey};
 use solana_vote_interface::state::VoteStateVersions;
 use std::str::FromStr;
