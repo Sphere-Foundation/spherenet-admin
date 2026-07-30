@@ -140,20 +140,21 @@ pub fn create(
 
     // Every SphereNet vote account ends up with a BLS voter key — only *how* it
     // gets attached differs, so we always derive the key material here and each
-    // arm decides what to do with it. `--vote-init-v2` uses the V2 instruction
-    // (VoteInitV2) to set the BLS key at creation, which requires the
-    // vote-account-initialize-v2 feature (SIMD-0464) to be active — the V2
-    // instruction is rejected otherwise with "invalid instruction data". The
-    // default (V1 VoteInit) creates the account without the key; a follow-up
-    // `vote authorize-voter-checked` appends this same derived key afterward. Note
-    // the stored account is VoteStateV4-layout either way on current builds; the
-    // feature only gates whether the BLS key can be populated at init. The BLS key
-    // is derived from the authorized VOTER keypair (the on-chain field is
+    // arm decides how to use it:
+    //   * `--vote-init-v2` sets the key at creation via the V2 instruction
+    //     (VoteInitV2), which requires the vote-account-initialize-v2 feature
+    //     (SIMD-0464); the V2 instruction is rejected otherwise ("invalid
+    //     instruction data").
+    //   * the default (V1) creates with the legacy VoteInit, then appends the same
+    //     key with `authorize_checked` in the SAME transaction — which requires the
+    //     bls_pubkey_management_in_vote_account feature to be active.
+    // The stored account is VoteStateV4-layout either way. The BLS key is derived
+    // from the authorized VOTER keypair (the on-chain field is
     // `authorized_voter_bls_pubkey`) — which is the identity keypair in the default
     // identity == voter setup.
     let bls = crate::vote::bls::derive_pubkey_and_pop(&authorized_voter, &vote_account.pubkey())?;
 
-    let mut out = String::from("\n");
+    let mut out = String::new();
     out.push_str(&boxed_header("Create Vote Account"));
     out.push('\n');
     out.push_str(&field("Vote Account", vote_account.pubkey()));
@@ -194,7 +195,7 @@ pub fn create(
     // transaction — rather than thread the difference through. Both consume the
     // same `bls` derived above.
     if vote_init_v2 {
-        // ── V2: one instruction; BLS set at init (requires SIMD-0464 active) ──
+        // ── V2: BLS set at init via VoteInitV2 (requires SIMD-0464 active) ──
         // `commission` (0-100%) maps to inflation-rewards commission in bps.
         let vote_init = VoteInitV2 {
             node_pubkey: identity.pubkey(),
@@ -203,8 +204,8 @@ pub fn create(
             authorized_voter_bls_proof_of_possession: bls.proof_of_possession,
             authorized_withdrawer,
             inflation_rewards_commission_bps: (commission as u16).saturating_mul(100),
-            // Rewards accrue to the vote account; block revenue to the
-            // identity — the same defaults the client applies.
+            // Inflation rewards accrue to the vote account; block-revenue
+            // commission is 100% to the identity collector.
             inflation_rewards_collector: vote_account.pubkey(),
             block_revenue_commission_bps: 10_000,
             block_revenue_collector: identity.pubkey(),
@@ -234,9 +235,9 @@ pub fn create(
             mode,
         )
     } else {
-        // ── V1: two instructions — legacy VoteInit, then authorize_checked to
-        //    APPEND the BLS voter key (VoterWithBLS). This is the lifted
-        //    `authorize-voter-checked` body, fed the same `bls` derived above. ──
+        // ── V1: create with the legacy VoteInit, then authorize_checked to APPEND
+        //    the BLS voter key (VoterWithBLS) in the same tx — the lifted
+        //    `authorize-voter-checked` logic, fed the same `bls` derived above. ──
         let vote_init = VoteInit {
             node_pubkey: identity.pubkey(),
             authorized_voter: authorized_voter.pubkey(),
