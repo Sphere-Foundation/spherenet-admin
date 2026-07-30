@@ -953,25 +953,36 @@ pub enum VoteAction {
         /// Path to the validator identity (node) keypair (signs initialization)
         #[arg(long, value_name = "IDENTITY_KEYPAIR")]
         identity: String,
-        /// Pubkey authorized to submit votes
-        #[arg(long, value_name = "AUTHORIZED_VOTER_PUBKEY")]
-        authorized_voter: String,
-        /// Pubkey authorized to withdraw from the vote account
+        /// Path to the keypair authorized to submit votes. Optional — defaults to
+        /// the identity keypair (identity == voter). A keypair (not a pubkey)
+        /// because on the default V1 path it must sign the BLS-append, and the BLS
+        /// voter key is derived from it.
+        #[arg(long, value_name = "AUTHORIZED_VOTER_KEYPAIR")]
+        authorized_voter: Option<String>,
+        /// Pubkey authorized to withdraw from the vote account. Optional —
+        /// defaults to the authorized voter (which itself defaults to identity),
+        /// tripping a hot-key warning since that key can drain the account; prefer
+        /// a distinct cold key.
         #[arg(long, value_name = "AUTHORIZED_WITHDRAWER_PUBKEY")]
-        authorized_withdrawer: String,
+        authorized_withdrawer: Option<String>,
         /// Inflation-rewards commission percentage (0-100)
         #[arg(long, default_value = "100", value_name = "PERCENT")]
         commission: u8,
-        /// Path to keypair that funds the vote account's rent-exempt reserve
+        /// Path to keypair that funds the vote account's rent-exempt reserve.
+        /// Optional — defaults to the identity keypair.
         #[arg(long, value_name = "FUNDER_KEYPAIR")]
-        from: String,
-        /// Path to keypair that pays transaction fees
+        from: Option<String>,
+        /// Path to keypair that pays transaction fees. Optional — defaults to the
+        /// identity keypair.
         #[arg(long, alias = "fee-payer", value_name = "PAYER_KEYPAIR")]
-        payer: String,
-        /// Create a legacy V1 vote account (no BLS key). Use on networks where
-        /// the vote-account-initialize-v2 feature (SIMD-0464) is not yet active.
+        payer: Option<String>,
+        /// Initialize with the V2 instruction (VoteInitV2), setting the BLS key
+        /// at creation. Requires the vote-account-initialize-v2 feature
+        /// (SIMD-0464) to be active on the network — it is rejected otherwise.
+        /// The default (V1) creates with the legacy VoteInit and appends the BLS
+        /// key in the same transaction via authorize_checked.
         #[arg(long)]
-        no_bls: bool,
+        vote_init_v2: bool,
     },
     /// Withdraw lamports from a vote account (signed by the withdraw authority)
     Withdraw {

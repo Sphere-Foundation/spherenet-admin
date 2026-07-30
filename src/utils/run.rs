@@ -75,16 +75,35 @@ pub fn request_airdrop(
         "Requesting airdrop of {} SPHR to {}...",
         amount, pubkey
     ));
-    let signature = rpc_client.request_airdrop(&pubkey, lamports)?;
+    // Pass a FRESH blockhash. The RPC node's faucet signs the funding transfer
+    // with whatever blockhash we hand it; the blockhash-less `request_airdrop`
+    // sends `None`, so the faucet falls back to the bank's last confirmed
+    // blockhash — often already stale by the time the transfer lands, so it
+    // silently never confirms (balance unchanged). Fetching the latest blockhash
+    // and requesting against it is what the client CLI does.
+    let recent_blockhash = rpc_client.get_latest_blockhash()?;
+    let signature =
+        rpc_client.request_airdrop_with_blockhash(&pubkey, lamports, &recent_blockhash)?;
 
     progress("Confirming airdrop...");
-    let confirmed = rpc_client.confirm_transaction(&signature)?;
-    if !confirmed {
-        return Err(eyre::eyre!(
-            "Airdrop {} did not confirm — the faucet may be empty or rate-limited.",
-            signature
-        ));
-    }
+    // Confirm against the SAME fresh blockhash we requested with, retrying until
+    // the tx confirms or that blockhash expires — this is what the client CLI
+    // does. The single-shot `confirm_transaction` checks exactly once, right
+    // after submit, and returns false before a faucet transfer has had time to
+    // land, so it loses the race and reports a false "did not confirm".
+    rpc_client
+        .confirm_transaction_with_spinner(
+            &signature,
+            &recent_blockhash,
+            rpc_client.commitment(),
+        )
+        .map_err(|e| {
+            eyre::eyre!(
+                "Airdrop {} did not confirm — the faucet may be empty or rate-limited: {}",
+                signature,
+                e
+            )
+        })?;
 
     let after = rpc_client.get_balance(&pubkey)?;
     if after <= before {

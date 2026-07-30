@@ -41,13 +41,14 @@ The `--authority` here is just the fee-payer; the requesting key (vote account /
 ### Vote (`vote`)
 
 ```bash
-spherenet-admin vote create --vote-account ./vote.json --identity ./identity.json \
-  --authorized-voter <PK> --authorized-withdrawer <PK> --commission 100 \
-  --from ./funder.json --payer ./payer.json          # add --no-bls for legacy V1 (pre-SIMD-0464)
+# minimal — every other role defaults to the identity keypair
+spherenet-admin vote create --vote-account ./vote.json --identity ./identity.json
 ```
 - `vote show <VOTE_ACCOUNT>` · `vote withdraw --vote-account <PK> --destination <PK> (--all) --withdraw-authority ./w.json`
 
-Defaults to a V2 account with a BLS key derived from `--identity`; keep `--authorized-withdrawer` distinct from the identity.
+Produces a **V4 vote account with a BLS voter key in one command** — the default path creates with the legacy `VoteInit` and appends the BLS key inline via `authorize_checked` (needs the `bls_pubkey_management_in_vote_account` feature active). Pass `--vote-init-v2` to set the BLS key at creation instead (`VoteInitV2`, requires SIMD-0464).
+
+Optional overrides: `--authorized-voter <KEYPAIR>` (signs the BLS append and is what the BLS key is derived from — defaults to the identity), `--authorized-withdrawer <PK>` (defaults to the voter → identity; keep it a **distinct cold key**), `--from` / `--payer` (default to the identity), `--commission <0-100>` (default 100).
 
 ### Stake (`stake`)
 

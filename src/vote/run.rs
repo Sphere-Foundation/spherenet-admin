@@ -6,7 +6,9 @@
 //! collapse them. Callers that want one key to play several roles pass the same
 //! keypair/pubkey for each; duplicate *signers* are deduplicated automatically.
 
-use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
+use crate::cli::output::{
+    boxed_header, emit, field, progress, subfield, OutputMode, Render, TxOutputView,
+};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
@@ -17,10 +19,10 @@ use solana_sdk::{
 };
 use solana_vote_interface::{
     instruction::{
-        create_account_with_config, create_account_with_config_v2, withdraw as withdraw_ix,
-        CreateVoteAccountConfig,
+        authorize_checked, create_account_with_config, create_account_with_config_v2,
+        withdraw as withdraw_ix, CreateVoteAccountConfig,
     },
-    state::{VoteInit, VoteInitV2},
+    state::{VoteAuthorize, VoteInit, VoteInitV2, VoterWithBLSArgs},
 };
 use std::str::FromStr;
 
@@ -45,22 +47,30 @@ impl Render for VoteAccountCreatedView {
 /// # Roles (all independent)
 /// * `vote_account_path` - keypair of the new vote account; signs its own creation.
 /// * `identity_path`     - validator identity / node; signs the initialize instruction.
-/// * `authorized_voter`  - pubkey permitted to submit votes.
+/// * `authorized_voter`  - keypair permitted to submit votes. Optional — defaults
+///   to the identity keypair (identity == voter). It's a *keypair*, not a pubkey,
+///   because on the legacy path it must sign the `authorize_checked` that appends
+///   the BLS key; its keypair is also what the BLS voter key is derived from.
 /// * `authorized_withdrawer` - pubkey permitted to withdraw from the vote account.
+///   Optional — defaults to the authorized voter (which itself defaults to the
+///   identity), so it trips the hot-key warning unless a distinct cold key is
+///   given. Stays a pubkey (not a keypair) because it never signs at create time.
 /// * `commission`        - inflation-rewards commission, 0-100.
-/// * `from_path`         - keypair that funds the vote account's rent-exempt reserve.
-/// * `payer_path`        - keypair that pays transaction fees.
+/// * `from_path`         - keypair that funds the vote account's rent-exempt
+///   reserve. Optional — defaults to the identity keypair.
+/// * `payer_path`        - keypair that pays transaction fees. Optional — defaults
+///   to the identity keypair.
 #[allow(clippy::too_many_arguments)]
 pub fn create(
     rpc_url: &str,
     vote_account_path: String,
     identity_path: String,
-    authorized_voter: String,
-    authorized_withdrawer: String,
+    authorized_voter: Option<String>,
+    authorized_withdrawer: Option<String>,
     commission: u8,
-    from_path: String,
-    payer_path: String,
-    no_bls: bool,
+    from_path: Option<String>,
+    payer_path: Option<String>,
+    vote_init_v2: bool,
     mode: OutputMode,
 ) -> eyre::Result<()> {
     if commission > 100 {
@@ -88,26 +98,38 @@ pub fn create(
             e
         )
     })?;
+    // Funder and fee payer both default to the identity keypair when omitted.
+    let from_path = from_path.unwrap_or_else(|| identity_path.clone());
     let from = read_keypair_file(&from_path)
         .map_err(|e| eyre::eyre!("Failed to read from keypair from {}: {}", from_path, e))?;
+    let payer_path = payer_path.unwrap_or_else(|| identity_path.clone());
     let payer = read_keypair_file(&payer_path)
         .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
 
-    // Parse non-signing authority pubkeys.
-    let authorized_voter = Pubkey::from_str(&authorized_voter).map_err(|e| {
+    // The authorized voter is loaded as a *keypair* (not a pubkey): on the legacy
+    // path it must sign the `authorize_checked` that appends the BLS key, and its
+    // keypair is what the BLS voter key is derived from. It defaults to the
+    // identity keypair when `--authorized-voter` is omitted — the common validator
+    // setup where identity == voter. The withdrawer, by contrast, never signs at
+    // create time, so it stays a plain pubkey.
+    let authorized_voter_path = authorized_voter.unwrap_or_else(|| identity_path.clone());
+    let authorized_voter = read_keypair_file(&authorized_voter_path).map_err(|e| {
         eyre::eyre!(
-            "Invalid authorized voter pubkey '{}': {}",
-            authorized_voter,
+            "Failed to read authorized voter keypair from {}: {}",
+            authorized_voter_path,
             e
         )
     })?;
-    let authorized_withdrawer = Pubkey::from_str(&authorized_withdrawer).map_err(|e| {
-        eyre::eyre!(
-            "Invalid authorized withdrawer pubkey '{}': {}",
-            authorized_withdrawer,
-            e
-        )
-    })?;
+    // The withdraw authority never signs at create time, so it stays a plain
+    // pubkey. Defaults to the authorized VOTER when omitted (which itself defaults
+    // to the identity) — so the two vote-account authorities stay unified under the
+    // key the caller chose, rather than reaching back to the node identity. Either
+    // way this trips the hot-key warning below.
+    let authorized_withdrawer = match authorized_withdrawer {
+        Some(s) => Pubkey::from_str(&s)
+            .map_err(|e| eyre::eyre!("Invalid authorized withdrawer pubkey '{}': {}", s, e))?,
+        None => authorized_voter.pubkey(),
+    };
 
     // Compute the rent-exempt reserve for a (V4-sized) vote account. The vote
     // account is funded with exactly this amount: `vote create` creates a
@@ -116,108 +138,158 @@ pub fn create(
     let config = CreateVoteAccountConfig::default();
     let rent = rpc_client.get_minimum_balance_for_rent_exemption(config.space as usize)?;
 
-    // Default to a V2 vote account (VoteInitV2, sets the BLS key), matching the
-    // layout genesis bakes into the bootstrap validators. `--no-bls` falls back to
-    // the legacy V1 instruction for networks where the vote-account-initialize-v2
-    // feature (SIMD-0464) is not yet active — the V2 instruction is rejected there
-    // with "invalid instruction data". Note: the stored account is VoteStateV4-
-    // layout either way on current builds; the feature only gates whether the BLS
-    // key can be populated at init.
-    let bls = if no_bls {
-        None
-    } else {
-        Some(crate::vote::bls::derive_pubkey_and_pop(
-            &identity,
-            &vote_account.pubkey(),
-        )?)
-    };
+    // Every SphereNet vote account ends up with a BLS voter key — only *how* it
+    // gets attached differs, so we always derive the key material here and each
+    // arm decides how to use it:
+    //   * `--vote-init-v2` sets the key at creation via the V2 instruction
+    //     (VoteInitV2), which requires the vote-account-initialize-v2 feature
+    //     (SIMD-0464); the V2 instruction is rejected otherwise ("invalid
+    //     instruction data").
+    //   * the default (V1) creates with the legacy VoteInit, then appends the same
+    //     key with `authorize_checked` in the SAME transaction — which requires the
+    //     bls_pubkey_management_in_vote_account feature to be active.
+    // The stored account is VoteStateV4-layout either way. The BLS key is derived
+    // from the authorized VOTER keypair (the on-chain field is
+    // `authorized_voter_bls_pubkey`) — which is the identity keypair in the default
+    // identity == voter setup.
+    let bls = crate::vote::bls::derive_pubkey_and_pop(&authorized_voter, &vote_account.pubkey())?;
 
-    progress("Creating vote account:");
-    progress(format!("Vote Account:    {}", vote_account.pubkey()));
-    progress(format!("Identity (node): {}", identity.pubkey()));
-    progress(format!("Auth Voter:      {}", authorized_voter));
-    progress(format!("Auth Withdrawer: {}", authorized_withdrawer));
-    progress(format!("Commission:      {}%", commission));
-    match &bls {
-        Some(b) => progress(format!("BLS Pubkey:      {}", b.display)),
-        None => progress("BLS Pubkey:      (none — V1 account, --no-bls)"),
-    }
-    progress(format!("Funder (from):   {}", from.pubkey()));
-    progress(format!("Fee Payer:       {}", payer.pubkey()));
-    progress(format!(
-        "Rent reserve:    {:.9} SPHR ({} lamports, {} bytes)",
-        rent as f64 / LAMPORTS_PER_SOL as f64,
-        rent,
-        config.space
+    let mut out = String::new();
+    out.push_str(&boxed_header("Create Vote Account"));
+    out.push('\n');
+    out.push_str(&field("Vote Account", vote_account.pubkey()));
+    out.push_str(&field("Identity (node)", identity.pubkey()));
+    out.push_str(&field("Auth Voter", authorized_voter.pubkey()));
+    out.push_str(&field("Auth Withdrawer", authorized_withdrawer));
+    out.push_str(&field("Commission", format!("{commission}%")));
+    out.push_str(&field("BLS Pubkey", &bls.display));
+    out.push_str(&field("Funder (from)", from.pubkey()));
+    out.push_str(&field("Fee Payer", payer.pubkey()));
+    out.push_str(&field(
+        "Rent reserve",
+        format!(
+            "{:.9} SPHR ({} lamports, {} bytes)",
+            rent as f64 / LAMPORTS_PER_SOL as f64,
+            rent,
+            config.space
+        ),
     ));
+    progress(out.trim_end());
 
-    // The vote account's withdraw authority can drain it. Setting it equal to
-    // the validator identity (a hot key on the validator host) is a known
-    // footgun; warn but do not block — separation of roles is the caller's call.
-    if authorized_withdrawer == identity.pubkey() {
+    // The vote account's withdraw authority can drain it. Setting it equal to a
+    // hot key that lives on the validator host — the identity OR the authorized
+    // voter — is a known footgun; warn but do not block (separation of roles is
+    // the caller's call). Wrapped in blank lines so it stands out.
+    if authorized_withdrawer == identity.pubkey()
+        || authorized_withdrawer == authorized_voter.pubkey()
+    {
         progress(
-            "⚠️  WARNING: authorized withdrawer equals the validator identity. The identity \
-             key is hot on the validator host and can drain the vote account. Prefer a \
-             distinct, cold withdraw authority.",
+            "\n⚠️  WARNING: authorized withdrawer matches a hot key on the validator host \
+             (the validator identity or the authorized voter). That key can drain the vote \
+             account. Prefer a distinct, cold withdraw authority.\n",
         );
     }
 
-    let instructions = match &bls {
-        Some(b) => {
-            // `commission` (0-100%) maps to inflation-rewards commission in bps.
-            let vote_init = VoteInitV2 {
-                node_pubkey: identity.pubkey(),
-                authorized_voter,
-                authorized_voter_bls_pubkey: b.pubkey,
-                authorized_voter_bls_proof_of_possession: b.proof_of_possession,
-                authorized_withdrawer,
-                inflation_rewards_commission_bps: (commission as u16).saturating_mul(100),
-                // Rewards accrue to the vote account; block revenue to the
-                // identity — the same defaults the client applies.
-                inflation_rewards_collector: vote_account.pubkey(),
-                block_revenue_commission_bps: 10_000,
-                block_revenue_collector: identity.pubkey(),
-            };
-            create_account_with_config_v2(
-                &from.pubkey(),
-                &vote_account.pubkey(),
-                &vote_init,
-                rent,
-                config,
-            )
-        }
-        None => {
-            let vote_init = VoteInit {
-                node_pubkey: identity.pubkey(),
-                authorized_voter,
-                authorized_withdrawer,
-                commission,
-            };
-            create_account_with_config(
-                &from.pubkey(),
-                &vote_account.pubkey(),
-                &vote_init,
-                rent,
-                config,
-            )
-        }
-    };
+    // The two paths share almost nothing once we branch, so we keep them as two
+    // self-contained flows — each builds, signs, submits, and reports its own
+    // transaction — rather than thread the difference through. Both consume the
+    // same `bls` derived above.
+    if vote_init_v2 {
+        // ── V2: BLS set at init via VoteInitV2 (requires SIMD-0464 active) ──
+        // `commission` (0-100%) maps to inflation-rewards commission in bps.
+        let vote_init = VoteInitV2 {
+            node_pubkey: identity.pubkey(),
+            authorized_voter: authorized_voter.pubkey(),
+            authorized_voter_bls_pubkey: bls.pubkey,
+            authorized_voter_bls_proof_of_possession: bls.proof_of_possession,
+            authorized_withdrawer,
+            inflation_rewards_commission_bps: (commission as u16).saturating_mul(100),
+            // Inflation rewards accrue to the vote account; block-revenue
+            // commission is 100% to the identity collector.
+            inflation_rewards_collector: vote_account.pubkey(),
+            block_revenue_commission_bps: 10_000,
+            block_revenue_collector: identity.pubkey(),
+        };
+        let instructions = create_account_with_config_v2(
+            &from.pubkey(),
+            &vote_account.pubkey(),
+            &vote_init,
+            rent,
+            config,
+        );
 
-    // Sign with every required signer, deduplicated by pubkey. The fee payer
-    // must come first so it is the transaction's payer.
-    let signers = crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
+        progress("Submitting VoteInitV2 (BLS set at init)...");
+        // Signers: fee payer, funder, the vote account (creates itself), and the
+        // node identity (signs initialize). The authorized voter does NOT sign at
+        // init — its BLS key rides in the instruction data.
+        let signers =
+            crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
+        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+        let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+        emit(
+            &VoteAccountCreatedView {
+                vote_account: vote_account.pubkey().to_string(),
+                signature: signature.to_string(),
+            },
+            mode,
+        )
+    } else {
+        // ── V1: create with the legacy VoteInit, then authorize_checked to APPEND
+        //    the BLS voter key (VoterWithBLS) in the same tx — the lifted
+        //    `authorize-voter-checked` logic, fed the same `bls` derived above. ──
+        let vote_init = VoteInit {
+            node_pubkey: identity.pubkey(),
+            authorized_voter: authorized_voter.pubkey(),
+            authorized_withdrawer,
+            commission,
+        };
+        // create_account_with_config returns [create_account, initialize]; we
+        // append the BLS authorize as a third instruction in the same tx.
+        let mut instructions = create_account_with_config(
+            &from.pubkey(),
+            &vote_account.pubkey(),
+            &vote_init,
+            rent,
+            config,
+        );
 
-    let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+        // authorize_checked requires BOTH the current authorized voter and the
+        // new authorized voter to sign. Here we're only ADDING the BLS key (not
+        // rotating the voter), so `authorized_voter` plays both roles.
+        let append_bls_ix = authorize_checked(
+            &vote_account.pubkey(),
+            &authorized_voter.pubkey(), // currently authorized voter
+            &authorized_voter.pubkey(), // new authorized voter (same key)
+            VoteAuthorize::VoterWithBLS(VoterWithBLSArgs {
+                bls_pubkey: bls.pubkey,
+                bls_proof_of_possession: bls.proof_of_possession,
+            }),
+        );
+        instructions.push(append_bls_ix);
 
-    emit(
-        &VoteAccountCreatedView {
-            vote_account: vote_account.pubkey().to_string(),
-            signature: signature.to_string(),
-        },
-        mode,
-    )
+        progress("Submitting VoteInit + authorize_checked(VoterWithBLS)...");
+        // The append's checked variant needs the authorized-voter keypair to sign
+        // as BOTH the current and new voter (deduped to one signature), so it joins
+        // the signer set alongside the payer, funder, vote account, and identity.
+        let signers = crate::utils::run::dedupe_signers(&[
+            &payer,
+            &from,
+            &vote_account,
+            &identity,
+            &authorized_voter,
+        ]);
+        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+        let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+        emit(
+            &VoteAccountCreatedView {
+                vote_account: vote_account.pubkey().to_string(),
+                signature: signature.to_string(),
+            },
+            mode,
+        )
+    }
 }
 
 /// Withdraw lamports from a vote account to a destination.

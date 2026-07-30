@@ -1,4 +1,11 @@
+# Build artifacts
 /target
+
+# Local operator tooling & config (kept on-disk, not versioned)
+/scripts/
+
+# Runtime data / fetched artifacts
+/opt/
+
+# macOS
 .DS_Store
-scripts/.env
-opt/
