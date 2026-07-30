@@ -9,10 +9,12 @@
 //! Two values are lifted verbatim from the client (`agave-votor-messages` and
 //! `solana-vote-program`), neither of which is published as a standalone crate:
 //! * the derivation seed `b"alpenglow"`, and
-//! * the proof-of-possession message layout (`b"ALPENGLOW"` ‖ vote_pubkey ‖ bls_pubkey).
+//! * the proof-of-possession message layout (`b"ALPENGLOW"` ‖ vote_pubkey).
 //!
-//! The on-chain program verifies the PoP against exactly this message, so the
-//! label and field order must match byte-for-byte.
+//! The on-chain program verifies the PoP against exactly this message
+//! (`solana_vote_program::vote_state::generate_pop_message`, "ALPENGLOW" ‖ the
+//! 32-byte vote pubkey = 41 bytes — the BLS pubkey is NOT part of the message),
+//! so the label and field order must match byte-for-byte.
 
 use solana_bls_signatures::{
     keypair::Keypair as BlsKeypair, PubkeyCompressed, BLS_PROOF_OF_POSSESSION_COMPRESSED_SIZE,
@@ -28,8 +30,7 @@ const BLS_KEYPAIR_DERIVE_SEED: &[u8] = b"alpenglow";
 /// (`solana_vote_program::vote_state::generate_pop_message`)
 const POP_LABEL: &[u8; 9] = b"ALPENGLOW";
 
-const POP_MESSAGE_SIZE: usize =
-    POP_LABEL.len() + std::mem::size_of::<Pubkey>() + BLS_PUBLIC_KEY_COMPRESSED_SIZE;
+const POP_MESSAGE_SIZE: usize = POP_LABEL.len() + std::mem::size_of::<Pubkey>();
 
 /// A BLS keypair derived from a validator identity: the compressed pubkey and
 /// proof of possession that [`VoteInitV2`] needs, plus a base64 `display` of the
@@ -56,7 +57,7 @@ pub fn derive_pubkey_and_pop(
         .map_err(|e| eyre::eyre!("Failed to derive BLS keypair from identity: {e}"))?;
 
     let pubkey = bls_keypair.public.to_bytes_compressed();
-    let message = generate_pop_message(vote_account, &pubkey);
+    let message = generate_pop_message(vote_account);
     let proof_of_possession = bls_keypair
         .proof_of_possession(Some(&message))
         .to_bytes_compressed();
@@ -71,17 +72,15 @@ pub fn derive_pubkey_and_pop(
     })
 }
 
-/// `b"ALPENGLOW"` ‖ vote_account_pubkey ‖ compressed_bls_pubkey — byte-for-byte
-/// identical to `solana_vote_program`'s `generate_pop_message`.
-fn generate_pop_message(
-    vote_account: &Pubkey,
-    bls_pubkey: &[u8; BLS_PUBLIC_KEY_COMPRESSED_SIZE],
-) -> [u8; POP_MESSAGE_SIZE] {
+/// `b"ALPENGLOW"` ‖ vote_account_pubkey (41 bytes) — byte-for-byte identical to
+/// `solana_vote_program`'s `generate_pop_message`. The compressed BLS pubkey is
+/// deliberately NOT included: the on-chain `verify_bls_proof_of_possession`
+/// signs/verifies this exact 41-byte message, so appending the pubkey (as an
+/// earlier version did) produces a PoP the chain rejects.
+fn generate_pop_message(vote_account: &Pubkey) -> [u8; POP_MESSAGE_SIZE] {
     let mut message = [0u8; POP_MESSAGE_SIZE];
-    let (label, rest) = message.split_at_mut(POP_LABEL.len());
-    let (pubkey, bls) = rest.split_at_mut(std::mem::size_of::<Pubkey>());
+    let (label, pubkey) = message.split_at_mut(POP_LABEL.len());
     label.copy_from_slice(POP_LABEL);
     pubkey.copy_from_slice(vote_account.as_ref());
-    bls.copy_from_slice(bls_pubkey);
     message
 }

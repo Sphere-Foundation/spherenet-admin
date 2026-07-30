@@ -17,14 +17,17 @@ use solana_sdk::{
 };
 use solana_vote_interface::{
     instruction::{
-        create_account_with_config, create_account_with_config_v2, withdraw as withdraw_ix,
-        CreateVoteAccountConfig,
+        authorize_checked, create_account_with_config, create_account_with_config_v2,
+        withdraw as withdraw_ix, CreateVoteAccountConfig,
     },
-    state::{VoteInit, VoteInitV2},
+    state::{VoteAuthorize, VoteInit, VoteInitV2, VoterWithBLSArgs},
 };
 use std::str::FromStr;
 
 /// Result of `vote create` — the new account address and creation signature.
+// TODO(bls): re-enabled once the two paths' transactions are wired back in;
+// currently only referenced from the commented-out submit blocks.
+#[allow(dead_code)]
 #[derive(serde::Serialize)]
 pub struct VoteAccountCreatedView {
     vote_account: String,
@@ -116,22 +119,17 @@ pub fn create(
     let config = CreateVoteAccountConfig::default();
     let rent = rpc_client.get_minimum_balance_for_rent_exemption(config.space as usize)?;
 
-    // Default to a legacy V1 vote account (VoteInit, no BLS key). `--vote-init-v2`
-    // opts into the V2 instruction (VoteInitV2, sets the BLS key at creation),
-    // which requires the vote-account-initialize-v2 feature (SIMD-0464) to be
-    // active — the V2 instruction is rejected otherwise with "invalid instruction
-    // data". On networks where the feature is inactive, create V1 here and append
-    // the BLS key afterward with `vote authorize-voter-checked`. Note: the stored
-    // account is VoteStateV4-layout either way on current builds; the feature only
-    // gates whether the BLS key can be populated at init.
-    let bls = if vote_init_v2 {
-        Some(crate::vote::bls::derive_pubkey_and_pop(
-            &identity,
-            &vote_account.pubkey(),
-        )?)
-    } else {
-        None
-    };
+    // Every SphereNet vote account ends up with a BLS voter key — only *how* it
+    // gets attached differs, so we always derive the key material here and each
+    // arm decides what to do with it. `--vote-init-v2` uses the V2 instruction
+    // (VoteInitV2) to set the BLS key at creation, which requires the
+    // vote-account-initialize-v2 feature (SIMD-0464) to be active — the V2
+    // instruction is rejected otherwise with "invalid instruction data". The
+    // default (V1 VoteInit) creates the account without the key; a follow-up
+    // `vote authorize-voter-checked` appends this same derived key afterward. Note
+    // the stored account is VoteStateV4-layout either way on current builds; the
+    // feature only gates whether the BLS key can be populated at init.
+    let bls = crate::vote::bls::derive_pubkey_and_pop(&identity, &vote_account.pubkey())?;
 
     progress("Creating vote account:");
     progress(format!("Vote Account:    {}", vote_account.pubkey()));
@@ -139,10 +137,15 @@ pub fn create(
     progress(format!("Auth Voter:      {}", authorized_voter));
     progress(format!("Auth Withdrawer: {}", authorized_withdrawer));
     progress(format!("Commission:      {}%", commission));
-    match &bls {
-        Some(b) => progress(format!("BLS Pubkey:      {}", b.display)),
-        None => progress("BLS Pubkey:      (none — V1 account; append later via `vote authorize-voter-checked`)"),
-    }
+    progress(format!(
+        "BLS Pubkey:      {}{}",
+        bls.display,
+        if vote_init_v2 {
+            " (set at init — V2)"
+        } else {
+            " (append later via `vote authorize-voter-checked`)"
+        }
+    ));
     progress(format!("Funder (from):   {}", from.pubkey()));
     progress(format!("Fee Payer:       {}", payer.pubkey()));
     progress(format!(
@@ -163,62 +166,122 @@ pub fn create(
         );
     }
 
-    let instructions = match &bls {
-        Some(b) => {
-            // `commission` (0-100%) maps to inflation-rewards commission in bps.
-            let vote_init = VoteInitV2 {
-                node_pubkey: identity.pubkey(),
-                authorized_voter,
-                authorized_voter_bls_pubkey: b.pubkey,
-                authorized_voter_bls_proof_of_possession: b.proof_of_possession,
-                authorized_withdrawer,
-                inflation_rewards_commission_bps: (commission as u16).saturating_mul(100),
-                // Rewards accrue to the vote account; block revenue to the
-                // identity — the same defaults the client applies.
-                inflation_rewards_collector: vote_account.pubkey(),
-                block_revenue_commission_bps: 10_000,
-                block_revenue_collector: identity.pubkey(),
-            };
-            create_account_with_config_v2(
-                &from.pubkey(),
-                &vote_account.pubkey(),
-                &vote_init,
-                rent,
-                config,
-            )
-        }
-        None => {
-            let vote_init = VoteInit {
-                node_pubkey: identity.pubkey(),
-                authorized_voter,
-                authorized_withdrawer,
-                commission,
-            };
-            create_account_with_config(
-                &from.pubkey(),
-                &vote_account.pubkey(),
-                &vote_init,
-                rent,
-                config,
-            )
-        }
-    };
+    // The two paths share almost nothing once we branch, so we keep them as two
+    // self-contained flows and duplicate the small submit tail rather than thread
+    // the difference through. Both consume the same `bls` derived above.
+    //
+    // NOTE: transaction submission is COMMENTED OUT for now — we build the
+    // instructions and print them (the append IX's data carries the BLS pubkey +
+    // proof-of-possession) so the append flow can be eyeballed before anything
+    // goes on-chain. `mode` and the submit blocks come back with the txs.
+    let _ = mode;
 
-    // Sign with every required signer, deduplicated by pubkey. The fee payer
-    // must come first so it is the transaction's payer.
-    let signers = crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
+    if vote_init_v2 {
+        // ── V2: one instruction; BLS set at init (requires SIMD-0464 active) ──
+        // `commission` (0-100%) maps to inflation-rewards commission in bps.
+        let vote_init = VoteInitV2 {
+            node_pubkey: identity.pubkey(),
+            authorized_voter,
+            authorized_voter_bls_pubkey: bls.pubkey,
+            authorized_voter_bls_proof_of_possession: bls.proof_of_possession,
+            authorized_withdrawer,
+            inflation_rewards_commission_bps: (commission as u16).saturating_mul(100),
+            // Rewards accrue to the vote account; block revenue to the
+            // identity — the same defaults the client applies.
+            inflation_rewards_collector: vote_account.pubkey(),
+            block_revenue_commission_bps: 10_000,
+            block_revenue_collector: identity.pubkey(),
+        };
+        let instructions = create_account_with_config_v2(
+            &from.pubkey(),
+            &vote_account.pubkey(),
+            &vote_init,
+            rent,
+            config,
+        );
 
-    let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+        progress("Path: VoteInitV2 (BLS set at init) — 1 create instruction");
+        print_instructions(&instructions);
 
-    emit(
-        &VoteAccountCreatedView {
-            vote_account: vote_account.pubkey().to_string(),
-            signature: signature.to_string(),
-        },
-        mode,
-    )
+        // let signers =
+        //     crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
+        // let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        // transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+        // let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+        // emit(&VoteAccountCreatedView {
+        //     vote_account: vote_account.pubkey().to_string(),
+        //     signature: signature.to_string(),
+        // }, mode)?;
+    } else {
+        // ── V1: two instructions — legacy VoteInit, then authorize_checked to
+        //    APPEND the BLS voter key (VoterWithBLS). This is the lifted
+        //    `authorize-voter-checked` body, fed the same `bls` derived above. ──
+        let vote_init = VoteInit {
+            node_pubkey: identity.pubkey(),
+            authorized_voter,
+            authorized_withdrawer,
+            commission,
+        };
+        // create_account_with_config returns [create_account, initialize]; we
+        // append the BLS authorize as a third instruction in the same tx.
+        let mut instructions = create_account_with_config(
+            &from.pubkey(),
+            &vote_account.pubkey(),
+            &vote_init,
+            rent,
+            config,
+        );
+
+        // authorize_checked requires BOTH the current authorized voter and the
+        // new authorized voter to sign. Here we're only ADDING the BLS key (not
+        // rotating the voter), so `authorized_voter` plays both roles.
+        let append_bls_ix = authorize_checked(
+            &vote_account.pubkey(),
+            &authorized_voter, // currently authorized voter
+            &authorized_voter, // new authorized voter (same key)
+            VoteAuthorize::VoterWithBLS(VoterWithBLSArgs {
+                bls_pubkey: bls.pubkey,
+                bls_proof_of_possession: bls.proof_of_possession,
+            }),
+        );
+        instructions.push(append_bls_ix);
+
+        progress("Path: VoteInit + authorize_checked(VoterWithBLS) — create then append BLS");
+        print_instructions(&instructions);
+
+        // NOTE: signing the append needs the authorized-voter KEYPAIR (as both
+        // the current + new voter for the checked variant). `vote create` today
+        // only takes the voter PUBKEY, so wiring that signer in is the next step.
+        // let signers =
+        //     crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
+        // let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        // transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+        // let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+        // emit(&VoteAccountCreatedView {
+        //     vote_account: vote_account.pubkey().to_string(),
+        //     signature: signature.to_string(),
+        // }, mode)?;
+    }
+
+    Ok(())
+}
+
+/// Print a built instruction set for inspection — program id, account count, and
+/// the full instruction data as hex (so the BLS pubkey + proof-of-possession
+/// embedded in the `authorize_checked` data are visible). Temporary: used while
+/// the vote-create transactions are held behind a print-only stage.
+fn print_instructions(instructions: &[solana_sdk::instruction::Instruction]) {
+    progress(format!("Instructions built: {}", instructions.len()));
+    for (i, ix) in instructions.iter().enumerate() {
+        let data_hex: String = ix.data.iter().map(|b| format!("{b:02x}")).collect();
+        progress(format!(
+            "  [{i}] program={} · {} accounts · {} data bytes",
+            ix.program_id,
+            ix.accounts.len(),
+            ix.data.len()
+        ));
+        progress(format!("      data: {data_hex}"));
+    }
 }
 
 /// Withdraw lamports from a vote account to a destination.
