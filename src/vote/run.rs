@@ -25,9 +25,6 @@ use solana_vote_interface::{
 use std::str::FromStr;
 
 /// Result of `vote create` — the new account address and creation signature.
-// TODO(bls): re-enabled once the two paths' transactions are wired back in;
-// currently only referenced from the commented-out submit blocks.
-#[allow(dead_code)]
 #[derive(serde::Serialize)]
 pub struct VoteAccountCreatedView {
     vote_account: String,
@@ -193,15 +190,9 @@ pub fn create(
     }
 
     // The two paths share almost nothing once we branch, so we keep them as two
-    // self-contained flows and duplicate the small submit tail rather than thread
-    // the difference through. Both consume the same `bls` derived above.
-    //
-    // NOTE: transaction submission is COMMENTED OUT for now — we build the
-    // instructions and print them (the append IX's data carries the BLS pubkey +
-    // proof-of-possession) so the append flow can be eyeballed before anything
-    // goes on-chain. `mode` and the submit blocks come back with the txs.
-    let _ = mode;
-
+    // self-contained flows — each builds, signs, submits, and reports its own
+    // transaction — rather than thread the difference through. Both consume the
+    // same `bls` derived above.
     if vote_init_v2 {
         // ── V2: one instruction; BLS set at init (requires SIMD-0464 active) ──
         // `commission` (0-100%) maps to inflation-rewards commission in bps.
@@ -226,18 +217,22 @@ pub fn create(
             config,
         );
 
-        progress("Path: VoteInitV2 (BLS set at init) — 1 create instruction");
-        print_instructions(&instructions);
-
-        // let signers =
-        //     crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
-        // let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-        // transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
-        // let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-        // emit(&VoteAccountCreatedView {
-        //     vote_account: vote_account.pubkey().to_string(),
-        //     signature: signature.to_string(),
-        // }, mode)?;
+        progress("Submitting VoteInitV2 (BLS set at init)...");
+        // Signers: fee payer, funder, the vote account (creates itself), and the
+        // node identity (signs initialize). The authorized voter does NOT sign at
+        // init — its BLS key rides in the instruction data.
+        let signers =
+            crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
+        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+        let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+        emit(
+            &VoteAccountCreatedView {
+                vote_account: vote_account.pubkey().to_string(),
+                signature: signature.to_string(),
+            },
+            mode,
+        )
     } else {
         // ── V1: two instructions — legacy VoteInit, then authorize_checked to
         //    APPEND the BLS voter key (VoterWithBLS). This is the lifted
@@ -272,41 +267,27 @@ pub fn create(
         );
         instructions.push(append_bls_ix);
 
-        progress("Path: VoteInit + authorize_checked(VoterWithBLS) — create then append BLS");
-        print_instructions(&instructions);
-
+        progress("Submitting VoteInit + authorize_checked(VoterWithBLS)...");
         // The append's checked variant needs the authorized-voter keypair to sign
-        // as BOTH the current and new voter (deduped to one signature). We now hold
-        // that keypair (`authorized_voter`), so it joins the signer set here.
-        // let signers = crate::utils::run::dedupe_signers(
-        //     &[&payer, &from, &vote_account, &identity, &authorized_voter]);
-        // let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-        // transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
-        // let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
-        // emit(&VoteAccountCreatedView {
-        //     vote_account: vote_account.pubkey().to_string(),
-        //     signature: signature.to_string(),
-        // }, mode)?;
-    }
-
-    Ok(())
-}
-
-/// Print a built instruction set for inspection — program id, account count, and
-/// the full instruction data as hex (so the BLS pubkey + proof-of-possession
-/// embedded in the `authorize_checked` data are visible). Temporary: used while
-/// the vote-create transactions are held behind a print-only stage.
-fn print_instructions(instructions: &[solana_sdk::instruction::Instruction]) {
-    progress(format!("Instructions built: {}", instructions.len()));
-    for (i, ix) in instructions.iter().enumerate() {
-        let data_hex: String = ix.data.iter().map(|b| format!("{b:02x}")).collect();
-        progress(format!(
-            "  [{i}] program={} · {} accounts · {} data bytes",
-            ix.program_id,
-            ix.accounts.len(),
-            ix.data.len()
-        ));
-        progress(format!("      data: {data_hex}"));
+        // as BOTH the current and new voter (deduped to one signature), so it joins
+        // the signer set alongside the payer, funder, vote account, and identity.
+        let signers = crate::utils::run::dedupe_signers(&[
+            &payer,
+            &from,
+            &vote_account,
+            &identity,
+            &authorized_voter,
+        ]);
+        let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
+        transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+        let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+        emit(
+            &VoteAccountCreatedView {
+                vote_account: vote_account.pubkey().to_string(),
+                signature: signature.to_string(),
+            },
+            mode,
+        )
     }
 }
 
