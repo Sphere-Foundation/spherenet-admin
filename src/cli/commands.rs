@@ -979,8 +979,8 @@ pub enum VoteAction {
         /// Initialize with the V2 instruction (VoteInitV2), setting the BLS key
         /// at creation. Requires the vote-account-initialize-v2 feature
         /// (SIMD-0464) to be active on the network — it is rejected otherwise.
-        /// Default is the legacy V1 instruction (VoteInit, no BLS); append the
-        /// BLS key afterward with `vote authorize-voter-checked`.
+        /// The default (V1) creates with the legacy VoteInit and appends the BLS
+        /// key in the same transaction via authorize_checked.
         #[arg(long)]
         vote_init_v2: bool,
     },
