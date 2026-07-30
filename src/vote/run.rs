@@ -6,7 +6,9 @@
 //! collapse them. Callers that want one key to play several roles pass the same
 //! keypair/pubkey for each; duplicate *signers* are deduplicated automatically.
 
-use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
+use crate::cli::output::{
+    boxed_header, emit, field, progress, subfield, OutputMode, Render, TxOutputView,
+};
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
@@ -151,41 +153,39 @@ pub fn create(
     // identity == voter setup.
     let bls = crate::vote::bls::derive_pubkey_and_pop(&authorized_voter, &vote_account.pubkey())?;
 
-    progress("Creating vote account:");
-    progress(format!("Vote Account:    {}", vote_account.pubkey()));
-    progress(format!("Identity (node): {}", identity.pubkey()));
-    progress(format!("Auth Voter:      {}", authorized_voter.pubkey()));
-    progress(format!("Auth Withdrawer: {}", authorized_withdrawer));
-    progress(format!("Commission:      {}%", commission));
-    progress(format!(
-        "BLS Pubkey:      {}{}",
-        bls.display,
-        if vote_init_v2 {
-            " (set at init — V2)"
-        } else {
-            " (append later via `vote authorize-voter-checked`)"
-        }
+    let mut out = String::from("\n");
+    out.push_str(&boxed_header("Create Vote Account"));
+    out.push('\n');
+    out.push_str(&field("Vote Account", vote_account.pubkey()));
+    out.push_str(&field("Identity (node)", identity.pubkey()));
+    out.push_str(&field("Auth Voter", authorized_voter.pubkey()));
+    out.push_str(&field("Auth Withdrawer", authorized_withdrawer));
+    out.push_str(&field("Commission", format!("{commission}%")));
+    out.push_str(&field("BLS Pubkey", &bls.display));
+    out.push_str(&field("Funder (from)", from.pubkey()));
+    out.push_str(&field("Fee Payer", payer.pubkey()));
+    out.push_str(&field(
+        "Rent reserve",
+        format!(
+            "{:.9} SPHR ({} lamports, {} bytes)",
+            rent as f64 / LAMPORTS_PER_SOL as f64,
+            rent,
+            config.space
+        ),
     ));
-    progress(format!("Funder (from):   {}", from.pubkey()));
-    progress(format!("Fee Payer:       {}", payer.pubkey()));
-    progress(format!(
-        "Rent reserve:    {:.9} SPHR ({} lamports, {} bytes)",
-        rent as f64 / LAMPORTS_PER_SOL as f64,
-        rent,
-        config.space
-    ));
+    progress(out.trim_end());
 
     // The vote account's withdraw authority can drain it. Setting it equal to a
     // hot key that lives on the validator host — the identity OR the authorized
     // voter — is a known footgun; warn but do not block (separation of roles is
-    // the caller's call).
+    // the caller's call). Wrapped in blank lines so it stands out.
     if authorized_withdrawer == identity.pubkey()
         || authorized_withdrawer == authorized_voter.pubkey()
     {
         progress(
-            "⚠️  WARNING: authorized withdrawer matches a hot key on the validator host \
+            "\n⚠️  WARNING: authorized withdrawer matches a hot key on the validator host \
              (the validator identity or the authorized voter). That key can drain the vote \
-             account. Prefer a distinct, cold withdraw authority.",
+             account. Prefer a distinct, cold withdraw authority.\n",
         );
     }
 
