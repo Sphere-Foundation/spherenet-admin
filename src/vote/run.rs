@@ -60,7 +60,7 @@ pub fn create(
     commission: u8,
     from_path: String,
     payer_path: String,
-    no_bls: bool,
+    vote_init_v2: bool,
     mode: OutputMode,
 ) -> eyre::Result<()> {
     if commission > 100 {
@@ -116,20 +116,21 @@ pub fn create(
     let config = CreateVoteAccountConfig::default();
     let rent = rpc_client.get_minimum_balance_for_rent_exemption(config.space as usize)?;
 
-    // Default to a V2 vote account (VoteInitV2, sets the BLS key), matching the
-    // layout genesis bakes into the bootstrap validators. `--no-bls` falls back to
-    // the legacy V1 instruction for networks where the vote-account-initialize-v2
-    // feature (SIMD-0464) is not yet active — the V2 instruction is rejected there
-    // with "invalid instruction data". Note: the stored account is VoteStateV4-
-    // layout either way on current builds; the feature only gates whether the BLS
-    // key can be populated at init.
-    let bls = if no_bls {
-        None
-    } else {
+    // Default to a legacy V1 vote account (VoteInit, no BLS key). `--vote-init-v2`
+    // opts into the V2 instruction (VoteInitV2, sets the BLS key at creation),
+    // which requires the vote-account-initialize-v2 feature (SIMD-0464) to be
+    // active — the V2 instruction is rejected otherwise with "invalid instruction
+    // data". On networks where the feature is inactive, create V1 here and append
+    // the BLS key afterward with `vote authorize-voter-checked`. Note: the stored
+    // account is VoteStateV4-layout either way on current builds; the feature only
+    // gates whether the BLS key can be populated at init.
+    let bls = if vote_init_v2 {
         Some(crate::vote::bls::derive_pubkey_and_pop(
             &identity,
             &vote_account.pubkey(),
         )?)
+    } else {
+        None
     };
 
     progress("Creating vote account:");
@@ -140,7 +141,7 @@ pub fn create(
     progress(format!("Commission:      {}%", commission));
     match &bls {
         Some(b) => progress(format!("BLS Pubkey:      {}", b.display)),
-        None => progress("BLS Pubkey:      (none — V1 account, --no-bls)"),
+        None => progress("BLS Pubkey:      (none — V1 account; append later via `vote authorize-voter-checked`)"),
     }
     progress(format!("Funder (from):   {}", from.pubkey()));
     progress(format!("Fee Payer:       {}", payer.pubkey()));

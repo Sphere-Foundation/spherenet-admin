@@ -968,10 +968,13 @@ pub enum VoteAction {
         /// Path to keypair that pays transaction fees
         #[arg(long, alias = "fee-payer", value_name = "PAYER_KEYPAIR")]
         payer: String,
-        /// Create a legacy V1 vote account (no BLS key). Use on networks where
-        /// the vote-account-initialize-v2 feature (SIMD-0464) is not yet active.
+        /// Initialize with the V2 instruction (VoteInitV2), setting the BLS key
+        /// at creation. Requires the vote-account-initialize-v2 feature
+        /// (SIMD-0464) to be active on the network — it is rejected otherwise.
+        /// Default is the legacy V1 instruction (VoteInit, no BLS); append the
+        /// BLS key afterward with `vote authorize-voter-checked`.
         #[arg(long)]
-        no_bls: bool,
+        vote_init_v2: bool,
     },
     /// Withdraw lamports from a vote account (signed by the withdraw authority)
     Withdraw {

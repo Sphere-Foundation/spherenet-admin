@@ -486,7 +486,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 commission,
                 from,
                 payer,
-                no_bls,
+                vote_init_v2,
             } => vote::run::create(
                 &cli.url,
                 vote_account,
@@ -496,7 +496,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 commission,
                 from,
                 payer,
-                no_bls,
+                vote_init_v2,
                 mode,
             )?,
             VoteAction::Withdraw {
