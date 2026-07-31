@@ -14,6 +14,14 @@ tar -xzf spherenet-admin-<version>-<target>.tar.gz
 sudo mv spherenet-admin-<version>-<target>/spherenet-admin /usr/local/bin/
 ```
 
+Or build from source:
+
+```bash
+git clone https://github.com/Sphere-Foundation/spherenet-admin
+cd spherenet-admin
+cargo build --release        # binary at target/release/spherenet-admin
+```
+
 Global flags (all commands): `--url <URL>` (defaults to testnet `https://api.test.sphere.net`) and `--output text|json`. In both modes stdout carries only the result and diagnostics go to stderr, so `… --output json | jq` always sees clean JSON.
 
 Every governance/program/transfer command runs **single-sig** (`--authority <keypair>`, executes immediately) or **multisig** (`--multisig <create-key> --multisig-authority <member>`, creates a Squads proposal). A multisig is always referenced by its **create-key** (a pubkey), which the CLI resolves + validates to the vault that holds funds and signs.

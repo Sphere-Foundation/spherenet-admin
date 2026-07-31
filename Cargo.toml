@@ -1,9 +1,9 @@
 [package]
 name = "spherenet-admin"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 repository = "https://github.com/Sphere-Foundation/spherenet-admin"
-license-file = "LICENSE"
+license = "Apache-2.0"
 readme = "README.md"
 description = "Command-line tool for SphereNet governance and network administration"
 publish = true
@@ -25,14 +25,14 @@ solana-sdk = { version = "3.0.0" }
 solana-sdk-ids = { version = "3.0.0" }
 solana-system-interface = { version = "=2.0", features = ["bincode"] }
 solana-vote-interface = { version = "5.0.0", features = ["bincode"] }
-spherenet-monetary-policy-client = { version = "0.4.0" }
-spherenet-monetary-policy-interface = { version = "0.4.0", features = [ "solana-p" ] }
-spherenet-program-whitelist-client = { version = "0.3.0" }
-spherenet-program-whitelist-interface = { version = "0.3.0", features = [ "solana-p" ] }
-spherenet-stake-interface = { version = "0.5.0", features = ["bincode"] }
-spherenet-validator-whitelist-client = { version = "0.5.0" }
-spherenet-validator-whitelist-interface = { version = "0.5.0", features = [ "solana-p" ] }
-spherenet-loader-v3-interface = { version = "0.3.0", features = ["bincode"] }
+spherenet-monetary-policy-client = { version = "0.4.1" }
+spherenet-monetary-policy-interface = { version = "0.4.1", features = [ "solana-p" ] }
+spherenet-program-whitelist-client = { version = "0.3.1" }
+spherenet-program-whitelist-interface = { version = "0.3.1", features = [ "solana-p" ] }
+spherenet-stake-interface = { version = "0.5.1", features = ["bincode"] }
+spherenet-validator-whitelist-client = { version = "0.5.1" }
+spherenet-validator-whitelist-interface = { version = "0.5.1", features = [ "solana-p" ] }
+spherenet-loader-v3-interface = { version = "0.3.1", features = ["bincode"] }
 
 [profile.release]
 strip = true

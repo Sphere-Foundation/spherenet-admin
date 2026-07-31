@@ -92,11 +92,7 @@ pub fn request_airdrop(
     // after submit, and returns false before a faucet transfer has had time to
     // land, so it loses the race and reports a false "did not confirm".
     rpc_client
-        .confirm_transaction_with_spinner(
-            &signature,
-            &recent_blockhash,
-            rpc_client.commitment(),
-        )
+        .confirm_transaction_with_spinner(&signature, &recent_blockhash, rpc_client.commitment())
         .map_err(|e| {
             eyre::eyre!(
                 "Airdrop {} did not confirm — the faucet may be empty or rate-limited: {}",

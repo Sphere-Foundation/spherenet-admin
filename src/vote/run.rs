@@ -222,8 +222,7 @@ pub fn create(
         // Signers: fee payer, funder, the vote account (creates itself), and the
         // node identity (signs initialize). The authorized voter does NOT sign at
         // init — its BLS key rides in the instruction data.
-        let signers =
-            crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
+        let signers = crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
         let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
         transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
         let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
