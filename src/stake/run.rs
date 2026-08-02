@@ -3,6 +3,7 @@
 //! All keypair-file based; the relevant authority signs each operation.
 //! `create` sets authorities as pubkeys (no signature); `delegate`/`deactivate`
 //! are signed by the staker; `withdraw` by the withdraw authority.
+//! 
 //! `deactivate --force` is the exception: it is permissionless (only the fee
 //! payer signs) and deactivates stake left delegated to a validator that has
 //! been removed from the validator whitelist.
@@ -432,12 +433,10 @@ fn preflight_deactivate(
     }
 }
 
-/// Force-deactivate stake delegated to a **delisted** validator.
+/// Force-deactivate stake delegated to a delisted validator.
 ///
 /// SphereNet's stake program lets anyone deactivate a stake account whose
-/// delegation points at a vote account removed from the validator whitelist
-/// (`DeactivateDelinquent` with the whitelist-entry tombstone as the reference
-/// account). Permissionless: no stake authority signs — only the fee payer.
+/// delegation points at a vote account removed from the validator whitelist. 
 /// The vote account is read from the stake account's delegation and the
 /// whitelist entry PDA is derived from it.
 ///
@@ -525,10 +524,8 @@ fn preflight_delegated_stake(
     }
 }
 
-/// SphereNet gate: forced deactivation only succeeds if the validator has been
-/// **removed** from the whitelist — its entry PDA must be a closed tombstone
-/// (account gone, or empty and no longer program-owned), mirroring the
-/// on-chain check.
+/// Forced deactivation only succeeds if the validator has been removed from the whitelist,
+/// its entry PDA must be a closed and no longer program owned, mirroring the on-chain check.
 fn preflight_delisted(
     rpc_client: &RpcClient,
     vote_pubkey: &Pubkey,
