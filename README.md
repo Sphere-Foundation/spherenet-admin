@@ -66,6 +66,7 @@ spherenet-admin stake create --stake-account ./stake.json --amount 10000 \
 spherenet-admin stake delegate --stake-account <PK> --vote-account <PK> --stake-authority ./staker.json --payer ./payer.json
 ```
 - `stake show <PK>` · `stake deactivate …` · `stake withdraw … (--amount <SPHR> | --all)`
+- `stake deactivate --stake-account <PK> --force --payer ./payer.json` — permissionlessly deactivate stake still delegated to a validator that was removed from the whitelist (no stake authority needed)
 
 Delegation is gated on the validator whitelist and fails fast if the vote account isn't approved.
 

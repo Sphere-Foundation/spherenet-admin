@@ -1057,8 +1057,19 @@ pub enum StakeAction {
         #[arg(long, value_name = "STAKE_ACCOUNT_PUBKEY")]
         stake_account: String,
         /// Path to the stake authority (staker) keypair; signs the deactivation
-        #[arg(long, value_name = "STAKE_AUTHORITY_KEYPAIR")]
-        stake_authority: String,
+        /// (not needed with --force)
+        #[arg(
+            long,
+            value_name = "STAKE_AUTHORITY_KEYPAIR",
+            required_unless_present = "force",
+            conflicts_with = "force"
+        )]
+        stake_authority: Option<String>,
+        /// Force-deactivate stake delegated to a vote account that has been
+        /// removed from the validator whitelist (permissionless; no stake
+        /// authority required)
+        #[arg(long)]
+        force: bool,
         /// Path to keypair that pays transaction fees
         #[arg(long, alias = "fee-payer", value_name = "PAYER_KEYPAIR")]
         payer: String,
