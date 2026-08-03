@@ -3,6 +3,10 @@
 //! All keypair-file based; the relevant authority signs each operation.
 //! `create` sets authorities as pubkeys (no signature); `delegate`/`deactivate`
 //! are signed by the staker; `withdraw` by the withdraw authority.
+//! 
+//! `deactivate --force` is the exception: it is permissionless (only the fee
+//! payer signs) and deactivates stake left delegated to a validator that has
+//! been removed from the validator whitelist.
 
 use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputView};
 use solana_client::rpc_client::RpcClient;
@@ -14,7 +18,10 @@ use solana_sdk::{
     transaction::Transaction,
 };
 use spherenet_stake_interface::{
-    instruction::{create_account, deactivate_stake, delegate_stake, withdraw as withdraw_ix},
+    instruction::{
+        create_account, deactivate_delinquent_stake, deactivate_stake, delegate_stake,
+        withdraw as withdraw_ix,
+    },
     state::{Authorized, Lockup, StakeStateV2},
 };
 use std::str::FromStr;
@@ -423,6 +430,122 @@ fn preflight_deactivate(
             stake_pubkey
         )),
         StakeStateV2::RewardsPool => Err(eyre::eyre!("{} is a rewards pool", stake_pubkey)),
+    }
+}
+
+/// Force-deactivate stake delegated to a delisted validator.
+///
+/// SphereNet's stake program lets anyone deactivate a stake account whose
+/// delegation points at a vote account removed from the validator whitelist. 
+/// The vote account is read from the stake account's delegation and the
+/// whitelist entry PDA is derived from it.
+///
+/// * `stake_account` - pubkey of the delegated stake account.
+/// * `payer_path`    - keypair that pays transaction fees (only signer).
+pub fn force_deactivate(
+    rpc_url: &str,
+    stake_account: String,
+    payer_path: String,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    let rpc_client =
+        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
+
+    let stake_pubkey = Pubkey::from_str(&stake_account)
+        .map_err(|e| eyre::eyre!("Invalid stake account pubkey '{}': {}", stake_account, e))?;
+
+    let payer = read_keypair_file(&payer_path)
+        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+
+    // ── Preflight ────────────────────────────────────────────────────────────
+    let vote_pubkey = preflight_delegated_stake(&rpc_client, &stake_pubkey)?;
+    let (whitelist_entry, _bump) = crate::vw::run::derive_whitelist_entry(&vote_pubkey);
+    preflight_delisted(&rpc_client, &vote_pubkey, &whitelist_entry)?;
+
+    progress("Force-deactivating delisted stake:");
+    progress(format!("Stake Account:   {}", stake_pubkey));
+    progress(format!("Vote Account:    {}", vote_pubkey));
+    progress(format!("Whitelist Entry: {}", whitelist_entry));
+    progress(format!("Fee Payer:       {}", payer.pubkey()));
+
+    let instruction = deactivate_delinquent_stake(&stake_pubkey, &vote_pubkey, &whitelist_entry);
+
+    // Signers: fee payer only — the instruction is permissionless.
+    let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
+    transaction.sign(&[&payer], rpc_client.get_latest_blockhash()?);
+    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+
+    progress(
+        "Stake cools down over the rest of this epoch; withdraw with the withdraw \
+         authority once it is fully inactive (`stake show` to track).",
+    );
+    emit(
+        &TxOutputView::Executed {
+            signature: signature.to_string(),
+        },
+        mode,
+    )
+}
+
+/// The stake account must exist, be stake-program-owned, and currently
+/// delegated. Returns the vote account the stake is delegated to.
+fn preflight_delegated_stake(
+    rpc_client: &RpcClient,
+    stake_pubkey: &Pubkey,
+) -> eyre::Result<Pubkey> {
+    let stake_program = Pubkey::from(spherenet_stake_interface::program::id().to_bytes());
+    let account = rpc_client
+        .get_account(stake_pubkey)
+        .map_err(|_| eyre::eyre!("Stake account {} not found", stake_pubkey))?;
+    if account.owner != stake_program {
+        return Err(eyre::eyre!(
+            "{} is not a stake account (owner: {})",
+            stake_pubkey,
+            account.owner
+        ));
+    }
+
+    let state: StakeStateV2 = bincode::deserialize(&account.data)
+        .map_err(|e| eyre::eyre!("Failed to deserialize stake account state: {}", e))?;
+
+    match state {
+        StakeStateV2::Stake(_meta, stake, _flags) => {
+            Ok(Pubkey::from(stake.delegation.voter_pubkey.to_bytes()))
+        }
+        StakeStateV2::Initialized(_) => Err(eyre::eyre!(
+            "Stake account {} is not delegated — nothing to deactivate",
+            stake_pubkey
+        )),
+        StakeStateV2::Uninitialized => Err(eyre::eyre!(
+            "Stake account {} is uninitialized",
+            stake_pubkey
+        )),
+        StakeStateV2::RewardsPool => Err(eyre::eyre!("{} is a rewards pool", stake_pubkey)),
+    }
+}
+
+/// Forced deactivation only succeeds if the validator has been removed from the whitelist,
+/// its entry PDA must be a closed and no longer program owned, mirroring the on-chain check.
+fn preflight_delisted(
+    rpc_client: &RpcClient,
+    vote_pubkey: &Pubkey,
+    whitelist_entry: &Pubkey,
+) -> eyre::Result<()> {
+    let whitelist_program =
+        Pubkey::from(spherenet_validator_whitelist_interface::program_solana::id().to_bytes());
+    match rpc_client.get_account(whitelist_entry) {
+        // Entry closed and reaped — validator fully removed.
+        Err(_) => Ok(()),
+        // Tombstone: emptied and returned to the system program.
+        Ok(account) if account.data.is_empty() && account.owner != whitelist_program => Ok(()),
+        Ok(_) => Err(eyre::eyre!(
+            "Vote account {} is still whitelisted (entry at {}).\n\
+             Forced deactivation will be rejected by the stake program. Remove it first:\n  \
+             spherenet-admin vw remove {} --authority <whitelist-authority>",
+            vote_pubkey,
+            whitelist_entry,
+            vote_pubkey
+        )),
     }
 }
 

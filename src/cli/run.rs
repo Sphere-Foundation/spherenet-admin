@@ -554,8 +554,19 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             StakeAction::Deactivate {
                 stake_account,
                 stake_authority,
+                force,
                 payer,
-            } => stake::run::deactivate(&cli.url, stake_account, stake_authority, payer, mode)?,
+            } => {
+                if force {
+                    stake::run::force_deactivate(&cli.url, stake_account, payer, mode)?
+                } else {
+                    // clap: --stake-authority is required unless --force is present.
+                    let stake_authority = stake_authority.ok_or_else(|| {
+                        eyre::eyre!("--stake-authority is required without --force")
+                    })?;
+                    stake::run::deactivate(&cli.url, stake_account, stake_authority, payer, mode)?
+                }
+            }
             StakeAction::Withdraw {
                 stake_account,
                 destination,
