@@ -143,6 +143,39 @@ spherenet-admin mp update-inflation-rate <BIPS> --authority ./authority.json    
 
 The `mp` config account is created at genesis, not by this CLI.
 
+### Signing with GCP Cloud KMS (`kms://`)
+
+Anywhere a single-sig command takes a keypair path (`--authority`, `--from`,
+program `--upgrade-authority`), a `kms://` URI can be passed instead to sign
+with an Ed25519 key held in Google Cloud KMS — the private key never touches
+disk:
+
+```bash
+spherenet-admin vw approve <VOTE_ACCOUNT> \
+  --authority "kms://projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>/cryptoKeyVersions/<v>?pubkey=<BASE58_ADDRESS>"
+```
+
+The URI names the exact crypto-key version (the key must use algorithm
+`EC_SIGN_ED25519`) and the Solana address the key is expected to have; every
+signature returned by KMS is verified against that address before use. To get
+the address from a key's public-key PEM:
+
+```bash
+gcloud kms keys versions get-public-key <V> --key <K> --keyring <R> \
+  --location <L> --project <P> --output-file pubkey.pem
+spherenet-admin kms address pubkey.pem
+```
+
+Authentication uses Application Default Credentials: run
+`gcloud auth application-default login`, or point
+`GOOGLE_APPLICATION_CREDENTIALS` at a service-account key. The caller needs
+`cloudkms.cryptoKeyVersions.useToSign` on the key (e.g. role
+`roles/cloudkms.signerVerifier`).
+
+KMS signing is supported for single-sig authorities; `--multisig-authority`
+(the proposal-paying member) and the raw keypair arguments of `vote`, `stake`,
+`multisig`, and `program deploy` still require local keypair files.
+
 ---
 
 ## Built-in addresses

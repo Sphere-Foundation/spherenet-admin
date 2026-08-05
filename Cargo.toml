@@ -11,6 +11,7 @@ publish = true
 [dependencies]
 actix-cors = { version = "0.7" }
 actix-web = { version = "4" }
+base64 = { version = "0.22" }
 bincode = { version = "1.3.3" }
 borsh = { version = "1.5" }
 clap = { version = "4.5", features = ["derive"] }
@@ -21,6 +22,7 @@ sha2 = { version = "0.10" }
 solana-client = { version = "3.1.8" }
 solana-commitment-config = { version = "3.0.0" }
 solana-bls-signatures = { version = "3.0.0", features = ["solana-signer-derive"] }
+solana-keychain = { version = "1.4.0", default-features = false, features = ["gcp_kms", "sdk-v3"] }
 solana-sdk = { version = "3.0.0" }
 solana-sdk-ids = { version = "3.0.0" }
 solana-system-interface = { version = "=2.0", features = ["bincode"] }
@@ -33,6 +35,12 @@ spherenet-stake-interface = { version = "0.5.1", features = ["bincode"] }
 spherenet-validator-whitelist-client = { version = "0.5.1" }
 spherenet-validator-whitelist-interface = { version = "0.5.1", features = [ "solana-p" ] }
 spherenet-loader-v3-interface = { version = "0.3.1", features = ["bincode"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[dev-dependencies]
+google-cloud-auth = { version = "1" }
+google-cloud-kms-v1 = { version = "1.9" }
+wiremock = { version = "0.6" }
 
 [profile.release]
 strip = true

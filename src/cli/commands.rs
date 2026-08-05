@@ -6,6 +6,10 @@
 //! (signs), `*_PUBKEY` = a public key, `*_CREATE_KEY` = a multisig's create-key
 //! (pubkey), `*_SO` = a program `.so` file. This makes `--help`/error output say
 //! whether each argument is a keypair or a pubkey.
+//!
+//! Single-sig authority arguments (`--authority`, `--from`, and program
+//! `--upgrade-authority`) also accept a `kms://` URI in place of a keypair
+//! path, signing with a key held in GCP Cloud KMS — see [`crate::kms`].
 
 use crate::cli::output::OutputMode;
 use clap::{Parser, Subcommand};
@@ -79,6 +83,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: StakeAction,
     },
+    /// GCP Cloud KMS utilities
+    Kms {
+        #[command(subcommand)]
+        action: KmsAction,
+    },
     /// Show the native (SPHR) balance of an account
     Balance {
         /// Account pubkey
@@ -118,7 +127,7 @@ pub enum Commands {
         /// Amount in SPHR to transfer
         #[arg(long, value_name = "SPHR")]
         amount: f64,
-        /// Single-sig: path to source keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to source keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(long, conflicts_with = "multisig", value_name = "FROM_KEYPAIR")]
         from: Option<String>,
         /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
@@ -131,6 +140,18 @@ pub enum Commands {
         /// Multi-sig: path to signer keypair that pays for proposal creation
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
         multisig_authority: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum KmsAction {
+    /// Derive the Solana address of a Cloud KMS Ed25519 public key, for
+    /// constructing the kms:// signer URI and funding/authorizing the key
+    Address {
+        /// Path to the public key PEM, as written by
+        /// `gcloud kms keys versions get-public-key ... --output-file`
+        #[arg(value_name = "PUBKEY_PEM")]
+        pubkey_pem: String,
     },
 }
 
@@ -149,7 +170,7 @@ pub enum ValidatorWhitelistAction {
         start_epoch: Option<u64>,
         #[arg(long, value_name = "EPOCH")]
         end_epoch: Option<u64>,
-        /// Single-sig: path to authority/payer keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority/payer keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -176,7 +197,7 @@ pub enum ValidatorWhitelistAction {
         start_epoch: Option<u64>,
         #[arg(long, value_name = "EPOCH")]
         end_epoch: Option<u64>,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -199,7 +220,7 @@ pub enum ValidatorWhitelistAction {
     Reject {
         #[arg(value_name = "VOTE_ACCOUNT_PUBKEY")]
         vote_account: String,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -222,7 +243,7 @@ pub enum ValidatorWhitelistAction {
     Remove {
         #[arg(value_name = "VOTE_ACCOUNT_PUBKEY")]
         vote_account: String,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -247,7 +268,7 @@ pub enum ValidatorWhitelistAction {
         vote_account: String,
         #[arg(long, value_name = "EPOCH")]
         epoch: u64,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -272,7 +293,7 @@ pub enum ValidatorWhitelistAction {
         vote_account: String,
         #[arg(long, value_name = "EPOCH")]
         epoch: u64,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -308,7 +329,7 @@ pub enum ValidatorWhitelistAction {
             value_name = "NEW_MULTISIG_CREATE_KEY"
         )]
         new_multisig: Option<String>,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -329,7 +350,7 @@ pub enum ValidatorWhitelistAction {
     },
     /// Accept pending authority transfer
     AcceptAuthority {
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -350,7 +371,7 @@ pub enum ValidatorWhitelistAction {
     },
     /// Cancel pending authority transfer
     CancelAuthority {
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -382,7 +403,7 @@ pub enum ProgramWhitelistAction {
         /// Path to the deploy-authority keypair (co-signs to prove control)
         #[arg(value_name = "DEPLOY_AUTHORITY_KEYPAIR")]
         deploy_authority_keypair: String,
-        /// Single-sig: path to authority/payer keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority/payer keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -405,7 +426,7 @@ pub enum ProgramWhitelistAction {
     Approve {
         #[arg(value_name = "DEPLOYER_PUBKEY")]
         deploy_authority: String,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -428,7 +449,7 @@ pub enum ProgramWhitelistAction {
     Reject {
         #[arg(value_name = "DEPLOYER_PUBKEY")]
         deploy_authority: String,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -451,7 +472,7 @@ pub enum ProgramWhitelistAction {
     Remove {
         #[arg(value_name = "DEPLOYER_PUBKEY")]
         deploy_authority: String,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -487,7 +508,7 @@ pub enum ProgramWhitelistAction {
             value_name = "NEW_MULTISIG_CREATE_KEY"
         )]
         new_multisig: Option<String>,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -508,7 +529,7 @@ pub enum ProgramWhitelistAction {
     },
     /// Accept pending authority transfer
     AcceptAuthority {
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -529,7 +550,7 @@ pub enum ProgramWhitelistAction {
     },
     /// Cancel pending authority transfer
     CancelAuthority {
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -584,7 +605,7 @@ pub enum ProgramAction {
         #[arg(long, value_name = "PROGRAM_SO")]
         program_so: String,
 
-        /// Single-sig: path to upgrade authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to upgrade authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long,
             conflicts_with = "multisig",
@@ -622,7 +643,7 @@ pub enum ProgramAction {
         #[arg(long, value_name = "BYTES")]
         bytes: u32,
 
-        /// Single-sig: path to upgrade authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to upgrade authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long,
             conflicts_with = "multisig",
@@ -672,7 +693,7 @@ pub enum ProgramAction {
         #[arg(long = "final", conflicts_with_all = ["new_authority", "new_multisig"])]
         make_final: bool,
 
-        /// Single-sig: path to the current upgrade authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to the current upgrade authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -778,7 +799,7 @@ pub enum MonetaryPolicyAction {
             value_name = "NEW_MULTISIG_CREATE_KEY"
         )]
         new_multisig: Option<String>,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -799,7 +820,7 @@ pub enum MonetaryPolicyAction {
     },
     /// Accept pending authority transfer
     AcceptAuthority {
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -820,7 +841,7 @@ pub enum MonetaryPolicyAction {
     },
     /// Cancel pending authority transfer
     CancelAuthority {
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -844,7 +865,7 @@ pub enum MonetaryPolicyAction {
         /// New inflation rate in basis points (0-2000 bips = 0-20%)
         #[arg(value_name = "BIPS")]
         new_rate_bips: u64,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -868,7 +889,7 @@ pub enum MonetaryPolicyAction {
         /// New lamports per signature (1-10,000,000 lamports)
         #[arg(value_name = "LAMPORTS")]
         new_lamports_per_signature: u64,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -892,7 +913,7 @@ pub enum MonetaryPolicyAction {
         /// New burn percent (0-100%)
         #[arg(value_name = "PERCENT")]
         new_percent: u8,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",
@@ -916,7 +937,7 @@ pub enum MonetaryPolicyAction {
         /// New VAT lamports per epoch (0-100,000,000,000 lamports)
         #[arg(value_name = "LAMPORTS")]
         new_vat_lamports: u64,
-        /// Single-sig: path to authority keypair (mutually exclusive with --multisig)
+        /// Single-sig: path to authority keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(
             long = "authority",
             alias = "auth",

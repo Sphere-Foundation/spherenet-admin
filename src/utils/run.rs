@@ -6,9 +6,7 @@ use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{
-    native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::Keypair, signer::Signer,
-};
+use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signer::Signer};
 use solana_system_interface::instruction as system_instruction;
 use std::str::FromStr;
 
@@ -17,14 +15,14 @@ use std::str::FromStr;
 /// Several roles (funder, fee payer, authority, new account) frequently
 /// collapse onto one keypair. A transaction that lists the same key twice as a
 /// signer is rejected, so callers pass every role and let this drop duplicates.
-pub fn dedupe_signers<'a>(signers: &[&'a Keypair]) -> Vec<&'a Keypair> {
+pub fn dedupe_signers<'a>(signers: &[&'a dyn Signer]) -> Vec<&'a dyn Signer> {
     let mut seen: Vec<Pubkey> = Vec::with_capacity(signers.len());
-    let mut out: Vec<&Keypair> = Vec::with_capacity(signers.len());
-    for kp in signers {
-        let pk = kp.pubkey();
+    let mut out: Vec<&dyn Signer> = Vec::with_capacity(signers.len());
+    for signer in signers {
+        let pk = signer.pubkey();
         if !seen.contains(&pk) {
             seen.push(pk);
-            out.push(kp);
+            out.push(*signer);
         }
     }
     out
@@ -160,8 +158,8 @@ pub fn transfer(
 
     // Show the source (progress → stderr).
     match &from {
-        crate::cli::authority::Authority::SingleSig { keypair } => {
-            progress(format!("From:     {}", keypair.pubkey()));
+        crate::cli::authority::Authority::SingleSig { signer } => {
+            progress(format!("From:     {}", signer.pubkey()));
         }
         crate::cli::authority::Authority::MultiSig { multisig, member } => {
             progress(format!("Proposer: {}", member.pubkey()));

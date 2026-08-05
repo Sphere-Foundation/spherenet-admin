@@ -3,7 +3,7 @@
 //! All keypair-file based; the relevant authority signs each operation.
 //! `create` sets authorities as pubkeys (no signature); `delegate`/`deactivate`
 //! are signed by the staker; `withdraw` by the withdraw authority.
-//! 
+//!
 //! `deactivate --force` is the exception: it is permissionless (only the fee
 //! payer signs) and deactivates stake left delegated to a validator that has
 //! been removed from the validator whitelist.
@@ -147,7 +147,9 @@ pub fn create(
     let signers = crate::utils::run::dedupe_signers(&[&payer, &from, &stake_account]);
 
     let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     progress("Not delegated yet — run `stake delegate` to delegate to a vote account.");
@@ -224,7 +226,9 @@ pub fn delegate(
     let signers = crate::utils::run::dedupe_signers(&[&payer, &stake_authority]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     emit(
@@ -372,7 +376,9 @@ pub fn deactivate(
     let signers = crate::utils::run::dedupe_signers(&[&payer, &stake_authority]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     progress(
@@ -436,7 +442,7 @@ fn preflight_deactivate(
 /// Force-deactivate stake delegated to a delisted validator.
 ///
 /// SphereNet's stake program lets anyone deactivate a stake account whose
-/// delegation points at a vote account removed from the validator whitelist. 
+/// delegation points at a vote account removed from the validator whitelist.
 /// The vote account is read from the stake account's delegation and the
 /// whitelist entry PDA is derived from it.
 ///
@@ -472,7 +478,9 @@ pub fn force_deactivate(
 
     // Signers: fee payer only — the instruction is permissionless.
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&[&payer], rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&[&payer], rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     progress(
@@ -642,7 +650,9 @@ pub fn withdraw(
     let signers = crate::utils::run::dedupe_signers(&[&payer, &withdrawer]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     if all {

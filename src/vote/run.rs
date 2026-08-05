@@ -224,7 +224,9 @@ pub fn create(
         // init — its BLS key rides in the instruction data.
         let signers = crate::utils::run::dedupe_signers(&[&payer, &from, &vote_account, &identity]);
         let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-        transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+        transaction
+            .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+            .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
         let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
         emit(
             &VoteAccountCreatedView {
@@ -279,7 +281,9 @@ pub fn create(
             &authorized_voter,
         ]);
         let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-        transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+        transaction
+            .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+            .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
         let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
         emit(
             &VoteAccountCreatedView {
@@ -389,7 +393,9 @@ pub fn withdraw(
     let signers = crate::utils::run::dedupe_signers(&[&payer, &withdrawer]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     if all {

@@ -64,10 +64,12 @@ fn write_buffer(
         let write_ix = write(buffer, authority, offset as u32, chunk.to_vec());
 
         let mut transaction = Transaction::new_with_payer(&[write_ix], Some(&payer.pubkey()));
-        transaction.sign(
-            &[payer, authority_keypair],
-            rpc_client.get_latest_blockhash()?,
-        );
+        transaction
+            .try_sign(
+                &[payer, authority_keypair],
+                rpc_client.get_latest_blockhash()?,
+            )
+            .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
         rpc_client.send_and_confirm_transaction(&transaction)?;
 
         progress(format!(
@@ -178,10 +180,12 @@ pub fn deploy(
 
     let mut transaction =
         Transaction::new_with_payer(&create_buffer_instructions, Some(&payer.pubkey()));
-    transaction.sign(
-        &[&payer, &buffer_keypair],
-        rpc_client.get_latest_blockhash()?,
-    );
+    transaction
+        .try_sign(
+            &[&payer, &buffer_keypair],
+            rpc_client.get_latest_blockhash()?,
+        )
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     rpc_client.send_and_confirm_transaction(&transaction)?;
 
     progress(format!("✅ Buffer account created: {}", buffer_pubkey));
@@ -213,10 +217,12 @@ pub fn deploy(
     )?;
 
     let mut transaction = Transaction::new_with_payer(&deploy_instructions, Some(&payer.pubkey()));
-    transaction.sign(
-        &[&payer, &program_keypair, &upgrade_authority_keypair],
-        rpc_client.get_latest_blockhash()?,
-    );
+    transaction
+        .try_sign(
+            &[&payer, &program_keypair, &upgrade_authority_keypair],
+            rpc_client.get_latest_blockhash()?,
+        )
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     emit(
@@ -384,10 +390,12 @@ pub fn upgrade_program(
 
     let mut transaction =
         Transaction::new_with_payer(&create_buffer_instructions, Some(&payer.pubkey()));
-    transaction.sign(
-        &[&payer, &buffer_keypair],
-        rpc_client.get_latest_blockhash()?,
-    );
+    transaction
+        .try_sign(
+            &[&payer, &buffer_keypair],
+            rpc_client.get_latest_blockhash()?,
+        )
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     rpc_client.send_and_confirm_transaction(&transaction)?;
 
     progress(format!("✅ Buffer account created: {}", buffer_pubkey));
@@ -413,7 +421,9 @@ pub fn upgrade_program(
 
     let mut set_authority_tx =
         Transaction::new_with_payer(&[set_buffer_authority_ix], Some(&payer.pubkey()));
-    set_authority_tx.sign(&[&payer], rpc_client.get_latest_blockhash()?);
+    set_authority_tx
+        .try_sign(&[&payer], rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     rpc_client.send_and_confirm_transaction(&set_authority_tx)?;
     progress("✅ Buffer authority transferred to upgrade authority");
 
