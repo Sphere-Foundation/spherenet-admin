@@ -166,22 +166,11 @@ pub fn from_cli_args(
         (None, Some(create_key_str), Some(member_path)) => {
             // Multi-sig mode: the multisig is referenced by its create-key,
             // resolved + validated against the chain (never a raw PDA).
-            if member_path.starts_with(crate::kms::KMS_URI_SCHEME) {
-                eyre::bail!(
-                    "KMS signers are not yet supported for --multisig-authority; \
-                     pass a member keypair file path"
-                );
-            }
             let create_key = create_key_str
                 .parse::<Pubkey>()
                 .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key_str, e))?;
-            let member = read_keypair_file(&member_path).map_err(|e| {
-                eyre::eyre!(
-                    "Failed to load multisig member keypair from {}: {}",
-                    member_path,
-                    e
-                )
-            })?;
+            let member =
+                crate::utils::run::read_keypair_file_checked(&member_path, "--multisig-authority")?;
             let rpc = RpcClient::new(url.to_string());
             let resolved = squads::resolve(&rpc, &create_key)?;
             Ok(Authority::MultiSig {
@@ -334,6 +323,6 @@ mod tests {
             Some("11111111111111111111111111111111".into()),
             Some("kms://projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1?pubkey=4zvwRjXUKGfvwnParsHAS3HuSVzV5cA4McphgmoCtajS".into()),
         ));
-        assert!(err.to_string().contains("not yet supported"), "got: {err}");
+        assert!(err.to_string().contains("not supported"), "got: {err}");
     }
 }

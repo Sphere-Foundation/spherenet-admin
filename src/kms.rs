@@ -22,6 +22,8 @@
 use crate::cli::output::{emit, subfield, OutputMode, Render};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+use google_cloud_kms_v1::client::KeyManagementService;
+use google_cloud_kms_v1::model::crypto_key_version::CryptoKeyVersionAlgorithm;
 use solana_keychain::{GcpKmsSigner, SolanaSigner};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signature::Signature;
@@ -56,31 +58,65 @@ pub struct KmsSigner {
 }
 
 impl KmsSigner {
-    /// Build a signer from a `kms://` URI and verify the key is usable
-    /// (reachable with current credentials, and an Ed25519 signing key)
-    /// before any transaction is built.
+    /// Build a signer from a `kms://` URI, verifying the key before any
+    /// transaction is built.
     pub fn from_uri(uri: &str) -> eyre::Result<Self> {
         let (key_name, pubkey_b58) = parse_kms_uri(uri)?;
-        let inner = runtime()
-            .block_on(GcpKmsSigner::new(key_name, pubkey_b58))
-            .map_err(|e| eyre::eyre!("Failed to initialize GCP KMS signer: {}", e))?;
-        let signer = Self { inner };
-        signer.preflight()?;
-        Ok(signer)
+        runtime().block_on(async {
+            let client = KeyManagementService::builder().build().await.map_err(|e| {
+                eyre::eyre!(
+                    "Failed to create KMS client: {} (authentication uses Application Default \
+                     Credentials — run `gcloud auth application-default login`, or set \
+                     GOOGLE_APPLICATION_CREDENTIALS)",
+                    e
+                )
+            })?;
+            Self::with_client(client, key_name, pubkey_b58).await
+        })
     }
 
-    /// Fail fast with a crisp error if the key can't sign: does a
-    /// `getPublicKey` and checks the algorithm is `EC_SIGN_ED25519`.
-    fn preflight(&self) -> eyre::Result<()> {
-        if !runtime().block_on(self.inner.is_available()) {
+    /// Preflight the key with one `getPublicKey` round-trip, then construct
+    /// the signer: verifies the key is accessible (surfacing the real API
+    /// error on 403/404 — keychain's own signing errors carry no detail),
+    /// that its algorithm is `EC_SIGN_ED25519`, and that its actual address
+    /// matches the one declared in the URI. The address check catches a
+    /// wrong `?pubkey=` here, with the actual address in the message,
+    /// instead of as an opaque verification failure at signing time.
+    ///
+    /// The one thing this cannot preflight is the `useToSign` permission
+    /// itself: a principal that can view the public key but not sign still
+    /// fails at signing time.
+    async fn with_client(
+        client: KeyManagementService,
+        key_name: String,
+        pubkey_b58: String,
+    ) -> eyre::Result<Self> {
+        let public_key = client
+            .get_public_key()
+            .set_name(&key_name)
+            .send()
+            .await
+            .map_err(|e| eyre::eyre!("Cannot access KMS key {}: {}", key_name, e))?;
+        if public_key.algorithm != CryptoKeyVersionAlgorithm::EcSignEd25519 {
             eyre::bail!(
-                "GCP KMS key {} is not usable. Check that the key exists, its algorithm is \
-                 EC_SIGN_ED25519, and your credentials can access it (run `gcloud auth \
-                 application-default login`, or set GOOGLE_APPLICATION_CREDENTIALS).",
-                self.inner.key_name()
+                "KMS key {} has algorithm {:?}; it must be EC_SIGN_ED25519",
+                key_name,
+                public_key.algorithm
             );
         }
-        Ok(())
+        let actual = address_from_pem(&public_key.pem).map_err(|e| {
+            eyre::eyre!("Failed to parse public key of KMS key {}: {}", key_name, e)
+        })?;
+        if actual.to_string() != pubkey_b58 {
+            eyre::bail!(
+                "The pubkey in the KMS URI ({}) does not match the key's actual address ({})",
+                pubkey_b58,
+                actual
+            );
+        }
+        let inner = GcpKmsSigner::with_client(client, key_name, pubkey_b58)
+            .map_err(|e| eyre::eyre!("Failed to initialize GCP KMS signer: {}", e))?;
+        Ok(Self { inner })
     }
 }
 
@@ -195,7 +231,7 @@ pub fn show_address(pem_path: String, mode: OutputMode) -> eyre::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use google_cloud_kms_v1::client::KeyManagementService;
+    use solana_sdk::signature::Keypair;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -267,30 +303,125 @@ mod tests {
         assert!(address_from_pem("not a pem at all").is_err());
     }
 
-    /// Build a `KmsSigner` against a wiremock endpoint with anonymous
+    /// Build a KMS client against a wiremock endpoint with anonymous
     /// credentials — fully hermetic (no network, no ADC, no env vars).
+    async fn mock_client(server_uri: &str) -> KeyManagementService {
+        let credentials = google_cloud_auth::credentials::anonymous::Builder::new().build();
+        KeyManagementService::builder()
+            .with_endpoint(server_uri)
+            .with_credentials(credentials)
+            .build()
+            .await
+            .expect("failed to build mock KMS client")
+    }
+
+    /// Build a `KmsSigner` directly (bypassing the preflight) for tests that
+    /// exercise signing.
     fn mock_signer(server_uri: &str, pubkey_b58: &str) -> KmsSigner {
         let inner = runtime()
             .block_on(async {
-                let credentials = google_cloud_auth::credentials::anonymous::Builder::new().build();
-                let client = KeyManagementService::builder()
-                    .with_endpoint(server_uri)
-                    .with_credentials(credentials)
-                    .build()
-                    .await
-                    .expect("failed to build mock KMS client");
+                let client = mock_client(server_uri).await;
                 GcpKmsSigner::with_client(client, KEY_NAME.to_string(), pubkey_b58.to_string())
             })
             .expect("failed to build mock signer");
         KmsSigner { inner }
     }
 
+    /// A PEM in the shape `getPublicKey` returns for an Ed25519 key.
+    fn pem_for(pubkey: &Pubkey) -> String {
+        let mut der = ED25519_SPKI_PREFIX.to_vec();
+        der.extend_from_slice(&pubkey.to_bytes());
+        format!(
+            "-----BEGIN PUBLIC KEY-----\n{}\n-----END PUBLIC KEY-----\n",
+            BASE64.encode(der)
+        )
+    }
+
+    /// Run the preflight (`KmsSigner::with_client`) against a mocked
+    /// `getPublicKey` response, declaring `declared` as the URI pubkey.
+    fn preflight(response: ResponseTemplate, declared: &str) -> eyre::Result<KmsSigner> {
+        runtime().block_on(async {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path(format!("/v1/{}/publicKey", KEY_NAME)))
+                .respond_with(response)
+                .mount(&server)
+                .await;
+            let client = mock_client(&server.uri()).await;
+            KmsSigner::with_client(client, KEY_NAME.to_string(), declared.to_string()).await
+        })
+    }
+
+    fn expect_err(result: eyre::Result<KmsSigner>) -> eyre::Report {
+        match result {
+            Ok(_) => panic!("expected an error"),
+            Err(e) => e,
+        }
+    }
+
+    #[test]
+    fn preflight_accepts_matching_key() {
+        let pubkey = Keypair::new().pubkey();
+        let response = ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": KEY_NAME,
+            "algorithm": "EC_SIGN_ED25519",
+            "pem": pem_for(&pubkey)
+        }));
+        let signer = preflight(response, &pubkey.to_string()).unwrap();
+        assert_eq!(signer.pubkey(), pubkey);
+    }
+
+    #[test]
+    fn preflight_rejects_wrong_algorithm() {
+        let pubkey = Keypair::new().pubkey();
+        let response = ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": KEY_NAME,
+            "algorithm": "EC_SIGN_P256_SHA256",
+            "pem": pem_for(&pubkey)
+        }));
+        let err = expect_err(preflight(response, &pubkey.to_string()));
+        assert!(err.to_string().contains("EC_SIGN_ED25519"), "got: {err}");
+    }
+
+    /// A wrong `?pubkey=` must fail at preflight, naming the key's actual
+    /// address — not surface later as an opaque signing error.
+    #[test]
+    fn preflight_rejects_mismatched_pubkey() {
+        let actual = Keypair::new().pubkey();
+        let declared = Keypair::new().pubkey();
+        let response = ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "name": KEY_NAME,
+            "algorithm": "EC_SIGN_ED25519",
+            "pem": pem_for(&actual)
+        }));
+        let err = expect_err(preflight(response, &declared.to_string()));
+        assert!(err.to_string().contains(&actual.to_string()), "got: {err}");
+    }
+
+    /// API errors must surface with their real detail (status/message), not
+    /// be collapsed into a guess list.
+    #[test]
+    fn preflight_surfaces_api_error_detail() {
+        let response = ResponseTemplate::new(403).set_body_json(serde_json::json!({
+            "error": {
+                "code": 403,
+                "message": "Permission 'cloudkms.cryptoKeyVersions.viewPublicKey' denied",
+                "status": "PERMISSION_DENIED"
+            }
+        }));
+        let err = expect_err(preflight(response, &Keypair::new().pubkey().to_string()));
+        let msg = err.to_string();
+        assert!(msg.contains("Cannot access KMS key"), "got: {msg}");
+        assert!(
+            msg.contains("PERMISSION_DENIED") || msg.contains("denied"),
+            "got: {msg}"
+        );
+    }
+
     /// End-to-end through the sync adapter: `try_sign_message` drives the
     /// async client on the module's runtime and returns a verified signature.
     #[test]
     fn adapter_signs_via_mock_kms() {
-        use solana_sdk::signature::Keypair;
-
         // A real local keypair produces the mocked KMS response, so the
         // crate's verify-against-expected-pubkey check passes.
         let keypair = Keypair::new();
@@ -322,8 +453,6 @@ mod tests {
     /// `SignerError` through the adapter.
     #[test]
     fn adapter_rejects_signature_from_wrong_key() {
-        use solana_sdk::signature::Keypair;
-
         let keypair = Keypair::new();
         let wrong_key = Keypair::new();
         let message = b"spherenet kms adapter test";
@@ -344,32 +473,5 @@ mod tests {
 
         let signer = mock_signer(&server.uri(), &keypair.pubkey().to_string());
         assert!(signer.try_sign_message(message).is_err());
-    }
-
-    /// Preflight succeeds against a mocked `getPublicKey` reporting
-    /// EC_SIGN_ED25519, and fails for any other algorithm.
-    #[test]
-    fn preflight_checks_algorithm() {
-        use solana_sdk::signature::Keypair;
-
-        let pubkey = Keypair::new().pubkey().to_string();
-
-        for (algorithm, ok) in [("EC_SIGN_ED25519", true), ("EC_SIGN_P256_SHA256", false)] {
-            let server = runtime().block_on(async {
-                let server = MockServer::start().await;
-                Mock::given(method("GET"))
-                    .and(path(format!("/v1/{}/publicKey", KEY_NAME)))
-                    .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-                        "name": KEY_NAME,
-                        "algorithm": algorithm
-                    })))
-                    .mount(&server)
-                    .await;
-                server
-            });
-
-            let signer = mock_signer(&server.uri(), &pubkey);
-            assert_eq!(signer.preflight().is_ok(), ok, "algorithm: {algorithm}");
-        }
     }
 }

@@ -98,11 +98,10 @@ pub fn create(
     }
 
     // Load keypairs
-    let create_key = solana_sdk::signature::read_keypair_file(&create_key_path)
-        .map_err(|e| eyre::eyre!("Failed to read create key '{}': {}", create_key_path, e))?;
+    let create_key =
+        crate::utils::run::read_keypair_file_checked(&create_key_path, "--create-key")?;
 
-    let payer = solana_sdk::signature::read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer key '{}': {}", payer_path, e))?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_path, "--payer")?;
 
     // Create RPC client
     let rpc = RpcClient::new(url);
@@ -291,8 +290,7 @@ pub fn approve(
         .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
 
     // Load member key
-    let member = solana_sdk::signature::read_keypair_file(&member_path)
-        .map_err(|e| eyre::eyre!("Failed to read member key: {}", e))?;
+    let member = crate::utils::run::read_keypair_file_checked(&member_path, "--member")?;
 
     let rpc = RpcClient::new(url);
 
@@ -360,8 +358,7 @@ pub fn execute(
         .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
 
     // Load member key
-    let member = solana_sdk::signature::read_keypair_file(&member_path)
-        .map_err(|e| eyre::eyre!("Failed to read member key: {}", e))?;
+    let member = crate::utils::run::read_keypair_file_checked(&member_path, "--member")?;
 
     let rpc = RpcClient::new(url);
 

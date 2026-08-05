@@ -12,10 +12,7 @@ use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputV
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    native_token::LAMPORTS_PER_SOL,
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Signer},
-    transaction::Transaction,
+    native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::Signer, transaction::Transaction,
 };
 use spherenet_stake_interface::{
     instruction::{
@@ -69,17 +66,10 @@ pub fn create(
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
     // Load signing keypairs.
-    let stake_account = read_keypair_file(&stake_account_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read stake account keypair from {}: {}",
-            stake_account_path,
-            e
-        )
-    })?;
-    let from = read_keypair_file(&from_path)
-        .map_err(|e| eyre::eyre!("Failed to read from keypair from {}: {}", from_path, e))?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let stake_account =
+        crate::utils::run::read_keypair_file_checked(&stake_account_path, "--stake-account")?;
+    let from = crate::utils::run::read_keypair_file_checked(&from_path, "--from")?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_path, "--payer")?;
 
     // Parse non-signing authority pubkeys.
     let staker = Pubkey::from_str(&stake_authority).map_err(|e| {
@@ -192,15 +182,9 @@ pub fn delegate(
     let vote_pubkey = Pubkey::from_str(&vote_account)
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey '{}': {}", vote_account, e))?;
 
-    let stake_authority = read_keypair_file(&stake_authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read stake authority keypair from {}: {}",
-            stake_authority_path,
-            e
-        )
-    })?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let stake_authority =
+        crate::utils::run::read_keypair_file_checked(&stake_authority_path, "--stake-authority")?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_path, "--payer")?;
 
     // ── Preflight ────────────────────────────────────────────────────────────
     preflight_vote_account(&rpc_client, &vote_pubkey)?;
@@ -353,15 +337,9 @@ pub fn deactivate(
     let stake_pubkey = Pubkey::from_str(&stake_account)
         .map_err(|e| eyre::eyre!("Invalid stake account pubkey '{}': {}", stake_account, e))?;
 
-    let stake_authority = read_keypair_file(&stake_authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read stake authority keypair from {}: {}",
-            stake_authority_path,
-            e
-        )
-    })?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let stake_authority =
+        crate::utils::run::read_keypair_file_checked(&stake_authority_path, "--stake-authority")?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_path, "--payer")?;
 
     // Preflight: must be a delegated stake account authorized for this staker.
     preflight_deactivate(&rpc_client, &stake_pubkey, &stake_authority.pubkey())?;
@@ -460,8 +438,7 @@ pub fn force_deactivate(
     let stake_pubkey = Pubkey::from_str(&stake_account)
         .map_err(|e| eyre::eyre!("Invalid stake account pubkey '{}': {}", stake_account, e))?;
 
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_path, "--payer")?;
 
     // ── Preflight ────────────────────────────────────────────────────────────
     let vote_pubkey = preflight_delegated_stake(&rpc_client, &stake_pubkey)?;
@@ -594,15 +571,11 @@ pub fn withdraw(
     let destination = Pubkey::from_str(&destination)
         .map_err(|e| eyre::eyre!("Invalid destination pubkey '{}': {}", destination, e))?;
 
-    let withdrawer = read_keypair_file(&withdraw_authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read withdraw authority keypair from {}: {}",
-            withdraw_authority_path,
-            e
-        )
-    })?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let withdrawer = crate::utils::run::read_keypair_file_checked(
+        &withdraw_authority_path,
+        "--withdraw-authority",
+    )?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_path, "--payer")?;
 
     // Preflight: account exists, stake-program owned, withdrawer matches; warn
     // if still delegated. Also resolves the balance for `--all`.

@@ -6,7 +6,12 @@ use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{
+    native_token::LAMPORTS_PER_SOL,
+    pubkey::Pubkey,
+    signature::{read_keypair_file, Keypair},
+    signer::Signer,
+};
 use solana_system_interface::instruction as system_instruction;
 use std::str::FromStr;
 
@@ -26,6 +31,20 @@ pub fn dedupe_signers<'a>(signers: &[&'a dyn Signer]) -> Vec<&'a dyn Signer> {
         }
     }
     out
+}
+
+/// Load a keypair file for an argument that must be a local file (payers,
+/// co-signers, account keypairs — everything except a single-sig authority).
+///
+/// Catches a `kms://` URI early with a clear "not supported here" error;
+/// handing it to `read_keypair_file` would produce a baffling "No such file
+/// or directory". `flag` names the argument for error messages.
+pub fn read_keypair_file_checked(path: &str, flag: &str) -> eyre::Result<Keypair> {
+    if path.starts_with(crate::kms::KMS_URI_SCHEME) {
+        eyre::bail!("KMS signers are not supported for {flag}; pass a keypair file path");
+    }
+    read_keypair_file(path)
+        .map_err(|e| eyre::eyre!("Failed to read keypair for {flag} from {path}: {e}"))
 }
 
 #[derive(serde::Serialize)]

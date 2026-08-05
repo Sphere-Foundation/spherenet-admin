@@ -7,7 +7,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
     pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair, Signer},
+    signature::{Keypair, Signer},
     transaction::Transaction,
 };
 use solana_sdk_ids::bpf_loader_upgradeable;
@@ -100,28 +100,17 @@ pub fn deploy(
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Load keypairs
-    let payer = read_keypair_file(&payer_keypair_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read payer keypair from {}: {}",
-            payer_keypair_path,
-            e
-        )
-    })?;
-    let program_keypair = read_keypair_file(&program_keypair_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read program keypair from {}: {}",
-            program_keypair_path,
-            e
-        )
-    })?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_keypair_path, "--payer")?;
+    let program_keypair =
+        crate::utils::run::read_keypair_file_checked(&program_keypair_path, "--program-keypair")?;
     let program_id = program_keypair.pubkey();
-    let upgrade_authority_keypair = read_keypair_file(&upgrade_authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read upgrade authority keypair from {}: {}",
-            upgrade_authority_path,
-            e
-        )
-    })?;
+    // Deploy signs every ~900-byte buffer-write chunk with this key (hundreds
+    // of round-trips for a KMS signer), so it stays file-based; `program
+    // upgrade` supports kms:// because only one instruction needs the authority.
+    let upgrade_authority_keypair = crate::utils::run::read_keypair_file_checked(
+        &upgrade_authority_path,
+        "--upgrade-authority on `program deploy`",
+    )?;
     let upgrade_authority = upgrade_authority_keypair.pubkey();
 
     progress(format!("Program ID: {}", program_id));
@@ -251,13 +240,7 @@ pub fn upgrade_program(
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Load keypairs and parse addresses
-    let payer = read_keypair_file(&payer_keypair_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read payer keypair from {}: {}",
-            payer_keypair_path,
-            e
-        )
-    })?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_keypair_path, "--payer")?;
     let program_id = Pubkey::from_str(&program_id_str)
         .map_err(|e| eyre::eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
 

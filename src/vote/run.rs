@@ -12,10 +12,7 @@ use crate::cli::output::{
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    native_token::LAMPORTS_PER_SOL,
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Signer},
-    transaction::Transaction,
+    native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::Signer, transaction::Transaction,
 };
 use solana_vote_interface::{
     instruction::{
@@ -84,27 +81,14 @@ pub fn create(
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
     // Load signing keypairs.
-    let vote_account = read_keypair_file(&vote_account_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read vote account keypair from {}: {}",
-            vote_account_path,
-            e
-        )
-    })?;
-    let identity = read_keypair_file(&identity_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read identity keypair from {}: {}",
-            identity_path,
-            e
-        )
-    })?;
+    let vote_account =
+        crate::utils::run::read_keypair_file_checked(&vote_account_path, "--vote-account")?;
+    let identity = crate::utils::run::read_keypair_file_checked(&identity_path, "--identity")?;
     // Funder and fee payer both default to the identity keypair when omitted.
     let from_path = from_path.unwrap_or_else(|| identity_path.clone());
-    let from = read_keypair_file(&from_path)
-        .map_err(|e| eyre::eyre!("Failed to read from keypair from {}: {}", from_path, e))?;
+    let from = crate::utils::run::read_keypair_file_checked(&from_path, "--from")?;
     let payer_path = payer_path.unwrap_or_else(|| identity_path.clone());
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_path, "--payer")?;
 
     // The authorized voter is loaded as a *keypair* (not a pubkey): on the legacy
     // path it must sign the `authorize_checked` that appends the BLS key, and its
@@ -113,13 +97,8 @@ pub fn create(
     // setup where identity == voter. The withdrawer, by contrast, never signs at
     // create time, so it stays a plain pubkey.
     let authorized_voter_path = authorized_voter.unwrap_or_else(|| identity_path.clone());
-    let authorized_voter = read_keypair_file(&authorized_voter_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read authorized voter keypair from {}: {}",
-            authorized_voter_path,
-            e
-        )
-    })?;
+    let authorized_voter =
+        crate::utils::run::read_keypair_file_checked(&authorized_voter_path, "--authorized-voter")?;
     // The withdraw authority never signs at create time, so it stays a plain
     // pubkey. Defaults to the authorized VOTER when omitted (which itself defaults
     // to the identity) — so the two vote-account authorities stay unified under the
@@ -329,15 +308,11 @@ pub fn withdraw(
     let destination = Pubkey::from_str(&destination)
         .map_err(|e| eyre::eyre!("Invalid destination pubkey '{}': {}", destination, e))?;
 
-    let withdrawer = read_keypair_file(&withdraw_authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read withdraw authority keypair from {}: {}",
-            withdraw_authority_path,
-            e
-        )
-    })?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let withdrawer = crate::utils::run::read_keypair_file_checked(
+        &withdraw_authority_path,
+        "--withdraw-authority",
+    )?;
+    let payer = crate::utils::run::read_keypair_file_checked(&payer_path, "--payer")?;
 
     // Preflight: the account must exist and be a vote account. The on-chain
     // program enforces the withdraw authority. Also resolves the balance for `--all`.

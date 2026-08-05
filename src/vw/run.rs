@@ -2,7 +2,6 @@ use crate::cli::authority::Authority;
 use crate::cli::output::{emit, progress, OutputMode};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::read_keypair_file;
 use solana_sdk::signer::Signer;
 use spherenet_validator_whitelist_client::instructions::{
     ApproveWhitelistEntryBuilder, RejectWhitelistEntryBuilder, RemoveWhitelistEntryBuilder,
@@ -46,13 +45,10 @@ pub fn request(
     let rpc_client = RpcClient::new(rpc_url);
 
     // The vote account co-signs to prove control — load its keypair.
-    let vote_account = read_keypair_file(&vote_account_keypair).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load vote account keypair from {}: {}",
-            vote_account_keypair,
-            e
-        )
-    })?;
+    let vote_account = crate::utils::run::read_keypair_file_checked(
+        &vote_account_keypair,
+        "the vote-account co-signer",
+    )?;
     let vote_account_pubkey = vote_account.pubkey();
 
     // Get current epoch if start_epoch not provided

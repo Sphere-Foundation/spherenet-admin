@@ -170,11 +170,14 @@ Authentication uses Application Default Credentials: run
 `gcloud auth application-default login`, or point
 `GOOGLE_APPLICATION_CREDENTIALS` at a service-account key. The caller needs
 `cloudkms.cryptoKeyVersions.useToSign` on the key (e.g. role
-`roles/cloudkms.signerVerifier`).
+`roles/cloudkms.signerVerifier`). Before building a transaction, the CLI
+preflights the key (access, algorithm, and that its address matches the URI's
+`pubkey`) — but the sign permission itself can only be proven by signing, so
+a caller with only `roles/cloudkms.publicKeyViewer` passes preflight and
+fails at signing time.
 
-KMS signing is supported for single-sig authorities; `--multisig-authority`
-(the proposal-paying member) and the raw keypair arguments of `vote`, `stake`,
-`multisig`, and `program deploy` still require local keypair files.
+KMS signing is supported for single-sig authorities; the payer, co-signer,
+and account-keypair arguments throughout still require local keypair files.
 
 ---
 
