@@ -1,6 +1,6 @@
 //! Utility actions: airdrop and transfer.
 
-use crate::cli::authority::Authority;
+use crate::authority::Authority;
 use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
@@ -128,7 +128,7 @@ pub fn transfer(
 
     // Resolve the destination (raw address or a multisig's vault) through the
     // shared multisig-safety gate.
-    let destination = crate::cli::authority::resolve_target(
+    let destination = crate::authority::resolve_target(
         &rpc_client,
         to,
         to_multisig,
@@ -143,10 +143,10 @@ pub fn transfer(
 
     // Show the source (progress → stderr).
     match &from {
-        crate::cli::authority::Authority::SingleSig { signer } => {
+        crate::authority::Authority::SingleSig { signer } => {
             progress(format!("From:     {}", signer.pubkey()));
         }
-        crate::cli::authority::Authority::MultiSig { multisig, member } => {
+        crate::authority::Authority::MultiSig { multisig, member } => {
             progress(format!("Proposer: {}", member.pubkey()));
             progress(format!("Multisig: {}", multisig));
             // Funds come from the vault PDA, not the config account.

@@ -1,3 +1,4 @@
+mod authority;
 mod cli;
 mod loader;
 mod mp;

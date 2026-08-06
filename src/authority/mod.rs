@@ -4,6 +4,9 @@
 //! CLI-arg constructor ([`from_cli_args`]). Uses the top-level `squads` client
 //! for the multisig proposal path.
 
+pub mod kms;
+pub mod signer;
+
 use crate::cli::output::{progress, TxOutputView};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
@@ -14,7 +17,7 @@ use solana_sdk::{
 /// Authority that can execute instructions
 ///
 /// Signers are trait objects so each can be a local
-/// [`solana_sdk::signature::Keypair`] or a [`crate::cli::kms::KmsSigner`].
+/// [`solana_sdk::signature::Keypair`] or a [`crate::authority::kms::KmsSigner`].
 pub enum Authority {
     /// Single-signature authority (direct execution)
     SingleSig { signer: Box<dyn Signer> },
@@ -145,7 +148,7 @@ pub fn from_cli_args(
     match (authority, multisig, multisig_authority) {
         (Some(authority_value), None, None) => {
             // Single-sig mode
-            let signer = crate::cli::signer::load_signer(&authority_value, "--authority")?;
+            let signer = crate::authority::signer::load_signer(&authority_value, "--authority")?;
             Ok(Authority::SingleSig { signer })
         }
         (None, Some(create_key_str), Some(member_path)) => {
@@ -154,7 +157,7 @@ pub fn from_cli_args(
             let create_key = create_key_str
                 .parse::<Pubkey>()
                 .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key_str, e))?;
-            let member = crate::cli::signer::load_signer(&member_path, "--multisig-authority")?;
+            let member = crate::authority::signer::load_signer(&member_path, "--multisig-authority")?;
             let rpc = RpcClient::new(url.to_string());
             let resolved = squads::resolve(&rpc, &create_key)?;
             Ok(Authority::MultiSig {

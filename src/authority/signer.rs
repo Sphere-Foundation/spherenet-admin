@@ -1,10 +1,10 @@
 //! CLI signer resolution.
 //!
 //! Loads a signer from a keypair-file path or a `kms://` URI (a key held in
-//! GCP Cloud KMS — see [`crate::cli::kms`]), plus the shared signer-dedup
+//! GCP Cloud KMS — see [`crate::authority::kms`]), plus the shared signer-dedup
 //! helper used across command modules.
 
-use crate::cli::kms;
+use crate::authority::kms;
 use solana_sdk::{
     pubkey::Pubkey,
     signature::{read_keypair_file, Keypair},
@@ -30,7 +30,7 @@ pub fn dedupe_signers<'a>(signers: &[&'a dyn Signer]) -> Vec<&'a dyn Signer> {
 }
 
 /// Load a signer from a CLI value: a keypair file path, or a `kms://` URI for
-/// a key held in GCP Cloud KMS (see [`crate::cli::kms`]).
+/// a key held in GCP Cloud KMS (see [`crate::authority::kms`]).
 ///
 /// This is the default loader for every keypair argument; `flag` names the
 /// argument for error messages. Arguments that must stay file-based use

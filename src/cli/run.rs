@@ -40,7 +40,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -63,7 +63,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -77,7 +77,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -91,7 +91,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -106,7 +106,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -121,7 +121,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -136,7 +136,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -149,7 +149,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -162,7 +162,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -180,7 +180,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -193,7 +193,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -206,7 +206,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -220,7 +220,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -234,7 +234,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -253,7 +253,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -267,7 +267,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -284,7 +284,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -298,7 +298,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -312,7 +312,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -326,7 +326,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -341,7 +341,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -354,7 +354,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -367,7 +367,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -401,7 +401,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 payer,
                 spill,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     upgrade_authority,
                     multisig,
@@ -419,7 +419,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig_authority,
                 payer,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     upgrade_authority,
                     multisig,
@@ -436,7 +436,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 multisig,
                 multisig_authority,
             } => {
-                let auth = cli::authority::from_cli_args(
+                let auth = crate::authority::from_cli_args(
                     &cli.url,
                     authority,
                     multisig,
@@ -586,7 +586,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             )?,
         },
         Commands::Kms { action } => match action {
-            KmsAction::Address { pubkey_pem } => crate::cli::kms::show_address(pubkey_pem, mode)?,
+            KmsAction::Address { pubkey_pem } => crate::authority::kms::show_address(pubkey_pem, mode)?,
         },
         Commands::Balance { pubkey } => utils::show::balance(&cli.url, pubkey, mode)?,
         Commands::Epoch => utils::show::epoch(&cli.url, mode)?,
@@ -602,7 +602,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             multisig,
             multisig_authority,
         } => {
-            let auth = cli::authority::from_cli_args(&cli.url, from, multisig, multisig_authority)?;
+            let auth = crate::authority::from_cli_args(&cli.url, from, multisig, multisig_authority)?;
             utils::run::transfer(&cli.url, auth, to, to_multisig, amount, mode)?
         }
     }

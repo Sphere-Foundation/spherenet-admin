@@ -2,11 +2,8 @@
 //!
 //! Contains command-line interface structures, routing, and execution logic.
 
-pub mod authority;
 pub mod commands;
-pub mod kms;
 pub mod output;
 pub mod run;
-pub mod signer;
 
 pub use run::run;

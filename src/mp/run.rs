@@ -1,4 +1,4 @@
-use crate::cli::authority::Authority;
+use crate::authority::Authority;
 use crate::cli::output::{emit, progress, OutputMode};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;

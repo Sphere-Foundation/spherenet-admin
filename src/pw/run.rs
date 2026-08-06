@@ -1,4 +1,4 @@
-use crate::cli::authority::Authority;
+use crate::authority::Authority;
 use crate::cli::output::{emit, progress, OutputMode};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
@@ -50,7 +50,7 @@ pub fn request(
     let rpc_client = RpcClient::new(rpc_url);
 
     // The deploy authority co-signs to prove control — load its keypair.
-    let deploy_authority = crate::cli::signer::load_signer(
+    let deploy_authority = crate::authority::signer::load_signer(
         &deploy_authority_keypair,
         "the deploy-authority co-signer",
     )?;

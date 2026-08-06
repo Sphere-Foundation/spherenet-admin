@@ -1,6 +1,6 @@
 //! Program deployment operations: deploy, upgrade, and extend.
 
-use crate::cli::authority::Authority;
+use crate::authority::Authority;
 use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::pw::run::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
@@ -100,17 +100,17 @@ pub fn deploy(
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Load keypairs
-    let payer = crate::cli::signer::read_keypair_file_checked(
+    let payer = crate::authority::signer::read_keypair_file_checked(
         &payer_keypair_path,
         "--payer on `program deploy` (it signs every buffer-write chunk)",
     )?;
     let program_keypair =
-        crate::cli::signer::read_keypair_file_checked(&program_keypair_path, "--program-keypair")?;
+        crate::authority::signer::read_keypair_file_checked(&program_keypair_path, "--program-keypair")?;
     let program_id = program_keypair.pubkey();
     // Deploy signs every ~900-byte buffer-write chunk with this key (hundreds
     // of round-trips for a KMS signer), so it stays file-based; `program
     // upgrade` supports kms:// because only one instruction needs the authority.
-    let upgrade_authority_keypair = crate::cli::signer::read_keypair_file_checked(
+    let upgrade_authority_keypair = crate::authority::signer::read_keypair_file_checked(
         &upgrade_authority_path,
         "--upgrade-authority on `program deploy`",
     )?;
@@ -245,7 +245,7 @@ pub fn upgrade_program(
     // Load keypairs and parse addresses. The payer stays file-based: it signs
     // every ~900-byte buffer-write chunk (hundreds of round-trips for a KMS
     // signer); the upgrade AUTHORITY signs once and supports kms://.
-    let payer = crate::cli::signer::read_keypair_file_checked(
+    let payer = crate::authority::signer::read_keypair_file_checked(
         &payer_keypair_path,
         "--payer on `program upgrade` (it signs every buffer-write chunk)",
     )?;
@@ -317,7 +317,7 @@ pub fn upgrade_program(
 
         // Build the appropriate extend command based on authority type
         let extend_cmd = match &upgrade_authority {
-            crate::cli::authority::Authority::SingleSig { .. } => {
+            crate::authority::Authority::SingleSig { .. } => {
                 format!(
                     "spherenet-admin program extend \\\n  \
                     --program-id {} \\\n  \
@@ -327,7 +327,7 @@ pub fn upgrade_program(
                     program_id, additional_bytes, payer_keypair_path, payer_keypair_path
                 )
             }
-            crate::cli::authority::Authority::MultiSig { multisig, .. } => {
+            crate::authority::Authority::MultiSig { multisig, .. } => {
                 format!(
                     "spherenet-admin program extend \\\n  \
                     --program-id {} \\\n  \
@@ -520,7 +520,7 @@ pub fn set_upgrade_authority(
     let new = if make_final {
         None
     } else {
-        Some(crate::cli::authority::resolve_target(
+        Some(crate::authority::resolve_target(
             &rpc_client,
             new_authority,
             new_multisig,

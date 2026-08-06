@@ -8,7 +8,7 @@
 //! whether each argument is a keypair or a pubkey.
 //!
 //! Every `*_KEYPAIR` argument also accepts a `kms://` URI in place of a file
-//! path, signing with a key held in GCP Cloud KMS (see [`crate::cli::kms`]) —
+//! path, signing with a key held in GCP Cloud KMS (see [`crate::authority::kms`]) —
 //! except where the help text says "local keypair file only": `program
 //! deploy`'s keypairs and `program upgrade --payer` (they sign every
 //! buffer-write chunk), and `vote create`'s `--identity`/`--authorized-voter`

@@ -98,9 +98,9 @@ pub fn create(
     }
 
     // Load keypairs
-    let create_key = crate::cli::signer::load_signer(&create_key_path, "--create-key")?;
+    let create_key = crate::authority::signer::load_signer(&create_key_path, "--create-key")?;
 
-    let payer = crate::cli::signer::load_signer(&payer_path, "--payer")?;
+    let payer = crate::authority::signer::load_signer(&payer_path, "--payer")?;
 
     // Create RPC client
     let rpc = RpcClient::new(url);
@@ -288,7 +288,7 @@ pub fn approve(
         .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
 
     // Load member key
-    let member = crate::cli::signer::load_signer(&member_path, "--member")?;
+    let member = crate::authority::signer::load_signer(&member_path, "--member")?;
 
     let rpc = RpcClient::new(url);
 
@@ -353,7 +353,7 @@ pub fn execute(
         .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
 
     // Load member key
-    let member = crate::cli::signer::load_signer(&member_path, "--member")?;
+    let member = crate::authority::signer::load_signer(&member_path, "--member")?;
 
     let rpc = RpcClient::new(url);
 
