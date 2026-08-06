@@ -104,8 +104,10 @@ pub fn deploy(
         &payer_keypair_path,
         "--payer on `program deploy` (it signs every buffer-write chunk)",
     )?;
-    let program_keypair =
-        crate::authority::signer::read_keypair_file_checked(&program_keypair_path, "--program-keypair")?;
+    let program_keypair = crate::authority::signer::read_keypair_file_checked(
+        &program_keypair_path,
+        "--program-keypair",
+    )?;
     let program_id = program_keypair.pubkey();
     // Deploy signs every ~900-byte buffer-write chunk with this key (hundreds
     // of round-trips for a KMS signer), so it stays file-based; `program

@@ -1,7 +1,7 @@
 //! Authority management
 //!
 //! Unified authority handling for single-sig and multi-sig execution, plus the
-//! CLI-arg constructor ([`from_cli_args`]). Uses the top-level `squads` client
+//! CLI-arg constructor ([`Authority::from_args`]). Uses the top-level `squads` client
 //! for the multisig proposal path.
 
 pub mod kms;
@@ -123,51 +123,53 @@ impl Authority {
             ),
         }
     }
-}
 
-/// Build an [`Authority`] from CLI arguments.
-///
-/// # Arguments
-/// * `url` - RPC URL, used to resolve + validate a multisig create-key
-/// * `authority` - Single-sig: path to authority keypair, or a `kms://` URI
-/// * `multisig` - Multi-sig: the multisig's create-key (pubkey)
-/// * `multisig_authority` - Multi-sig: path to member keypair, or a `kms://` URI
-///
-/// # Returns
-/// - `Authority::SingleSig` if only `authority` is provided
-/// - `Authority::MultiSig` if `multisig` and `multisig_authority` are provided.
-///   The create-key is resolved and **validated** against the chain (fails if it
-///   isn't a real multisig), and the resolved multisig PDA is stored.
-/// - Error if neither or an invalid combination is provided
-pub fn from_cli_args(
-    url: &str,
-    authority: Option<String>,
-    multisig: Option<String>,
-    multisig_authority: Option<String>,
-) -> eyre::Result<Authority> {
-    match (authority, multisig, multisig_authority) {
-        (Some(authority_value), None, None) => {
-            // Single-sig mode
-            let signer = crate::authority::signer::load_signer(&authority_value, "--authority")?;
-            Ok(Authority::SingleSig { signer })
+    /// Build an [`Authority`] from the raw CLI argument strings.
+    ///
+    /// # Arguments
+    /// * `url` - RPC URL, used to resolve + validate a multisig create-key
+    /// * `authority` - Single-sig: path to authority keypair, or a `kms://` URI
+    /// * `multisig` - Multi-sig: the multisig's create-key (pubkey)
+    /// * `multisig_authority` - Multi-sig: path to member keypair, or a `kms://` URI
+    ///
+    /// # Returns
+    /// - `Authority::SingleSig` if only `authority` is provided
+    /// - `Authority::MultiSig` if `multisig` and `multisig_authority` are provided.
+    ///   The create-key is resolved and **validated** against the chain (fails if it
+    ///   isn't a real multisig), and the resolved multisig PDA is stored.
+    /// - Error if neither or an invalid combination is provided
+    pub fn from_args(
+        url: &str,
+        authority: Option<String>,
+        multisig: Option<String>,
+        multisig_authority: Option<String>,
+    ) -> eyre::Result<Self> {
+        match (authority, multisig, multisig_authority) {
+            (Some(authority_value), None, None) => {
+                // Single-sig mode
+                let signer =
+                    crate::authority::signer::load_signer(&authority_value, "--authority")?;
+                Ok(Self::SingleSig { signer })
+            }
+            (None, Some(create_key_str), Some(member_path)) => {
+                // Multi-sig mode: the multisig is referenced by its create-key,
+                // resolved + validated against the chain (never a raw PDA).
+                let create_key = create_key_str
+                    .parse::<Pubkey>()
+                    .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key_str, e))?;
+                let member =
+                    crate::authority::signer::load_signer(&member_path, "--multisig-authority")?;
+                let rpc = RpcClient::new(url.to_string());
+                let resolved = squads::resolve(&rpc, &create_key)?;
+                Ok(Self::MultiSig {
+                    multisig: resolved.multisig,
+                    member,
+                })
+            }
+            _ => Err(eyre::eyre!(
+                "Must provide either --authority OR (--multisig + --multisig-authority)"
+            )),
         }
-        (None, Some(create_key_str), Some(member_path)) => {
-            // Multi-sig mode: the multisig is referenced by its create-key,
-            // resolved + validated against the chain (never a raw PDA).
-            let create_key = create_key_str
-                .parse::<Pubkey>()
-                .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key_str, e))?;
-            let member = crate::authority::signer::load_signer(&member_path, "--multisig-authority")?;
-            let rpc = RpcClient::new(url.to_string());
-            let resolved = squads::resolve(&rpc, &create_key)?;
-            Ok(Authority::MultiSig {
-                multisig: resolved.multisig,
-                member,
-            })
-        }
-        _ => Err(eyre::eyre!(
-            "Must provide either --authority OR (--multisig + --multisig-authority)"
-        )),
     }
 }
 
@@ -247,16 +249,16 @@ mod tests {
     }
 
     #[test]
-    fn from_cli_args_rejects_no_authority() {
-        let err = expect_err(from_cli_args(URL, None, None, None));
+    fn from_args_rejects_no_authority() {
+        let err = expect_err(Authority::from_args(URL, None, None, None));
         assert!(err.to_string().contains("--authority"), "got: {err}");
     }
 
     #[test]
-    fn from_cli_args_rejects_mixed_modes() {
+    fn from_args_rejects_mixed_modes() {
         // Clap's conflicts_with normally prevents this; the constructor must
         // still refuse rather than silently pick one.
-        assert!(from_cli_args(
+        assert!(Authority::from_args(
             URL,
             Some("authority.json".into()),
             Some("11111111111111111111111111111111".into()),
@@ -266,9 +268,9 @@ mod tests {
     }
 
     #[test]
-    fn from_cli_args_loads_single_sig_keypair() {
+    fn from_args_loads_single_sig_keypair() {
         let (keypair, path) = temp_keypair_file("single-sig");
-        let authority = from_cli_args(URL, Some(path.clone()), None, None).unwrap();
+        let authority = Authority::from_args(URL, Some(path.clone()), None, None).unwrap();
         std::fs::remove_file(&path).unwrap();
         match authority {
             Authority::SingleSig { signer } => assert_eq!(signer.pubkey(), keypair.pubkey()),
@@ -277,8 +279,8 @@ mod tests {
     }
 
     #[test]
-    fn from_cli_args_reports_missing_keypair_path() {
-        let err = expect_err(from_cli_args(
+    fn from_args_reports_missing_keypair_path() {
+        let err = expect_err(Authority::from_args(
             URL,
             Some("/nonexistent/authority.json".into()),
             None,
@@ -291,9 +293,9 @@ mod tests {
     }
 
     #[test]
-    fn from_cli_args_rejects_malformed_kms_uri() {
+    fn from_args_rejects_malformed_kms_uri() {
         // Fails at URI parsing, before any KMS client or network access.
-        let err = expect_err(from_cli_args(
+        let err = expect_err(Authority::from_args(
             URL,
             Some("kms://not-a-resource-name".into()),
             None,
@@ -305,8 +307,8 @@ mod tests {
     /// A KMS multisig member is supported; a malformed URI must still fail at
     /// parse time, before any KMS client or network access.
     #[test]
-    fn from_cli_args_rejects_malformed_kms_member_uri() {
-        let err = expect_err(from_cli_args(
+    fn from_args_rejects_malformed_kms_member_uri() {
+        let err = expect_err(Authority::from_args(
             URL,
             None,
             Some("11111111111111111111111111111111".into()),

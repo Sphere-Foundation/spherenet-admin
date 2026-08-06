@@ -5,11 +5,7 @@ use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{
-    native_token::LAMPORTS_PER_SOL,
-    pubkey::Pubkey,
-    signer::Signer,
-};
+use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signer::Signer};
 use solana_system_interface::instruction as system_instruction;
 use std::str::FromStr;
 
@@ -128,13 +124,8 @@ pub fn transfer(
 
     // Resolve the destination (raw address or a multisig's vault) through the
     // shared multisig-safety gate.
-    let destination = crate::authority::resolve_target(
-        &rpc_client,
-        to,
-        to_multisig,
-        "--to",
-        "--to-multisig",
-    )?;
+    let destination =
+        crate::authority::resolve_target(&rpc_client, to, to_multisig, "--to", "--to-multisig")?;
 
     // Convert SPHR to lamports
     let lamports = (amount * LAMPORTS_PER_SOL as f64) as u64;

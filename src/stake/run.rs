@@ -66,7 +66,8 @@ pub fn create(
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
     // Load signing keypairs.
-    let stake_account = crate::authority::signer::load_signer(&stake_account_path, "--stake-account")?;
+    let stake_account =
+        crate::authority::signer::load_signer(&stake_account_path, "--stake-account")?;
     let from = crate::authority::signer::load_signer(&from_path, "--from")?;
     let payer = crate::authority::signer::load_signer(&payer_path, "--payer")?;
 
@@ -133,8 +134,11 @@ pub fn create(
 
     // Signers: fee payer first, plus funder and the new account. Authorities
     // are pubkeys only — they do not sign at creation.
-    let signers =
-        crate::authority::signer::dedupe_signers(&[payer.as_ref(), from.as_ref(), stake_account.as_ref()]);
+    let signers = crate::authority::signer::dedupe_signers(&[
+        payer.as_ref(),
+        from.as_ref(),
+        stake_account.as_ref(),
+    ]);
 
     let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
     transaction
@@ -207,7 +211,8 @@ pub fn delegate(
     );
 
     // Signers: fee payer (payer of the tx) and the staker.
-    let signers = crate::authority::signer::dedupe_signers(&[payer.as_ref(), stake_authority.as_ref()]);
+    let signers =
+        crate::authority::signer::dedupe_signers(&[payer.as_ref(), stake_authority.as_ref()]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
     transaction
@@ -351,7 +356,8 @@ pub fn deactivate(
 
     let instruction = deactivate_stake(&stake_pubkey, &stake_authority.pubkey());
 
-    let signers = crate::authority::signer::dedupe_signers(&[payer.as_ref(), stake_authority.as_ref()]);
+    let signers =
+        crate::authority::signer::dedupe_signers(&[payer.as_ref(), stake_authority.as_ref()]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
     transaction
