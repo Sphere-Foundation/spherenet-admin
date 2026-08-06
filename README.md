@@ -145,10 +145,10 @@ The `mp` config account is created at genesis, not by this CLI.
 
 ### Signing with GCP Cloud KMS (`kms://`)
 
-Anywhere a single-sig command takes a keypair path (`--authority`, `--from`,
-program `--upgrade-authority`), a `kms://` URI can be passed instead to sign
-with an Ed25519 key held in Google Cloud KMS — the private key never touches
-disk:
+Anywhere a command takes a keypair path — authorities, payers, funders,
+multisig members, co-signers — a `kms://` URI can be passed instead to sign
+with an Ed25519 key held in Google Cloud KMS, so the private key never
+touches disk:
 
 ```bash
 spherenet-admin vw approve <VOTE_ACCOUNT> \
@@ -176,8 +176,16 @@ preflights the key (access, algorithm, and that its address matches the URI's
 a caller with only `roles/cloudkms.publicKeyViewer` passes preflight and
 fails at signing time.
 
-KMS signing is supported for single-sig authorities; the payer, co-signer,
-and account-keypair arguments throughout still require local keypair files.
+Three exceptions stay local-file only:
+
+- **`program deploy`** — its payer and upgrade authority sign every ~900-byte
+  buffer-write chunk (hundreds of KMS round-trips per deploy).
+- **`program upgrade --payer`** — same chunk-signing role; the upgrade
+  *authority* signs exactly once and does accept `kms://`.
+- **`vote create --identity` / `--authorized-voter`** — the validator host
+  derives its BLS voting key from the authorized-voter keypair file (and
+  needs the identity key to run); a KMS key here would strand the vote
+  account.
 
 ---
 

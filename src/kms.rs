@@ -41,10 +41,17 @@ const KMS_URI_FORMAT: &str = "kms://projects/<p>/locations/<l>/keyRings/<r>/cryp
 /// The dedicated runtime that drives the async KMS client from sync CLI code.
 ///
 /// Must be a runtime this module owns: `Handle::current().block_on()` from a
-/// thread already inside a runtime would panic.
+/// thread already inside a runtime would panic. Current-thread flavor — the
+/// CLI only ever makes a handful of sequential `block_on` calls, so worker
+/// threads would sit idle.
 fn runtime() -> &'static Runtime {
     static RT: OnceLock<Runtime> = OnceLock::new();
-    RT.get_or_init(|| Runtime::new().expect("failed to start tokio runtime"))
+    RT.get_or_init(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("failed to start tokio runtime")
+    })
 }
 
 /// Sync [`Signer`] over a key held in GCP Cloud KMS.

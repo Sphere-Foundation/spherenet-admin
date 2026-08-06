@@ -7,9 +7,12 @@
 //! (pubkey), `*_SO` = a program `.so` file. This makes `--help`/error output say
 //! whether each argument is a keypair or a pubkey.
 //!
-//! Single-sig authority arguments (`--authority`, `--from`, and program
-//! `--upgrade-authority`) also accept a `kms://` URI in place of a keypair
-//! path, signing with a key held in GCP Cloud KMS — see [`crate::kms`].
+//! Every `*_KEYPAIR` argument also accepts a `kms://` URI in place of a file
+//! path, signing with a key held in GCP Cloud KMS (see [`crate::kms`]) —
+//! except where the help text says "local keypair file only": `program
+//! deploy`'s keypairs and `program upgrade --payer` (they sign every
+//! buffer-write chunk), and `vote create`'s `--identity`/`--authorized-voter`
+//! (the validator host derives its BLS voting key from the file).
 
 use crate::cli::output::OutputMode;
 use clap::{Parser, Subcommand};
@@ -579,15 +582,18 @@ pub enum ProgramAction {
         #[arg(long, value_name = "PROGRAM_SO")]
         program_so: String,
 
-        /// Path to the program keypair (the program ID is derived from this)
+        /// Path to the program keypair (the program ID is derived from this).
+        /// Local keypair file only
         #[arg(long, value_name = "PROGRAM_KEYPAIR")]
         program_keypair: String,
 
-        /// Path to upgrade authority keypair (must sign deployment)
+        /// Path to upgrade authority keypair (must sign deployment). Local
+        /// keypair file only — deploy signs every buffer-write chunk
         #[arg(long, value_name = "UPGRADE_AUTHORITY_KEYPAIR")]
         upgrade_authority: String,
 
-        /// Payer keypair path (defaults to solana config default keypair)
+        /// Payer keypair path. Local keypair file only — deploy signs every
+        /// buffer-write chunk
         #[arg(long, value_name = "PAYER_KEYPAIR")]
         payer: String,
 
@@ -625,7 +631,8 @@ pub enum ProgramAction {
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
         multisig_authority: Option<String>,
 
-        /// Payer keypair path
+        /// Payer keypair path. Local keypair file only — it signs every
+        /// buffer-write chunk (the upgrade authority may be kms://)
         #[arg(long, value_name = "PAYER_KEYPAIR")]
         payer: String,
 
@@ -971,13 +978,15 @@ pub enum VoteAction {
         /// Path to the new vote account keypair (signs its own creation)
         #[arg(long, value_name = "VOTE_ACCOUNT_KEYPAIR")]
         vote_account: String,
-        /// Path to the validator identity (node) keypair (signs initialization)
+        /// Path to the validator identity (node) keypair (signs initialization).
+        /// Local keypair file only — the validator host needs it
         #[arg(long, value_name = "IDENTITY_KEYPAIR")]
         identity: String,
         /// Path to the keypair authorized to submit votes. Optional — defaults to
         /// the identity keypair (identity == voter). A keypair (not a pubkey)
         /// because on the default V1 path it must sign the BLS-append, and the BLS
-        /// voter key is derived from it.
+        /// voter key is derived from it. Local keypair file only — the validator
+        /// host derives its BLS voting key from this file
         #[arg(long, value_name = "AUTHORIZED_VOTER_KEYPAIR")]
         authorized_voter: Option<String>,
         /// Pubkey authorized to withdraw from the vote account. Optional —

@@ -8,23 +8,20 @@ use crate::cli::output::{progress, TxOutputView};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
-    instruction::Instruction,
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair},
-    signer::Signer,
-    transaction::Transaction,
+    instruction::Instruction, pubkey::Pubkey, signer::Signer, transaction::Transaction,
 };
 
 /// Authority that can execute instructions
+///
+/// Signers are trait objects so each can be a local
+/// [`solana_sdk::signature::Keypair`] or a [`crate::kms::KmsSigner`].
 pub enum Authority {
-    /// Single-signature authority (direct execution). Boxed as a trait object
-    /// so it can be a local [`Keypair`] or a [`crate::kms::KmsSigner`].
+    /// Single-signature authority (direct execution)
     SingleSig { signer: Box<dyn Signer> },
-    /// Multi-signature authority (creates proposals). The member is boxed to
-    /// keep the variants close in size (clippy: large_enum_variant).
+    /// Multi-signature authority (creates proposals)
     MultiSig {
         multisig: Pubkey,
-        member: Box<Keypair>,
+        member: Box<dyn Signer>,
     },
 }
 
@@ -80,7 +77,7 @@ impl Authority {
             // Delegate the entire proposal flow to the squads client — the
             // adapter knows nothing about Squads PDAs or wire formats.
             Authority::MultiSig { multisig, member } => {
-                squads::run::propose(rpc, multisig, member, instruction, description)
+                squads::run::propose(rpc, multisig, member.as_ref(), instruction, description)
             }
         }
     }
@@ -96,7 +93,7 @@ impl Authority {
         &self,
         rpc: &RpcClient,
         instruction: Instruction,
-        cosigners: &[&Keypair],
+        cosigners: &[&dyn Signer],
         description: &str,
     ) -> eyre::Result<TxOutputView> {
         match self {
@@ -106,7 +103,7 @@ impl Authority {
                 let recent_blockhash = rpc.get_latest_blockhash()?;
                 let mut signers: Vec<&dyn Signer> = Vec::with_capacity(1 + cosigners.len());
                 signers.push(signer.as_ref());
-                signers.extend(cosigners.iter().map(|kp| *kp as &dyn Signer));
+                signers.extend(cosigners.iter().copied());
                 let mut tx = Transaction::new_with_payer(&[instruction], Some(&signer.pubkey()));
                 tx.try_sign(&signers, recent_blockhash)
                     .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
@@ -125,25 +122,13 @@ impl Authority {
     }
 }
 
-/// Load a single-sig signer from a CLI value: a keypair file path, or a
-/// `kms://` URI for a key held in GCP Cloud KMS (see [`crate::kms`]).
-fn signer_from_path_or_uri(value: &str) -> eyre::Result<Box<dyn Signer>> {
-    if value.starts_with(crate::kms::KMS_URI_SCHEME) {
-        Ok(Box::new(crate::kms::KmsSigner::from_uri(value)?))
-    } else {
-        let keypair = read_keypair_file(value)
-            .map_err(|e| eyre::eyre!("Failed to load authority keypair from {}: {}", value, e))?;
-        Ok(Box::new(keypair))
-    }
-}
-
 /// Build an [`Authority`] from CLI arguments.
 ///
 /// # Arguments
 /// * `url` - RPC URL, used to resolve + validate a multisig create-key
 /// * `authority` - Single-sig: path to authority keypair, or a `kms://` URI
 /// * `multisig` - Multi-sig: the multisig's create-key (pubkey)
-/// * `multisig_authority` - Multi-sig: path to member keypair
+/// * `multisig_authority` - Multi-sig: path to member keypair, or a `kms://` URI
 ///
 /// # Returns
 /// - `Authority::SingleSig` if only `authority` is provided
@@ -160,7 +145,7 @@ pub fn from_cli_args(
     match (authority, multisig, multisig_authority) {
         (Some(authority_value), None, None) => {
             // Single-sig mode
-            let signer = signer_from_path_or_uri(&authority_value)?;
+            let signer = crate::utils::run::load_signer(&authority_value, "--authority")?;
             Ok(Authority::SingleSig { signer })
         }
         (None, Some(create_key_str), Some(member_path)) => {
@@ -169,13 +154,12 @@ pub fn from_cli_args(
             let create_key = create_key_str
                 .parse::<Pubkey>()
                 .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key_str, e))?;
-            let member =
-                crate::utils::run::read_keypair_file_checked(&member_path, "--multisig-authority")?;
+            let member = crate::utils::run::load_signer(&member_path, "--multisig-authority")?;
             let rpc = RpcClient::new(url.to_string());
             let resolved = squads::resolve(&rpc, &create_key)?;
             Ok(Authority::MultiSig {
                 multisig: resolved.multisig,
-                member: Box::new(member),
+                member,
             })
         }
         _ => Err(eyre::eyre!(
@@ -232,7 +216,7 @@ pub fn resolve_target(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_sdk::signature::write_keypair_file;
+    use solana_sdk::signature::{write_keypair_file, Keypair};
 
     // No RPC calls are made on any path exercised here, so the URL is a
     // placeholder.
@@ -315,14 +299,16 @@ mod tests {
         assert!(err.to_string().contains("pubkey="), "got: {err}");
     }
 
+    /// A KMS multisig member is supported; a malformed URI must still fail at
+    /// parse time, before any KMS client or network access.
     #[test]
-    fn from_cli_args_rejects_kms_multisig_member() {
+    fn from_cli_args_rejects_malformed_kms_member_uri() {
         let err = expect_err(from_cli_args(
             URL,
             None,
             Some("11111111111111111111111111111111".into()),
-            Some("kms://projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1?pubkey=4zvwRjXUKGfvwnParsHAS3HuSVzV5cA4McphgmoCtajS".into()),
+            Some("kms://not-a-resource-name".into()),
         ));
-        assert!(err.to_string().contains("not supported"), "got: {err}");
+        assert!(err.to_string().contains("pubkey="), "got: {err}");
     }
 }

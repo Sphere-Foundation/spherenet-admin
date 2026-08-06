@@ -45,10 +45,8 @@ pub fn request(
     let rpc_client = RpcClient::new(rpc_url);
 
     // The vote account co-signs to prove control — load its keypair.
-    let vote_account = crate::utils::run::read_keypair_file_checked(
-        &vote_account_keypair,
-        "the vote-account co-signer",
-    )?;
+    let vote_account =
+        crate::utils::run::load_signer(&vote_account_keypair, "the vote-account co-signer")?;
     let vote_account_pubkey = vote_account.pubkey();
 
     // Get current epoch if start_epoch not provided
@@ -105,7 +103,7 @@ pub fn request(
     let result = authority.execute_instruction_with_cosigners(
         &rpc_client,
         instruction,
-        &[&vote_account],
+        &[vote_account.as_ref()],
         &description,
     )?;
     emit(&result, mode)

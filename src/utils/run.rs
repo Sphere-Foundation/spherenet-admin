@@ -33,12 +33,27 @@ pub fn dedupe_signers<'a>(signers: &[&'a dyn Signer]) -> Vec<&'a dyn Signer> {
     out
 }
 
-/// Load a keypair file for an argument that must be a local file (payers,
-/// co-signers, account keypairs — everything except a single-sig authority).
+/// Load a signer from a CLI value: a keypair file path, or a `kms://` URI for
+/// a key held in GCP Cloud KMS (see [`crate::kms`]).
 ///
-/// Catches a `kms://` URI early with a clear "not supported here" error;
-/// handing it to `read_keypair_file` would produce a baffling "No such file
-/// or directory". `flag` names the argument for error messages.
+/// This is the default loader for every keypair argument; `flag` names the
+/// argument for error messages. Arguments that must stay file-based use
+/// [`read_keypair_file_checked`] instead.
+pub fn load_signer(path: &str, flag: &str) -> eyre::Result<Box<dyn Signer>> {
+    if path.starts_with(crate::kms::KMS_URI_SCHEME) {
+        Ok(Box::new(crate::kms::KmsSigner::from_uri(path)?))
+    } else {
+        let keypair = read_keypair_file(path)
+            .map_err(|e| eyre::eyre!("Failed to read keypair for {flag} from {path}: {e}"))?;
+        Ok(Box::new(keypair))
+    }
+}
+
+/// Load a keypair for an argument that must stay a local file — the
+/// `program deploy`/`upgrade` chunk-signing roles and `vote create`'s
+/// identity/authorized-voter keys. Rejects a `kms://` URI with a clear error
+/// instead of `read_keypair_file`'s baffling "No such file or directory";
+/// `flag` names the argument (and may carry the reason) for error messages.
 pub fn read_keypair_file_checked(path: &str, flag: &str) -> eyre::Result<Keypair> {
     if path.starts_with(crate::kms::KMS_URI_SCHEME) {
         eyre::bail!("KMS signers are not supported for {flag}; pass a keypair file path");
@@ -204,4 +219,59 @@ pub fn transfer(
     let result = from.execute_instruction(&rpc_client, instruction, &description)?;
 
     emit(&result, mode)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use solana_sdk::signature::write_keypair_file;
+
+    fn temp_keypair_file(name: &str) -> (Keypair, String) {
+        let keypair = Keypair::new();
+        let path = std::env::temp_dir().join(format!(
+            "spherenet-admin-utils-test-{}-{}.json",
+            std::process::id(),
+            name
+        ));
+        let path = path.to_str().unwrap().to_string();
+        write_keypair_file(&keypair, &path).unwrap();
+        (keypair, path)
+    }
+
+    #[test]
+    fn load_signer_reads_keypair_file() {
+        let (keypair, path) = temp_keypair_file("load-signer");
+        let signer = load_signer(&path, "--payer").unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(signer.pubkey(), keypair.pubkey());
+    }
+
+    #[test]
+    fn load_signer_reports_missing_file_with_flag() {
+        let err = load_signer("/nonexistent/payer.json", "--payer")
+            .err()
+            .unwrap();
+        let msg = err.to_string();
+        assert!(msg.contains("--payer"), "got: {msg}");
+        assert!(msg.contains("/nonexistent/payer.json"), "got: {msg}");
+    }
+
+    #[test]
+    fn load_signer_rejects_malformed_kms_uri() {
+        // Fails at URI parsing, before any KMS client or network access.
+        let err = load_signer("kms://not-a-resource-name", "--payer")
+            .err()
+            .unwrap();
+        assert!(err.to_string().contains("pubkey="), "got: {err}");
+    }
+
+    #[test]
+    fn read_keypair_file_checked_rejects_kms_uri() {
+        let err = read_keypair_file_checked(
+            "kms://projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1?pubkey=4zvwRjXUKGfvwnParsHAS3HuSVzV5cA4McphgmoCtajS",
+            "--payer",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("not supported"), "got: {err}");
+    }
 }

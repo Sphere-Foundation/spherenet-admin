@@ -36,7 +36,7 @@ spherenet-stake-interface = { version = "0.5.1", features = ["bincode"] }
 spherenet-validator-whitelist-client = { version = "0.5.1" }
 spherenet-validator-whitelist-interface = { version = "0.5.1", features = [ "solana-p" ] }
 spherenet-loader-v3-interface = { version = "0.3.1", features = ["bincode"] }
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio = { version = "1", features = ["rt", "net", "time"] }
 
 [dev-dependencies]
 google-cloud-auth = { version = "1" }

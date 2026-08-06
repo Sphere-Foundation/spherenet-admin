@@ -100,7 +100,10 @@ pub fn deploy(
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Load keypairs
-    let payer = crate::utils::run::read_keypair_file_checked(&payer_keypair_path, "--payer")?;
+    let payer = crate::utils::run::read_keypair_file_checked(
+        &payer_keypair_path,
+        "--payer on `program deploy` (it signs every buffer-write chunk)",
+    )?;
     let program_keypair =
         crate::utils::run::read_keypair_file_checked(&program_keypair_path, "--program-keypair")?;
     let program_id = program_keypair.pubkey();
@@ -239,8 +242,13 @@ pub fn upgrade_program(
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
-    // Load keypairs and parse addresses
-    let payer = crate::utils::run::read_keypair_file_checked(&payer_keypair_path, "--payer")?;
+    // Load keypairs and parse addresses. The payer stays file-based: it signs
+    // every ~900-byte buffer-write chunk (hundreds of round-trips for a KMS
+    // signer); the upgrade AUTHORITY signs once and supports kms://.
+    let payer = crate::utils::run::read_keypair_file_checked(
+        &payer_keypair_path,
+        "--payer on `program upgrade` (it signs every buffer-write chunk)",
+    )?;
     let program_id = Pubkey::from_str(&program_id_str)
         .map_err(|e| eyre::eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
 
