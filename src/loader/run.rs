@@ -100,17 +100,17 @@ pub fn deploy(
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Load keypairs
-    let payer = crate::utils::run::read_keypair_file_checked(
+    let payer = crate::cli::signer::read_keypair_file_checked(
         &payer_keypair_path,
         "--payer on `program deploy` (it signs every buffer-write chunk)",
     )?;
     let program_keypair =
-        crate::utils::run::read_keypair_file_checked(&program_keypair_path, "--program-keypair")?;
+        crate::cli::signer::read_keypair_file_checked(&program_keypair_path, "--program-keypair")?;
     let program_id = program_keypair.pubkey();
     // Deploy signs every ~900-byte buffer-write chunk with this key (hundreds
     // of round-trips for a KMS signer), so it stays file-based; `program
     // upgrade` supports kms:// because only one instruction needs the authority.
-    let upgrade_authority_keypair = crate::utils::run::read_keypair_file_checked(
+    let upgrade_authority_keypair = crate::cli::signer::read_keypair_file_checked(
         &upgrade_authority_path,
         "--upgrade-authority on `program deploy`",
     )?;
@@ -245,7 +245,7 @@ pub fn upgrade_program(
     // Load keypairs and parse addresses. The payer stays file-based: it signs
     // every ~900-byte buffer-write chunk (hundreds of round-trips for a KMS
     // signer); the upgrade AUTHORITY signs once and supports kms://.
-    let payer = crate::utils::run::read_keypair_file_checked(
+    let payer = crate::cli::signer::read_keypair_file_checked(
         &payer_keypair_path,
         "--payer on `program upgrade` (it signs every buffer-write chunk)",
     )?;

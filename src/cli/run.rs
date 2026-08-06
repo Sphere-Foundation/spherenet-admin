@@ -586,7 +586,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             )?,
         },
         Commands::Kms { action } => match action {
-            KmsAction::Address { pubkey_pem } => crate::kms::show_address(pubkey_pem, mode)?,
+            KmsAction::Address { pubkey_pem } => crate::cli::kms::show_address(pubkey_pem, mode)?,
         },
         Commands::Balance { pubkey } => utils::show::balance(&cli.url, pubkey, mode)?,
         Commands::Epoch => utils::show::epoch(&cli.url, mode)?,

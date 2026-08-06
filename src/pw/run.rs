@@ -50,7 +50,7 @@ pub fn request(
     let rpc_client = RpcClient::new(rpc_url);
 
     // The deploy authority co-signs to prove control — load its keypair.
-    let deploy_authority = crate::utils::run::load_signer(
+    let deploy_authority = crate::cli::signer::load_signer(
         &deploy_authority_keypair,
         "the deploy-authority co-signer",
     )?;

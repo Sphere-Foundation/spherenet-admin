@@ -1,5 +1,4 @@
 mod cli;
-mod kms;
 mod loader;
 mod mp;
 mod pw;

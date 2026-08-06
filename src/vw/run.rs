@@ -46,7 +46,7 @@ pub fn request(
 
     // The vote account co-signs to prove control — load its keypair.
     let vote_account =
-        crate::utils::run::load_signer(&vote_account_keypair, "the vote-account co-signer")?;
+        crate::cli::signer::load_signer(&vote_account_keypair, "the vote-account co-signer")?;
     let vote_account_pubkey = vote_account.pubkey();
 
     // Get current epoch if start_epoch not provided

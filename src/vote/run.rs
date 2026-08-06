@@ -81,20 +81,20 @@ pub fn create(
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
     // Load signing keypairs.
-    let vote_account = crate::utils::run::load_signer(&vote_account_path, "--vote-account")?;
+    let vote_account = crate::cli::signer::load_signer(&vote_account_path, "--vote-account")?;
     // The identity and authorized voter stay file-based deliberately: the
     // validator host must hold the identity key to run, and it derives its
     // BLS voting key from the authorized-voter keypair FILE — a KMS key here
     // would strand the vote account.
-    let identity = crate::utils::run::read_keypair_file_checked(
+    let identity = crate::cli::signer::read_keypair_file_checked(
         &identity_path,
         "--identity (the validator host needs this keypair locally)",
     )?;
     // Funder and fee payer both default to the identity keypair when omitted.
     let from_path = from_path.unwrap_or_else(|| identity_path.clone());
-    let from = crate::utils::run::load_signer(&from_path, "--from")?;
+    let from = crate::cli::signer::load_signer(&from_path, "--from")?;
     let payer_path = payer_path.unwrap_or_else(|| identity_path.clone());
-    let payer = crate::utils::run::load_signer(&payer_path, "--payer")?;
+    let payer = crate::cli::signer::load_signer(&payer_path, "--payer")?;
 
     // The authorized voter is loaded as a *keypair* (not a pubkey): on the legacy
     // path it must sign the `authorize_checked` that appends the BLS key, and its
@@ -103,7 +103,7 @@ pub fn create(
     // setup where identity == voter. The withdrawer, by contrast, never signs at
     // create time, so it stays a plain pubkey.
     let authorized_voter_path = authorized_voter.unwrap_or_else(|| identity_path.clone());
-    let authorized_voter = crate::utils::run::read_keypair_file_checked(
+    let authorized_voter = crate::cli::signer::read_keypair_file_checked(
         &authorized_voter_path,
         "--authorized-voter (the validator host derives its BLS voting key from this keypair \
          file; a KMS key would strand the vote account)",
@@ -210,7 +210,7 @@ pub fn create(
         // Signers: fee payer, funder, the vote account (creates itself), and the
         // node identity (signs initialize). The authorized voter does NOT sign at
         // init — its BLS key rides in the instruction data.
-        let signers = crate::utils::run::dedupe_signers(&[
+        let signers = crate::cli::signer::dedupe_signers(&[
             payer.as_ref(),
             from.as_ref(),
             vote_account.as_ref(),
@@ -266,7 +266,7 @@ pub fn create(
         // The append's checked variant needs the authorized-voter keypair to sign
         // as BOTH the current and new voter (deduped to one signature), so it joins
         // the signer set alongside the payer, funder, vote account, and identity.
-        let signers = crate::utils::run::dedupe_signers(&[
+        let signers = crate::cli::signer::dedupe_signers(&[
             payer.as_ref(),
             from.as_ref(),
             vote_account.as_ref(),
@@ -323,8 +323,8 @@ pub fn withdraw(
         .map_err(|e| eyre::eyre!("Invalid destination pubkey '{}': {}", destination, e))?;
 
     let withdrawer =
-        crate::utils::run::load_signer(&withdraw_authority_path, "--withdraw-authority")?;
-    let payer = crate::utils::run::load_signer(&payer_path, "--payer")?;
+        crate::cli::signer::load_signer(&withdraw_authority_path, "--withdraw-authority")?;
+    let payer = crate::cli::signer::load_signer(&payer_path, "--payer")?;
 
     // Preflight: the account must exist and be a vote account. The on-chain
     // program enforces the withdraw authority. Also resolves the balance for `--all`.
@@ -377,7 +377,7 @@ pub fn withdraw(
 
     let instruction = withdraw_ix(&vote_pubkey, &withdrawer.pubkey(), lamports, &destination);
 
-    let signers = crate::utils::run::dedupe_signers(&[payer.as_ref(), withdrawer.as_ref()]);
+    let signers = crate::cli::signer::dedupe_signers(&[payer.as_ref(), withdrawer.as_ref()]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
     transaction

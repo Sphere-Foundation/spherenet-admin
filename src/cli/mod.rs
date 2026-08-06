@@ -4,7 +4,9 @@
 
 pub mod authority;
 pub mod commands;
+pub mod kms;
 pub mod output;
 pub mod run;
+pub mod signer;
 
 pub use run::run;
