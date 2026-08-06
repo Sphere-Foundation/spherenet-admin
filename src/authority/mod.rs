@@ -7,6 +7,7 @@
 pub mod kms;
 pub mod signer;
 
+use crate::authority::signer::AdminSigner;
 use crate::cli::output::{progress, TxOutputView};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
@@ -16,15 +17,16 @@ use solana_sdk::{
 
 /// Authority that can execute instructions
 ///
-/// Signers are trait objects so each can be a local
+/// Each signer is an [`AdminSigner`] — a local
 /// [`solana_sdk::signature::Keypair`] or a [`crate::authority::kms::KmsSigner`].
+#[derive(Debug)]
 pub enum Authority {
     /// Single-signature authority (direct execution)
-    SingleSig { signer: Box<dyn Signer> },
+    SingleSig { signer: AdminSigner },
     /// Multi-signature authority (creates proposals)
     MultiSig {
         multisig: Pubkey,
-        member: Box<dyn Signer>,
+        member: AdminSigner,
     },
 }
 
@@ -227,15 +229,6 @@ mod tests {
     // placeholder.
     const URL: &str = "http://localhost:1";
 
-    // `Result::unwrap_err` needs `Authority: Debug`, which `Box<dyn Signer>`
-    // can't derive — unwrap the error side manually.
-    fn expect_err(result: eyre::Result<Authority>) -> eyre::Report {
-        match result {
-            Ok(_) => panic!("expected an error"),
-            Err(e) => e,
-        }
-    }
-
     fn temp_keypair_file(name: &str) -> (Keypair, String) {
         let keypair = Keypair::new();
         let path = std::env::temp_dir().join(format!(
@@ -250,7 +243,7 @@ mod tests {
 
     #[test]
     fn from_args_rejects_no_authority() {
-        let err = expect_err(Authority::from_args(URL, None, None, None));
+        let err = Authority::from_args(URL, None, None, None).unwrap_err();
         assert!(err.to_string().contains("--authority"), "got: {err}");
     }
 
@@ -280,12 +273,8 @@ mod tests {
 
     #[test]
     fn from_args_reports_missing_keypair_path() {
-        let err = expect_err(Authority::from_args(
-            URL,
-            Some("/nonexistent/authority.json".into()),
-            None,
-            None,
-        ));
+        let err = Authority::from_args(URL, Some("/nonexistent/authority.json".into()), None, None)
+            .unwrap_err();
         assert!(
             err.to_string().contains("/nonexistent/authority.json"),
             "got: {err}"
@@ -295,12 +284,8 @@ mod tests {
     #[test]
     fn from_args_rejects_malformed_kms_uri() {
         // Fails at URI parsing, before any KMS client or network access.
-        let err = expect_err(Authority::from_args(
-            URL,
-            Some("kms://not-a-resource-name".into()),
-            None,
-            None,
-        ));
+        let err = Authority::from_args(URL, Some("kms://not-a-resource-name".into()), None, None)
+            .unwrap_err();
         assert!(err.to_string().contains("pubkey="), "got: {err}");
     }
 
@@ -308,12 +293,13 @@ mod tests {
     /// parse time, before any KMS client or network access.
     #[test]
     fn from_args_rejects_malformed_kms_member_uri() {
-        let err = expect_err(Authority::from_args(
+        let err = Authority::from_args(
             URL,
             None,
             Some("11111111111111111111111111111111".into()),
             Some("kms://not-a-resource-name".into()),
-        ));
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("pubkey="), "got: {err}");
     }
 }

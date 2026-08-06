@@ -7,8 +7,8 @@
 use crate::authority::kms;
 use solana_sdk::{
     pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair},
-    signer::Signer,
+    signature::{read_keypair_file, Keypair, Signature},
+    signer::{Signer, SignerError},
 };
 
 /// Deduplicate signers by pubkey, preserving order (first occurrence wins).
@@ -29,19 +29,66 @@ pub fn dedupe_signers<'a>(signers: &[&'a dyn Signer]) -> Vec<&'a dyn Signer> {
     out
 }
 
+/// A resolved CLI signer: a local keypair file, or a key held in GCP Cloud KMS.
+///
+/// A concrete, `Debug`-able alternative to `Box<dyn Signer>` for the fixed set
+/// of signer sources the admin CLI supports (which is what lets
+/// [`crate::authority::Authority`] derive `Debug`). [`AdminSigner::as_ref`]
+/// yields the `&dyn Signer` the Solana signing APIs expect, so call sites read
+/// the same as they did with the boxed form.
+pub enum AdminSigner {
+    /// A keypair loaded from a local file.
+    File(Keypair),
+    /// A key held in GCP Cloud KMS.
+    Kms(kms::KmsSigner),
+}
+
+impl AdminSigner {
+    /// Borrow as a `&dyn Signer` for the Solana signing APIs (drop-in for
+    /// `Box::<dyn Signer>::as_ref`).
+    pub fn as_ref(&self) -> &dyn Signer {
+        match self {
+            AdminSigner::File(k) => k,
+            AdminSigner::Kms(k) => k,
+        }
+    }
+}
+
+impl Signer for AdminSigner {
+    fn try_pubkey(&self) -> Result<Pubkey, SignerError> {
+        self.as_ref().try_pubkey()
+    }
+    fn try_sign_message(&self, message: &[u8]) -> Result<Signature, SignerError> {
+        self.as_ref().try_sign_message(message)
+    }
+    fn is_interactive(&self) -> bool {
+        self.as_ref().is_interactive()
+    }
+}
+
+impl std::fmt::Debug for AdminSigner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let kind = match self {
+            AdminSigner::File(_) => "File",
+            AdminSigner::Kms(_) => "Kms",
+        };
+        f.debug_tuple(kind).field(&self.pubkey()).finish()
+    }
+}
+
 /// Load a signer from a CLI value: a keypair file path, or a `kms://` URI for
 /// a key held in GCP Cloud KMS (see [`crate::authority::kms`]).
 ///
 /// This is the default loader for every keypair argument; `flag` names the
 /// argument for error messages. Arguments that must stay file-based use
 /// [`read_keypair_file_checked`] instead.
-pub fn load_signer(path: &str, flag: &str) -> eyre::Result<Box<dyn Signer>> {
+pub fn load_signer(path: &str, flag: &str) -> eyre::Result<AdminSigner> {
     if path.starts_with(kms::KMS_URI_SCHEME) {
-        Ok(Box::new(kms::KmsSigner::from_uri(path)?))
+        Ok(AdminSigner::Kms(kms::KmsSigner::from_uri(path)?))
     } else {
         let keypair = read_keypair_file(path)
             .map_err(|e| eyre::eyre!("Failed to read keypair for {flag} from {path}: {e}"))?;
-        Ok(Box::new(keypair))
+        Ok(AdminSigner::File(keypair))
     }
 }
 
