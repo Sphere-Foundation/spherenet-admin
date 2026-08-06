@@ -168,7 +168,19 @@ spherenet-admin kms address pubkey.pem
 
 Authentication uses Application Default Credentials: run
 `gcloud auth application-default login`, or point
-`GOOGLE_APPLICATION_CREDENTIALS` at a service-account key. The caller needs
+`GOOGLE_APPLICATION_CREDENTIALS` at a service-account key. Note that gcloud
+keeps **two separate credential stores**: `gcloud auth login` covers the
+`gcloud` CLI itself, while `gcloud auth application-default login` covers
+client libraries — including this CLI's KMS signing. Refreshing one does not
+refresh the other, so when your session expires (e.g. an org session-length
+policy), re-run **both**:
+
+```bash
+gcloud auth login && gcloud auth application-default login
+```
+
+An expired ADC session surfaces here as `Cannot access KMS key …: cannot
+create the authentication headers`. The caller needs
 `cloudkms.cryptoKeyVersions.useToSign` on the key (e.g. role
 `roles/cloudkms.signerVerifier`). Before building a transaction, the CLI
 preflights the key (access, algorithm, and that its address matches the URI's
