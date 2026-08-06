@@ -109,6 +109,9 @@ impl Authority {
                 let mut signers: Vec<&dyn Signer> = Vec::with_capacity(1 + cosigners.len());
                 signers.push(signer.as_ref());
                 signers.extend(cosigners.iter().copied());
+                // A cosigner may coincide with the authority key; a transaction
+                // that lists the same signer twice is rejected, so dedupe first.
+                let signers = crate::authority::signer::dedupe_signers(&signers);
                 let mut tx = Transaction::new_with_payer(&[instruction], Some(&signer.pubkey()));
                 tx.try_sign(&signers, recent_blockhash)
                     .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;

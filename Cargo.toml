@@ -1,6 +1,6 @@
 [package]
 name = "spherenet-admin"
-version = "0.3.4"
+version = "0.4.0"
 edition = "2021"
 repository = "https://github.com/Sphere-Foundation/spherenet-admin"
 license = "Apache-2.0"
@@ -32,7 +32,7 @@ spherenet-monetary-policy-client = { version = "0.4.1" }
 spherenet-monetary-policy-interface = { version = "0.4.1", features = [ "solana-p" ] }
 spherenet-program-whitelist-client = { version = "0.3.1" }
 spherenet-program-whitelist-interface = { version = "0.3.1", features = [ "solana-p" ] }
-spherenet-stake-interface = { version = "0.5.1", features = ["bincode"] }
+spherenet-stake-interface = { version = "0.5.2", features = ["bincode"] }
 spherenet-validator-whitelist-client = { version = "0.5.1" }
 spherenet-validator-whitelist-interface = { version = "0.5.1", features = [ "solana-p" ] }
 spherenet-loader-v3-interface = { version = "0.3.1", features = ["bincode"] }

@@ -6011,7 +6011,7 @@ dependencies = [
 
 [[package]]
 name = "spherenet-admin"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "actix-cors",
  "actix-web",
@@ -6132,9 +6132,9 @@ dependencies = [
 
 [[package]]
 name = "spherenet-stake-interface"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "773cf8f9057c8d177a7dcb5fbea4cd395550940b1ac6db1a036982c0e053fdbb"
+checksum = "b6dbe9c13c6d81f4596f188d23a6db789771312de80805069a08267ef102dc9e"
 dependencies = [
  "num-traits",
  "serde",

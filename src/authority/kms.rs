@@ -188,7 +188,7 @@ const ED25519_SPKI_PREFIX: [u8; 12] = [
 ///
 /// Rejects non-Ed25519 keys rather than silently deriving a wrong address
 /// from the trailing bytes of some other key type.
-pub fn address_from_pem(pem: &str) -> eyre::Result<Pubkey> {
+fn address_from_pem(pem: &str) -> eyre::Result<Pubkey> {
     let body: String = pem
         .lines()
         .filter(|line| !line.starts_with("-----"))
