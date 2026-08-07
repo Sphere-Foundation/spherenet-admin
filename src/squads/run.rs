@@ -7,7 +7,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
     pubkey::Pubkey,
-    signature::{Keypair, Signer},
+    signature::Signer,
     transaction::Transaction,
 };
 use std::str::FromStr;
@@ -98,11 +98,9 @@ pub fn create(
     }
 
     // Load keypairs
-    let create_key = solana_sdk::signature::read_keypair_file(&create_key_path)
-        .map_err(|e| eyre::eyre!("Failed to read create key '{}': {}", create_key_path, e))?;
+    let create_key = crate::authority::signer::load_signer(&create_key_path, "--create-key")?;
 
-    let payer = solana_sdk::signature::read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer key '{}': {}", payer_path, e))?;
+    let payer = crate::authority::signer::load_signer(&payer_path, "--payer")?;
 
     // Create RPC client
     let rpc = RpcClient::new(url);
@@ -158,14 +156,11 @@ pub fn create(
 
     progress("Sending transaction...");
 
-    // Send transaction
+    // Send transaction — both the payer and the create-key must sign
     let recent_blockhash = rpc.get_latest_blockhash()?;
-    let tx = Transaction::new_signed_with_payer(
-        &[create_ix],
-        Some(&payer.pubkey()),
-        &[&payer, &create_key], // Both must sign
-        recent_blockhash,
-    );
+    let mut tx = Transaction::new_with_payer(&[create_ix], Some(&payer.pubkey()));
+    tx.try_sign(&[payer.as_ref(), create_key.as_ref()], recent_blockhash)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc.send_and_confirm_transaction(&tx)?;
 
     let (vault_pda, _) = squads::types::get_vault_pda(&multisig_pda, 0, &program_id);
@@ -189,7 +184,7 @@ pub fn create(
 pub fn propose(
     rpc: &RpcClient,
     multisig: &Pubkey,
-    member: &Keypair,
+    member: &dyn Signer,
     instruction: Instruction,
     description: &str,
 ) -> eyre::Result<TxOutputView> {
@@ -250,14 +245,16 @@ pub fn propose(
         proposal_args,
     )?;
 
-    // Send both instructions in one transaction
+    // Send both instructions in one transaction. try_sign, not the panicking
+    // new_signed_with_payer: a KMS member does a network round-trip, so
+    // failure is a normal condition.
     let recent_blockhash = rpc.get_latest_blockhash()?;
-    let tx = Transaction::new_signed_with_payer(
+    let mut tx = Transaction::new_with_payer(
         &[vault_tx_create_ix, proposal_create_ix],
         Some(&member.pubkey()),
-        &[member],
-        recent_blockhash,
     );
+    tx.try_sign(&[member], recent_blockhash)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc.send_and_confirm_transaction(&tx)?;
 
     Ok(TxOutputView::ProposalCreated {
@@ -291,8 +288,7 @@ pub fn approve(
         .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
 
     // Load member key
-    let member = solana_sdk::signature::read_keypair_file(&member_path)
-        .map_err(|e| eyre::eyre!("Failed to read member key: {}", e))?;
+    let member = crate::authority::signer::load_signer(&member_path, "--member")?;
 
     let rpc = RpcClient::new(url);
 
@@ -318,12 +314,9 @@ pub fn approve(
 
     // Send transaction
     let recent_blockhash = rpc.get_latest_blockhash()?;
-    let tx = Transaction::new_signed_with_payer(
-        &[approve_ix],
-        Some(&member.pubkey()),
-        &[&member],
-        recent_blockhash,
-    );
+    let mut tx = Transaction::new_with_payer(&[approve_ix], Some(&member.pubkey()));
+    tx.try_sign(&[member.as_ref()], recent_blockhash)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
 
     progress("Sending approval transaction...");
     let signature = rpc.send_and_confirm_transaction(&tx)?;
@@ -360,8 +353,7 @@ pub fn execute(
         .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
 
     // Load member key
-    let member = solana_sdk::signature::read_keypair_file(&member_path)
-        .map_err(|e| eyre::eyre!("Failed to read member key: {}", e))?;
+    let member = crate::authority::signer::load_signer(&member_path, "--member")?;
 
     let rpc = RpcClient::new(url);
 
@@ -446,12 +438,9 @@ pub fn execute(
 
     // Send transaction
     let recent_blockhash = rpc.get_latest_blockhash()?;
-    let tx = Transaction::new_signed_with_payer(
-        &[execute_ix],
-        Some(&member.pubkey()),
-        &[&member],
-        recent_blockhash,
-    );
+    let mut tx = Transaction::new_with_payer(&[execute_ix], Some(&member.pubkey()));
+    tx.try_sign(&[member.as_ref()], recent_blockhash)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
 
     let signature = rpc.send_and_confirm_transaction(&tx)?;
 

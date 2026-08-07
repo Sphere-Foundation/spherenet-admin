@@ -1,8 +1,7 @@
-use crate::cli::authority::Authority;
+use crate::authority::Authority;
 use crate::cli::output::{emit, progress, OutputMode};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
-use solana_sdk::signature::read_keypair_file;
 use solana_sdk::signer::Signer;
 use spherenet_program_whitelist_client::instructions::{
     ApproveWhitelistEntryBuilder, RejectWhitelistEntryBuilder, RemoveWhitelistEntryBuilder,
@@ -51,13 +50,10 @@ pub fn request(
     let rpc_client = RpcClient::new(rpc_url);
 
     // The deploy authority co-signs to prove control — load its keypair.
-    let deploy_authority = read_keypair_file(&deploy_authority_keypair).map_err(|e| {
-        eyre::eyre!(
-            "Failed to load deploy authority keypair from {}: {}",
-            deploy_authority_keypair,
-            e
-        )
-    })?;
+    let deploy_authority = crate::authority::signer::load_signer(
+        &deploy_authority_keypair,
+        "the deploy-authority co-signer",
+    )?;
     let deploy_authority_pubkey = deploy_authority.pubkey();
 
     let (whitelist_entry_pda, _bump) = derive_whitelist_entry(&deploy_authority_pubkey);
@@ -84,7 +80,7 @@ pub fn request(
     let result = authority.execute_instruction_with_cosigners(
         &rpc_client,
         instruction,
-        &[&deploy_authority],
+        &[deploy_authority.as_ref()],
         &description,
     )?;
     emit(&result, mode)

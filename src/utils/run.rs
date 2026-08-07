@@ -1,34 +1,13 @@
-//! Utility actions: airdrop, transfer — plus the shared signer-dedup helper
-//! used across command modules.
+//! Utility actions: airdrop and transfer.
 
-use crate::cli::authority::Authority;
+use crate::authority::Authority;
 use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{
-    native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::Keypair, signer::Signer,
-};
+use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signer::Signer};
 use solana_system_interface::instruction as system_instruction;
 use std::str::FromStr;
-
-/// Deduplicate signers by pubkey, preserving order (first occurrence wins).
-///
-/// Several roles (funder, fee payer, authority, new account) frequently
-/// collapse onto one keypair. A transaction that lists the same key twice as a
-/// signer is rejected, so callers pass every role and let this drop duplicates.
-pub fn dedupe_signers<'a>(signers: &[&'a Keypair]) -> Vec<&'a Keypair> {
-    let mut seen: Vec<Pubkey> = Vec::with_capacity(signers.len());
-    let mut out: Vec<&Keypair> = Vec::with_capacity(signers.len());
-    for kp in signers {
-        let pk = kp.pubkey();
-        if !seen.contains(&pk) {
-            seen.push(pk);
-            out.push(kp);
-        }
-    }
-    out
-}
 
 #[derive(serde::Serialize)]
 pub struct AirdropResult {
@@ -145,13 +124,8 @@ pub fn transfer(
 
     // Resolve the destination (raw address or a multisig's vault) through the
     // shared multisig-safety gate.
-    let destination = crate::cli::authority::resolve_target(
-        &rpc_client,
-        to,
-        to_multisig,
-        "--to",
-        "--to-multisig",
-    )?;
+    let destination =
+        crate::authority::resolve_target(&rpc_client, to, to_multisig, "--to", "--to-multisig")?;
 
     // Convert SPHR to lamports
     let lamports = (amount * LAMPORTS_PER_SOL as f64) as u64;
@@ -160,10 +134,10 @@ pub fn transfer(
 
     // Show the source (progress → stderr).
     match &from {
-        crate::cli::authority::Authority::SingleSig { keypair } => {
-            progress(format!("From:     {}", keypair.pubkey()));
+        crate::authority::Authority::SingleSig { signer } => {
+            progress(format!("From:     {}", signer.pubkey()));
         }
-        crate::cli::authority::Authority::MultiSig { multisig, member } => {
+        crate::authority::Authority::MultiSig { multisig, member } => {
             progress(format!("Proposer: {}", member.pubkey()));
             progress(format!("Multisig: {}", multisig));
             // Funds come from the vault PDA, not the config account.

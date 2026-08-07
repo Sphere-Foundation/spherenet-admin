@@ -3,7 +3,7 @@
 //! All keypair-file based; the relevant authority signs each operation.
 //! `create` sets authorities as pubkeys (no signature); `delegate`/`deactivate`
 //! are signed by the staker; `withdraw` by the withdraw authority.
-//! 
+//!
 //! `deactivate --force` is the exception: it is permissionless (only the fee
 //! payer signs) and deactivates stake left delegated to a validator that has
 //! been removed from the validator whitelist.
@@ -12,10 +12,7 @@ use crate::cli::output::{emit, progress, subfield, OutputMode, Render, TxOutputV
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    native_token::LAMPORTS_PER_SOL,
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Signer},
-    transaction::Transaction,
+    native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signature::Signer, transaction::Transaction,
 };
 use spherenet_stake_interface::{
     instruction::{
@@ -69,17 +66,10 @@ pub fn create(
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
 
     // Load signing keypairs.
-    let stake_account = read_keypair_file(&stake_account_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read stake account keypair from {}: {}",
-            stake_account_path,
-            e
-        )
-    })?;
-    let from = read_keypair_file(&from_path)
-        .map_err(|e| eyre::eyre!("Failed to read from keypair from {}: {}", from_path, e))?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let stake_account =
+        crate::authority::signer::load_signer(&stake_account_path, "--stake-account")?;
+    let from = crate::authority::signer::load_signer(&from_path, "--from")?;
+    let payer = crate::authority::signer::load_signer(&payer_path, "--payer")?;
 
     // Parse non-signing authority pubkeys.
     let staker = Pubkey::from_str(&stake_authority).map_err(|e| {
@@ -144,10 +134,16 @@ pub fn create(
 
     // Signers: fee payer first, plus funder and the new account. Authorities
     // are pubkeys only — they do not sign at creation.
-    let signers = crate::utils::run::dedupe_signers(&[&payer, &from, &stake_account]);
+    let signers = crate::authority::signer::dedupe_signers(&[
+        payer.as_ref(),
+        from.as_ref(),
+        stake_account.as_ref(),
+    ]);
 
     let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     progress("Not delegated yet — run `stake delegate` to delegate to a vote account.");
@@ -190,15 +186,9 @@ pub fn delegate(
     let vote_pubkey = Pubkey::from_str(&vote_account)
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey '{}': {}", vote_account, e))?;
 
-    let stake_authority = read_keypair_file(&stake_authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read stake authority keypair from {}: {}",
-            stake_authority_path,
-            e
-        )
-    })?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let stake_authority =
+        crate::authority::signer::load_signer(&stake_authority_path, "--stake-authority")?;
+    let payer = crate::authority::signer::load_signer(&payer_path, "--payer")?;
 
     // ── Preflight ────────────────────────────────────────────────────────────
     preflight_vote_account(&rpc_client, &vote_pubkey)?;
@@ -221,10 +211,13 @@ pub fn delegate(
     );
 
     // Signers: fee payer (payer of the tx) and the staker.
-    let signers = crate::utils::run::dedupe_signers(&[&payer, &stake_authority]);
+    let signers =
+        crate::authority::signer::dedupe_signers(&[payer.as_ref(), stake_authority.as_ref()]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     emit(
@@ -349,15 +342,9 @@ pub fn deactivate(
     let stake_pubkey = Pubkey::from_str(&stake_account)
         .map_err(|e| eyre::eyre!("Invalid stake account pubkey '{}': {}", stake_account, e))?;
 
-    let stake_authority = read_keypair_file(&stake_authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read stake authority keypair from {}: {}",
-            stake_authority_path,
-            e
-        )
-    })?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let stake_authority =
+        crate::authority::signer::load_signer(&stake_authority_path, "--stake-authority")?;
+    let payer = crate::authority::signer::load_signer(&payer_path, "--payer")?;
 
     // Preflight: must be a delegated stake account authorized for this staker.
     preflight_deactivate(&rpc_client, &stake_pubkey, &stake_authority.pubkey())?;
@@ -369,10 +356,13 @@ pub fn deactivate(
 
     let instruction = deactivate_stake(&stake_pubkey, &stake_authority.pubkey());
 
-    let signers = crate::utils::run::dedupe_signers(&[&payer, &stake_authority]);
+    let signers =
+        crate::authority::signer::dedupe_signers(&[payer.as_ref(), stake_authority.as_ref()]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     progress(
@@ -436,7 +426,7 @@ fn preflight_deactivate(
 /// Force-deactivate stake delegated to a delisted validator.
 ///
 /// SphereNet's stake program lets anyone deactivate a stake account whose
-/// delegation points at a vote account removed from the validator whitelist. 
+/// delegation points at a vote account removed from the validator whitelist.
 /// The vote account is read from the stake account's delegation and the
 /// whitelist entry PDA is derived from it.
 ///
@@ -454,8 +444,7 @@ pub fn force_deactivate(
     let stake_pubkey = Pubkey::from_str(&stake_account)
         .map_err(|e| eyre::eyre!("Invalid stake account pubkey '{}': {}", stake_account, e))?;
 
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let payer = crate::authority::signer::load_signer(&payer_path, "--payer")?;
 
     // ── Preflight ────────────────────────────────────────────────────────────
     let vote_pubkey = preflight_delegated_stake(&rpc_client, &stake_pubkey)?;
@@ -472,7 +461,9 @@ pub fn force_deactivate(
 
     // Signers: fee payer only — the instruction is permissionless.
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&[&payer], rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&[payer.as_ref()], rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     progress(
@@ -586,15 +577,9 @@ pub fn withdraw(
     let destination = Pubkey::from_str(&destination)
         .map_err(|e| eyre::eyre!("Invalid destination pubkey '{}': {}", destination, e))?;
 
-    let withdrawer = read_keypair_file(&withdraw_authority_path).map_err(|e| {
-        eyre::eyre!(
-            "Failed to read withdraw authority keypair from {}: {}",
-            withdraw_authority_path,
-            e
-        )
-    })?;
-    let payer = read_keypair_file(&payer_path)
-        .map_err(|e| eyre::eyre!("Failed to read payer keypair from {}: {}", payer_path, e))?;
+    let withdrawer =
+        crate::authority::signer::load_signer(&withdraw_authority_path, "--withdraw-authority")?;
+    let payer = crate::authority::signer::load_signer(&payer_path, "--payer")?;
 
     // Preflight: account exists, stake-program owned, withdrawer matches; warn
     // if still delegated. Also resolves the balance for `--all`.
@@ -639,10 +624,12 @@ pub fn withdraw(
         None,
     );
 
-    let signers = crate::utils::run::dedupe_signers(&[&payer, &withdrawer]);
+    let signers = crate::authority::signer::dedupe_signers(&[payer.as_ref(), withdrawer.as_ref()]);
 
     let mut transaction = Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
-    transaction.sign(&signers, rpc_client.get_latest_blockhash()?);
+    transaction
+        .try_sign(&signers, rpc_client.get_latest_blockhash()?)
+        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
     let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
 
     if all {

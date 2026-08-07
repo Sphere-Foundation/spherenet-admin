@@ -143,6 +143,62 @@ spherenet-admin mp update-inflation-rate <BIPS> --authority ./authority.json    
 
 The `mp` config account is created at genesis, not by this CLI.
 
+### Signing with GCP Cloud KMS (`kms://`)
+
+Anywhere a command takes a keypair path — authorities, payers, funders,
+multisig members, co-signers — a `kms://` URI can be passed instead to sign
+with an Ed25519 key held in Google Cloud KMS, so the private key never
+touches disk:
+
+```bash
+spherenet-admin vw approve <VOTE_ACCOUNT> \
+  --authority "kms://projects/<p>/locations/<l>/keyRings/<r>/cryptoKeys/<k>/cryptoKeyVersions/<v>?pubkey=<BASE58_ADDRESS>"
+```
+
+The URI names the exact crypto-key version (the key must use algorithm
+`EC_SIGN_ED25519`) and the Solana address the key is expected to have; every
+signature returned by KMS is verified against that address before use. To get
+the address from a key's public-key PEM:
+
+```bash
+gcloud kms keys versions get-public-key <V> --key <K> --keyring <R> \
+  --location <L> --project <P> --output-file pubkey.pem
+spherenet-admin kms address pubkey.pem
+```
+
+Authentication uses Application Default Credentials: run
+`gcloud auth application-default login`, or point
+`GOOGLE_APPLICATION_CREDENTIALS` at a service-account key. Note that gcloud
+keeps **two separate credential stores**: `gcloud auth login` covers the
+`gcloud` CLI itself, while `gcloud auth application-default login` covers
+client libraries — including this CLI's KMS signing. Refreshing one does not
+refresh the other, so when your session expires (e.g. an org session-length
+policy), re-run **both**:
+
+```bash
+gcloud auth login && gcloud auth application-default login
+```
+
+An expired ADC session surfaces here as `Cannot access KMS key …: cannot
+create the authentication headers`. The caller needs
+`cloudkms.cryptoKeyVersions.useToSign` on the key (e.g. role
+`roles/cloudkms.signerVerifier`). Before building a transaction, the CLI
+preflights the key (access, algorithm, and that its address matches the URI's
+`pubkey`) — but the sign permission itself can only be proven by signing, so
+a caller with only `roles/cloudkms.publicKeyViewer` passes preflight and
+fails at signing time.
+
+Three exceptions stay local-file only:
+
+- **`program deploy`** — its payer and upgrade authority sign every ~900-byte
+  buffer-write chunk (hundreds of KMS round-trips per deploy).
+- **`program upgrade --payer`** — same chunk-signing role; the upgrade
+  *authority* signs exactly once and does accept `kms://`.
+- **`vote create --identity` / `--authorized-voter`** — the validator host
+  derives its BLS voting key from the authorized-voter keypair file (and
+  needs the identity key to run); a KMS key here would strand the vote
+  account.
+
 ---
 
 ## Built-in addresses

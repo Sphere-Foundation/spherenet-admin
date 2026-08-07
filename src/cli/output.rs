@@ -114,7 +114,7 @@ impl Render for NotFound {
 /// Single-sig execution lands immediately (`Executed`); a multisig routes the
 /// instruction into a proposal for later approval (`ProposalCreated`). Base58
 /// strings so the JSON is clean; the `status` tag lets machine consumers branch
-/// on the outcome. Produced by both `cli::authority::Authority::execute_instruction`
+/// on the outcome. Produced by both `crate::authority::Authority::execute_instruction`
 /// and the squads commands — hence it lives here in the shared output layer.
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
