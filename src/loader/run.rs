@@ -6,8 +6,10 @@ use crate::pw::run::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
+    account::Account,
+    instruction::Instruction,
     pubkey::Pubkey,
-    signature::{Keypair, Signer},
+    signature::{Keypair, Signature, Signer},
     transaction::Transaction,
 };
 use solana_sdk_ids::bpf_loader_upgradeable;
@@ -42,17 +44,98 @@ impl Render for DeployedProgramView {
     }
 }
 
+/// How many times to attempt each transaction send before giving up.
+const SEND_ATTEMPTS: u32 = 3;
+
+/// Builds, signs, and sends a transaction, retrying failures with a short
+/// growing backoff and a fresh blockhash per attempt. `label` names the send
+/// in progress and error messages.
+///
+/// A send that reports failure may still have landed (included on chain, but
+/// the confirmation was lost). The idempotent buffer chunk writes can simply
+/// re-send, but retrying a one-off send (create buffer, transfer buffer
+/// authority, deploy) would then fail on-chain even though the work is done —
+/// aborting a deploy whose buffer took hundreds of signatures to write.
+/// `landed` closes that gap: it is consulted after each failed attempt, and
+/// when it confirms the intended state is already on chain the send counts as
+/// a success. It must answer definitively — an RPC error while checking means
+/// "did not land", never "maybe". The signature returned on that path is the
+/// most recent attempt's, which in a lost-confirmation race may not be the
+/// attempt that actually landed (best-effort, for display only).
+fn send_with_retry(
+    rpc_client: &RpcClient,
+    label: &str,
+    instructions: &[Instruction],
+    fee_payer: &Pubkey,
+    signers: &[&dyn Signer],
+    landed: Option<&dyn Fn() -> bool>,
+) -> eyre::Result<Signature> {
+    let mut last_signature: Option<Signature> = None;
+    let mut attempt: u32 = 1;
+    loop {
+        let mut send_once = || -> eyre::Result<Signature> {
+            let mut transaction = Transaction::new_with_payer(instructions, Some(fee_payer));
+            transaction
+                .try_sign(&signers.to_vec(), rpc_client.get_latest_blockhash()?)
+                .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
+            last_signature = Some(transaction.signatures[0]);
+            Ok(rpc_client.send_and_confirm_transaction(&transaction)?)
+        };
+        let result = send_once();
+        match result {
+            Ok(signature) => return Ok(signature),
+            Err(e) => {
+                if let (Some(landed), Some(signature)) = (landed, last_signature) {
+                    if landed() {
+                        progress(format!(
+                            "⚠️  {label} reported an error ({e}) but the change is on chain; continuing"
+                        ));
+                        return Ok(signature);
+                    }
+                }
+                if attempt < SEND_ATTEMPTS {
+                    progress(format!(
+                        "⚠️  {label} attempt {attempt} failed ({e}); retrying..."
+                    ));
+                    std::thread::sleep(std::time::Duration::from_millis(500 * u64::from(attempt)));
+                    attempt += 1;
+                } else {
+                    return Err(
+                        e.wrap_err(format!("{label} failed after {SEND_ATTEMPTS} attempts"))
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// Definitive account read for [`send_with_retry`] landed-checks: `Some(_)`
+/// carries the RPC's actual answer (account present or definitively absent),
+/// `None` means the read itself failed and nothing can be concluded.
+fn try_get_account(rpc_client: &RpcClient, pubkey: &Pubkey) -> Option<Option<Account>> {
+    rpc_client
+        .get_account_with_commitment(pubkey, rpc_client.commitment())
+        .ok()
+        .map(|response| response.value)
+}
+
 /// Writes program data to a buffer account in chunks.
 ///
-/// Program data is split into MAX_WRITE_SIZE chunks (900 bytes) to avoid hitting
-/// transaction size limits. Each chunk is written via a separate transaction signed
-/// by both the payer (who pays transaction fees) and the authority (buffer owner).
+/// Program data is split into MAX_WRITE_SIZE chunks (900 bytes) to avoid
+/// hitting transaction size limits. The payer is the buffer's authority during
+/// the writes and signs each chunk transaction alone; the real upgrade
+/// authority takes over the buffer afterwards via `set_buffer_authority`
+/// (unless the payer already is that authority).
+///
+/// Each chunk goes through [`send_with_retry`]: hundreds of sequential sends
+/// should not abort on one blip (a KMS payer adds a network round-trip per
+/// signature on top of the RPC ones). No landed-check is needed — re-sending
+/// a chunk that actually landed is safe, `write` puts the same bytes at the
+/// same offset.
 fn write_buffer(
     rpc_client: &RpcClient,
-    payer: &Keypair,
-    authority_keypair: &Keypair,
+    payer: &dyn Signer,
     buffer: &Pubkey,
-    authority: &Pubkey,
     program_data: &[u8],
 ) -> eyre::Result<()> {
     let chunks: Vec<_> = program_data.chunks(MAX_WRITE_SIZE).collect();
@@ -60,17 +143,15 @@ fn write_buffer(
 
     for (i, chunk) in chunks.into_iter().enumerate() {
         let offset = i * MAX_WRITE_SIZE;
-
-        let write_ix = write(buffer, authority, offset as u32, chunk.to_vec());
-
-        let mut transaction = Transaction::new_with_payer(&[write_ix], Some(&payer.pubkey()));
-        transaction
-            .try_sign(
-                &[payer, authority_keypair],
-                rpc_client.get_latest_blockhash()?,
-            )
-            .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
-        rpc_client.send_and_confirm_transaction(&transaction)?;
+        let write_ix = write(buffer, &payer.pubkey(), offset as u32, chunk.to_vec());
+        send_with_retry(
+            rpc_client,
+            &format!("Chunk {}/{}", i + 1, total_chunks),
+            &[write_ix],
+            &payer.pubkey(),
+            &[payer],
+            None,
+        )?;
 
         progress(format!(
             "Writing chunk {}/{} ({} bytes) ✅",
@@ -85,6 +166,15 @@ fn write_buffer(
 }
 
 /// Deploy a program to SphereNet
+///
+/// All signer arguments accept a keypair path or a `kms://` URI. The payer
+/// writes the buffer chunks (one signature per ~900-byte chunk — a network
+/// round-trip each for a KMS payer); the program keypair and the upgrade
+/// authority each sign exactly once, on the final deploy transaction.
+///
+/// Deploy is single-sig only: the deploy transaction needs the program
+/// keypair's co-signature, which a multisig proposal cannot carry atomically
+/// (same constraint as `vw request`).
 pub fn deploy(
     url: &str,
     program_so_path: String,
@@ -99,24 +189,14 @@ pub fn deploy(
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
-    // Load keypairs
-    let payer = crate::authority::signer::read_keypair_file_checked(
-        &payer_keypair_path,
-        "--payer on `program deploy` (it signs every buffer-write chunk)",
-    )?;
-    let program_keypair = crate::authority::signer::read_keypair_file_checked(
-        &program_keypair_path,
-        "--program-keypair",
-    )?;
+    // Load signers — each may be a keypair file or a kms:// URI
+    let payer = crate::authority::signer::load_signer(&payer_keypair_path, "--payer")?;
+    let program_keypair =
+        crate::authority::signer::load_signer(&program_keypair_path, "--program-keypair")?;
     let program_id = program_keypair.pubkey();
-    // Deploy signs every ~900-byte buffer-write chunk with this key (hundreds
-    // of round-trips for a KMS signer), so it stays file-based; `program
-    // upgrade` supports kms:// because only one instruction needs the authority.
-    let upgrade_authority_keypair = crate::authority::signer::read_keypair_file_checked(
-        &upgrade_authority_path,
-        "--upgrade-authority on `program deploy`",
-    )?;
-    let upgrade_authority = upgrade_authority_keypair.pubkey();
+    let upgrade_authority_signer =
+        crate::authority::signer::load_signer(&upgrade_authority_path, "--upgrade-authority")?;
+    let upgrade_authority = upgrade_authority_signer.pubkey();
 
     progress(format!("Program ID: {}", program_id));
     progress(format!("Payer: {}", payer.pubkey()));
@@ -162,38 +242,73 @@ pub fn deploy(
     progress(format!("Buffer size: {} bytes", buffer_size));
     progress(format!("Buffer rent: {} lamports", buffer_lamports));
 
-    // Create and initialize buffer account with UPGRADE AUTHORITY as authority
-    // (required for deployment - buffer authority must match program's upgrade authority)
+    // Create and initialize buffer account with PAYER as buffer authority —
+    // the same shape as `upgrade_program`: the payer signs the chunk writes,
+    // then hands the buffer to the upgrade authority, which signs exactly
+    // once regardless of program size. The on-chain deploy only requires the
+    // buffer's authority to match the upgrade authority AT DEPLOY TIME.
     let create_buffer_instructions = create_buffer(
         &payer.pubkey(),
         &buffer_pubkey,
-        &upgrade_authority, // Must match the program's upgrade authority
+        &payer.pubkey(), // Payer is buffer authority for writes
         buffer_lamports,
         program_data.len(),
     )?;
 
-    let mut transaction =
-        Transaction::new_with_payer(&create_buffer_instructions, Some(&payer.pubkey()));
-    transaction
-        .try_sign(
-            &[&payer, &buffer_keypair],
-            rpc_client.get_latest_blockhash()?,
-        )
-        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
-    rpc_client.send_and_confirm_transaction(&transaction)?;
+    // Landed-check: the buffer keypair is freshly generated, so the account
+    // existing at all proves our create landed.
+    let buffer_created = || matches!(try_get_account(&rpc_client, &buffer_pubkey), Some(Some(_)));
+    send_with_retry(
+        &rpc_client,
+        "Buffer creation",
+        &create_buffer_instructions,
+        &payer.pubkey(),
+        &[payer.as_ref(), &buffer_keypair],
+        Some(&buffer_created),
+    )?;
 
     progress(format!("✅ Buffer account created: {}", buffer_pubkey));
 
-    // Write program data to buffer in chunks (upgrade authority signs as buffer authority)
+    // Write program data to buffer in chunks (payer signs buffer writes)
     progress("📤 Writing program data to buffer...");
-    write_buffer(
-        &rpc_client,
-        &payer,
-        &upgrade_authority_keypair,
-        &buffer_pubkey,
-        &upgrade_authority,
-        &program_data,
-    )?;
+    write_buffer(&rpc_client, payer.as_ref(), &buffer_pubkey, &program_data)?;
+
+    // Transfer buffer authority to the upgrade authority (unchecked variant —
+    // the new authority does not sign here; it signs the deploy itself).
+    // Skipped when the payer IS the upgrade authority: the buffer is already
+    // theirs, and the no-op transfer would cost a fee (and, for a KMS payer,
+    // a KMS round-trip).
+    if payer.pubkey() == upgrade_authority {
+        progress("🔐 Payer is the upgrade authority; buffer authority already correct");
+    } else {
+        progress("🔐 Transferring buffer authority...");
+        let set_buffer_authority_ix =
+            set_buffer_authority(&buffer_pubkey, &payer.pubkey(), &upgrade_authority);
+
+        // Landed-check: once the transfer lands the payer is no longer the
+        // buffer authority, so a blind re-send would fail on-chain — read the
+        // buffer's recorded authority instead.
+        let authority_transferred = || {
+            let Some(Some(account)) = try_get_account(&rpc_client, &buffer_pubkey) else {
+                return false;
+            };
+            matches!(
+                bincode::deserialize::<UpgradeableLoaderState>(&account.data),
+                Ok(UpgradeableLoaderState::Buffer {
+                    authority_address: Some(authority),
+                }) if authority == upgrade_authority
+            )
+        };
+        send_with_retry(
+            &rpc_client,
+            "Buffer authority transfer",
+            &[set_buffer_authority_ix],
+            &payer.pubkey(),
+            &[payer.as_ref()],
+            Some(&authority_transferred),
+        )?;
+        progress("✅ Buffer authority transferred to upgrade authority");
+    }
 
     // Deploy program with whitelist validation
     progress("🎯 Deploying program...");
@@ -210,14 +325,27 @@ pub fn deploy(
         &whitelist_entry,
     )?;
 
-    let mut transaction = Transaction::new_with_payer(&deploy_instructions, Some(&payer.pubkey()));
-    transaction
-        .try_sign(
-            &[&payer, &program_keypair, &upgrade_authority_keypair],
-            rpc_client.get_latest_blockhash()?,
-        )
-        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
-    let signature = rpc_client.send_and_confirm_transaction(&transaction)?;
+    // Payer, program keypair, and upgrade authority each sign once (deduped —
+    // several of these roles frequently collapse onto one key).
+    let signers = crate::authority::signer::dedupe_signers(&[
+        payer.as_ref(),
+        program_keypair.as_ref(),
+        upgrade_authority_signer.as_ref(),
+    ]);
+
+    // Landed-check: deploy drains this run's freshly created buffer to zero
+    // lamports, so the buffer definitively disappearing proves the deploy
+    // landed. ("Program account exists" would false-positive on a program
+    // that was already deployed before this run.)
+    let deploy_landed = || matches!(try_get_account(&rpc_client, &buffer_pubkey), Some(None));
+    let signature = send_with_retry(
+        &rpc_client,
+        "Deploy",
+        &deploy_instructions,
+        &payer.pubkey(),
+        &signers,
+        Some(&deploy_landed),
+    )?;
 
     emit(
         &DeployedProgramView {
@@ -244,13 +372,10 @@ pub fn upgrade_program(
     // Initialize RPC client
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
-    // Load keypairs and parse addresses. The payer stays file-based: it signs
-    // every ~900-byte buffer-write chunk (hundreds of round-trips for a KMS
-    // signer); the upgrade AUTHORITY signs once and supports kms://.
-    let payer = crate::authority::signer::read_keypair_file_checked(
-        &payer_keypair_path,
-        "--payer on `program upgrade` (it signs every buffer-write chunk)",
-    )?;
+    // Load signers and parse addresses. The payer may be a keypair file or a
+    // kms:// URI — note it signs every ~900-byte buffer-write chunk (a network
+    // round-trip per chunk for a KMS payer); the upgrade AUTHORITY signs once.
+    let payer = crate::authority::signer::load_signer(&payer_keypair_path, "--payer")?;
     let program_id = Pubkey::from_str(&program_id_str)
         .map_err(|e| eyre::eyre!("Failed to parse program ID {}: {}", program_id_str, e))?;
 
@@ -381,44 +506,62 @@ pub fn upgrade_program(
         program_data.len(),
     )?;
 
-    let mut transaction =
-        Transaction::new_with_payer(&create_buffer_instructions, Some(&payer.pubkey()));
-    transaction
-        .try_sign(
-            &[&payer, &buffer_keypair],
-            rpc_client.get_latest_blockhash()?,
-        )
-        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
-    rpc_client.send_and_confirm_transaction(&transaction)?;
+    // Landed-check: the buffer keypair is freshly generated, so the account
+    // existing at all proves our create landed.
+    let buffer_created = || matches!(try_get_account(&rpc_client, &buffer_pubkey), Some(Some(_)));
+    send_with_retry(
+        &rpc_client,
+        "Buffer creation",
+        &create_buffer_instructions,
+        &payer.pubkey(),
+        &[payer.as_ref(), &buffer_keypair],
+        Some(&buffer_created),
+    )?;
 
     progress(format!("✅ Buffer account created: {}", buffer_pubkey));
 
     // Write program data to buffer in chunks (payer signs buffer writes)
     progress("📤 Writing program data to buffer...");
-    write_buffer(
-        &rpc_client,
-        &payer,
-        &payer, // Payer signs buffer writes
-        &buffer_pubkey,
-        &payer.pubkey(), // Buffer authority is payer
-        &program_data,
-    )?;
+    write_buffer(&rpc_client, payer.as_ref(), &buffer_pubkey, &program_data)?;
 
-    // Transfer buffer authority to upgrade authority (required for multisig upgrades)
-    progress("🔐 Transferring buffer authority...");
-    let set_buffer_authority_ix = set_buffer_authority(
-        &buffer_pubkey,
-        &payer.pubkey(),        // Current buffer authority (payer)
-        &instruction_authority, // New buffer authority (upgrade authority/vault PDA)
-    );
+    // Transfer buffer authority to upgrade authority (required for multisig
+    // upgrades). Skipped when the payer IS the upgrade authority: the buffer
+    // is already theirs, and the no-op transfer would cost a fee (and, for a
+    // KMS payer, a KMS round-trip).
+    if payer.pubkey() == instruction_authority {
+        progress("🔐 Payer is the upgrade authority; buffer authority already correct");
+    } else {
+        progress("🔐 Transferring buffer authority...");
+        let set_buffer_authority_ix = set_buffer_authority(
+            &buffer_pubkey,
+            &payer.pubkey(),        // Current buffer authority (payer)
+            &instruction_authority, // New buffer authority (upgrade authority/vault PDA)
+        );
 
-    let mut set_authority_tx =
-        Transaction::new_with_payer(&[set_buffer_authority_ix], Some(&payer.pubkey()));
-    set_authority_tx
-        .try_sign(&[&payer], rpc_client.get_latest_blockhash()?)
-        .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;
-    rpc_client.send_and_confirm_transaction(&set_authority_tx)?;
-    progress("✅ Buffer authority transferred to upgrade authority");
+        // Landed-check: once the transfer lands the payer is no longer the
+        // buffer authority, so a blind re-send would fail on-chain — read the
+        // buffer's recorded authority instead.
+        let authority_transferred = || {
+            let Some(Some(account)) = try_get_account(&rpc_client, &buffer_pubkey) else {
+                return false;
+            };
+            matches!(
+                bincode::deserialize::<UpgradeableLoaderState>(&account.data),
+                Ok(UpgradeableLoaderState::Buffer {
+                    authority_address: Some(authority),
+                }) if authority == instruction_authority
+            )
+        };
+        send_with_retry(
+            &rpc_client,
+            "Buffer authority transfer",
+            &[set_buffer_authority_ix],
+            &payer.pubkey(),
+            &[payer.as_ref()],
+            Some(&authority_transferred),
+        )?;
+        progress("✅ Buffer authority transferred to upgrade authority");
+    }
 
     // Upgrade program with whitelist validation
     progress("🎯 Upgrading program...");

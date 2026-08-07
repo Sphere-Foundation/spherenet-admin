@@ -9,10 +9,10 @@
 //!
 //! Every `*_KEYPAIR` argument also accepts a `kms://` URI in place of a file
 //! path, signing with a key held in GCP Cloud KMS (see [`crate::authority::kms`]) —
-//! except where the help text says "local keypair file only": `program
-//! deploy`'s keypairs and `program upgrade --payer` (they sign every
-//! buffer-write chunk), and `vote create`'s `--identity`/`--authorized-voter`
-//! (the validator host derives its BLS voting key from the file).
+//! the one exception is `vote create`'s `--identity`/`--authorized-voter`
+//! (the validator host derives its BLS voting key from the file). Note that
+//! the `program deploy`/`upgrade` payer signs every ~900-byte buffer-write
+//! chunk, so a KMS payer costs a network round-trip per chunk.
 
 use crate::cli::output::OutputMode;
 use clap::{Parser, Subcommand};
@@ -582,18 +582,19 @@ pub enum ProgramAction {
         #[arg(long, value_name = "PROGRAM_SO")]
         program_so: String,
 
-        /// Path to the program keypair (the program ID is derived from this).
-        /// Local keypair file only
+        /// Path to the program keypair (the program ID is derived from this),
+        /// or kms:// URI; signs once
         #[arg(long, value_name = "PROGRAM_KEYPAIR")]
         program_keypair: String,
 
-        /// Path to upgrade authority keypair (must sign deployment). Local
-        /// keypair file only — deploy signs every buffer-write chunk
+        /// Path to upgrade authority keypair, or kms:// URI; signs the deploy
+        /// transaction exactly once
         #[arg(long, value_name = "UPGRADE_AUTHORITY_KEYPAIR")]
         upgrade_authority: String,
 
-        /// Payer keypair path. Local keypair file only — deploy signs every
-        /// buffer-write chunk
+        /// Payer keypair path, or kms:// URI. Note: the payer signs every
+        /// ~900-byte buffer-write chunk (roughly 2 minutes of extra signing
+        /// per 500KB with a KMS payer)
         #[arg(long, value_name = "PAYER_KEYPAIR")]
         payer: String,
 
@@ -631,8 +632,9 @@ pub enum ProgramAction {
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
         multisig_authority: Option<String>,
 
-        /// Payer keypair path. Local keypair file only — it signs every
-        /// buffer-write chunk (the upgrade authority may be kms://)
+        /// Payer keypair path, or kms:// URI. Note: the payer signs every
+        /// ~900-byte buffer-write chunk (roughly 2 minutes of extra signing
+        /// per 500KB with a KMS payer)
         #[arg(long, value_name = "PAYER_KEYPAIR")]
         payer: String,
 
