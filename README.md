@@ -188,16 +188,23 @@ preflights the key (access, algorithm, and that its address matches the URI's
 a caller with only `roles/cloudkms.publicKeyViewer` passes preflight and
 fails at signing time.
 
-Three exceptions stay local-file only:
+One exception stays local-file only:
 
-- **`program deploy`** — its payer and upgrade authority sign every ~900-byte
-  buffer-write chunk (hundreds of KMS round-trips per deploy).
-- **`program upgrade --payer`** — same chunk-signing role; the upgrade
-  *authority* signs exactly once and does accept `kms://`.
 - **`vote create --identity` / `--authorized-voter`** — the validator host
   derives its BLS voting key from the authorized-voter keypair file (and
   needs the identity key to run); a KMS key here would strand the vote
   account.
+
+`program deploy` and `program upgrade` are fully supported: deploy uses the
+same buffer handoff as upgrade (the payer writes the ~900-byte chunks, then
+the buffer is transferred to the upgrade authority), so the upgrade authority
+signs **exactly once** per deploy or upgrade regardless of program size. The
+payer may also be `kms://`, at a documented cost of one KMS round-trip per
+chunk (roughly 2 minutes of extra signing per 500KB). Every send retries a
+few times with a fresh blockhash before giving up, and the one-off sends
+(buffer creation, authority transfer, the deploy itself) also detect a
+transaction that landed but lost its confirmation, rather than aborting a
+fully written buffer.
 
 ---
 

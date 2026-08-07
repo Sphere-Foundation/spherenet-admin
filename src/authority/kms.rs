@@ -447,7 +447,10 @@ mod tests {
 
         let init_start = std::time::Instant::now();
         let signer = KmsSigner::from_uri(&uri).expect("failed to build signer");
-        println!("signer init (client + preflight): {:?}", init_start.elapsed());
+        println!(
+            "signer init (client + preflight): {:?}",
+            init_start.elapsed()
+        );
 
         // Roughly the size of a buffer-write transaction message. Timing
         // includes the adapter's verify-against-pubkey check, as in production.

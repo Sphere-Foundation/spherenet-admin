@@ -92,11 +92,11 @@ pub fn load_signer(path: &str, flag: &str) -> eyre::Result<AdminSigner> {
     }
 }
 
-/// Load a keypair for an argument that must stay a local file — the
-/// `program deploy`/`upgrade` chunk-signing roles and `vote create`'s
-/// identity/authorized-voter keys. Rejects a `kms://` URI with a clear error
-/// instead of `read_keypair_file`'s baffling "No such file or directory";
-/// `flag` names the argument (and may carry the reason) for error messages.
+/// Load a keypair for an argument that must stay a local file — `vote
+/// create`'s `--identity`/`--authorized-voter` keys. Rejects a `kms://` URI
+/// with a clear error instead of `read_keypair_file`'s baffling "No such
+/// file or directory"; `flag` names the argument (and may carry the reason)
+/// for error messages.
 pub fn read_keypair_file_checked(path: &str, flag: &str) -> eyre::Result<Keypair> {
     if path.starts_with(kms::KMS_URI_SCHEME) {
         eyre::bail!("KMS signers are not supported for {flag}; pass a keypair file path");
