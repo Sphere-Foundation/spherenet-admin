@@ -425,6 +425,64 @@ mod tests {
         );
     }
 
+    /// Sequential-signing latency benchmark against a REAL Cloud KMS key.
+    /// The program-deploy feasibility question reduces to
+    /// (chunk count × warm per-sign latency); this measures the second factor
+    /// on a single warm client, which is exactly deploy's signing profile.
+    ///
+    /// Ignored by default (network + ADC credentials required). Run with:
+    ///
+    /// ```text
+    /// KMS_BENCH_URI="kms://...?pubkey=..." KMS_BENCH_ITERS=600 \
+    ///     cargo test kms_bench -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore = "hits real Cloud KMS; needs ADC and KMS_BENCH_URI"]
+    fn kms_bench_sequential_signing() {
+        let uri = std::env::var("KMS_BENCH_URI").expect("set KMS_BENCH_URI to a kms:// signer URI");
+        let iters: usize = std::env::var("KMS_BENCH_ITERS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(100);
+
+        let init_start = std::time::Instant::now();
+        let signer = KmsSigner::from_uri(&uri).expect("failed to build signer");
+        println!("signer init (client + preflight): {:?}", init_start.elapsed());
+
+        // Roughly the size of a buffer-write transaction message. Timing
+        // includes the adapter's verify-against-pubkey check, as in production.
+        let message = vec![0xA5u8; 1024];
+        let mut durations = Vec::with_capacity(iters);
+        let total_start = std::time::Instant::now();
+        for i in 0..iters {
+            let sign_start = std::time::Instant::now();
+            signer
+                .try_sign_message(&message)
+                .unwrap_or_else(|e| panic!("sign {} failed: {}", i, e));
+            durations.push(sign_start.elapsed());
+        }
+        let total = total_start.elapsed();
+
+        durations.sort();
+        let pct = |p: f64| durations[((durations.len() - 1) as f64 * p) as usize];
+        println!("signs:  {}", iters);
+        println!(
+            "total:  {:?} ({:.1} signs/s)",
+            total,
+            iters as f64 / total.as_secs_f64()
+        );
+        println!("min:    {:?}", durations[0]);
+        println!("p50:    {:?}", pct(0.50));
+        println!("p95:    {:?}", pct(0.95));
+        println!("p99:    {:?}", pct(0.99));
+        println!("max:    {:?}", durations[durations.len() - 1]);
+        println!(
+            "projected 570-chunk deploy signing overhead: {:.1}s @p50, {:.1}s @p95",
+            pct(0.50).as_secs_f64() * 570.0,
+            pct(0.95).as_secs_f64() * 570.0
+        );
+    }
+
     /// End-to-end through the sync adapter: `try_sign_message` drives the
     /// async client on the module's runtime and returns a verified signature.
     #[test]
