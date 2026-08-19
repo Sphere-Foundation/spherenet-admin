@@ -36,9 +36,15 @@ impl std::str::FromStr for Amount {
         if s.eq_ignore_ascii_case("all") {
             return Ok(Amount::All);
         }
-        s.parse::<f64>()
-            .map(Amount::Sphr)
-            .map_err(|_| format!("'{s}' is not a number of SPHR or the keyword ALL"))
+        let sphr = s
+            .parse::<f64>()
+            .map_err(|_| format!("'{s}' is not a number of SPHR or the keyword ALL"))?;
+        // f64 parsing also accepts NaN, infinities, and negatives, which the
+        // lamport cast would silently saturate to 0 or u64::MAX.
+        if !sphr.is_finite() || sphr < 0.0 {
+            return Err(format!("'{s}' is not a non-negative number of SPHR"));
+        }
+        Ok(Amount::Sphr(sphr))
     }
 }
 
@@ -1178,6 +1184,18 @@ mod tests {
         let err = "1.5x".parse::<Amount>().unwrap_err();
         assert!(err.contains("'1.5x'"), "got: {err}");
         assert!("".parse::<Amount>().is_err());
+    }
+
+    /// f64 parsing alone would accept these; the lamport cast would then
+    /// saturate NaN/negatives to 0 and +inf to u64::MAX.
+    #[test]
+    fn amount_rejects_negative_and_non_finite() {
+        for bad in ["-1.5", "-0.000000001", "NaN", "inf", "-inf", "infinity"] {
+            let err = bad.parse::<Amount>().unwrap_err();
+            assert!(err.contains("non-negative"), "'{bad}' got: {err}");
+        }
+        // -0.0 compares equal to 0.0 and casts to 0 lamports; accepting it is harmless.
+        assert_eq!("-0.0".parse::<Amount>().unwrap(), Amount::Sphr(-0.0));
     }
 
     /// The full clap pipeline accepts both forms of `--amount` on `transfer`.
