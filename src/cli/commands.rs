@@ -16,6 +16,7 @@
 
 use crate::cli::output::OutputMode;
 use clap::{Parser, Subcommand};
+use solana_sdk::native_token::LAMPORTS_PER_SOL;
 
 /// A `--amount` value: a numeric SPHR amount, or `ALL` to drain the source
 /// account. `ALL` is resolved at send time to the source balance minus the
@@ -43,6 +44,14 @@ impl std::str::FromStr for Amount {
         // lamport cast would silently saturate to 0 or u64::MAX.
         if !sphr.is_finite() || sphr < 0.0 {
             return Err(format!("'{s}' is not a non-negative number of SPHR"));
+        }
+        // A finite value can still overflow the u64 lamport conversion, which
+        // would likewise saturate to u64::MAX.
+        const MAX_SPHR: f64 = u64::MAX as f64 / LAMPORTS_PER_SOL as f64;
+        if sphr > MAX_SPHR {
+            return Err(format!(
+                "'{s}' exceeds the maximum representable amount of {MAX_SPHR} SPHR"
+            ));
         }
         Ok(Amount::Sphr(sphr))
     }
@@ -1196,6 +1205,21 @@ mod tests {
         }
         // -0.0 compares equal to 0.0 and casts to 0 lamports; accepting it is harmless.
         assert_eq!("-0.0".parse::<Amount>().unwrap(), Amount::Sphr(-0.0));
+    }
+
+    /// A finite value whose lamport conversion overflows u64 would saturate
+    /// the cast to u64::MAX.
+    #[test]
+    fn amount_rejects_lamport_overflow() {
+        for bad in ["1e20", "18446744074", "1e308"] {
+            let err = bad.parse::<Amount>().unwrap_err();
+            assert!(err.contains("exceeds the maximum"), "'{bad}' got: {err}");
+        }
+        // Just under the u64::MAX lamport boundary (~1.8446744074e10 SPHR).
+        assert_eq!(
+            "18446744073".parse::<Amount>().unwrap(),
+            Amount::Sphr(18_446_744_073.0)
+        );
     }
 
     /// The full clap pipeline accepts both forms of `--amount` on `transfer`.
