@@ -17,6 +17,31 @@
 use crate::cli::output::OutputMode;
 use clap::{Parser, Subcommand};
 
+/// A `--amount` value: a numeric SPHR amount, or `ALL` to drain the source
+/// account. `ALL` is resolved at send time to the source balance minus the
+/// actual transaction fee (see [`crate::utils::run::transfer`]), so it works
+/// for any signer — keypair file or `kms://`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Amount {
+    /// A fixed amount in SPHR.
+    Sphr(f64),
+    /// The source's entire balance minus the transaction fee.
+    All,
+}
+
+impl std::str::FromStr for Amount {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.eq_ignore_ascii_case("all") {
+            return Ok(Amount::All);
+        }
+        s.parse::<f64>()
+            .map(Amount::Sphr)
+            .map_err(|_| format!("'{s}' is not a number of SPHR or the keyword ALL"))
+    }
+}
+
 /// Default RPC_URL
 pub const RPC_URL: &str = "https://api.test.sphere.net";
 
@@ -127,9 +152,10 @@ pub enum Commands {
         /// (mutually exclusive with --to)
         #[arg(long, conflicts_with = "to", value_name = "MULTISIG_CREATE_KEY")]
         to_multisig: Option<String>,
-        /// Amount in SPHR to transfer
-        #[arg(long, value_name = "SPHR")]
-        amount: f64,
+        /// Amount in SPHR to transfer, or ALL to drain the source (balance
+        /// minus the transaction fee; single-sig only)
+        #[arg(long, value_name = "SPHR|ALL")]
+        amount: Amount,
         /// Single-sig: path to source keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(long, conflicts_with = "multisig", value_name = "FROM_KEYPAIR")]
         from: Option<String>,
@@ -1127,4 +1153,52 @@ pub enum StakeAction {
         #[arg(long, alias = "fee-payer", value_name = "PAYER_KEYPAIR")]
         payer: String,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn amount_parses_numeric() {
+        assert_eq!("1.5".parse::<Amount>().unwrap(), Amount::Sphr(1.5));
+        assert_eq!("0".parse::<Amount>().unwrap(), Amount::Sphr(0.0));
+    }
+
+    #[test]
+    fn amount_parses_all_case_insensitive() {
+        assert_eq!("ALL".parse::<Amount>().unwrap(), Amount::All);
+        assert_eq!("all".parse::<Amount>().unwrap(), Amount::All);
+        assert_eq!("All".parse::<Amount>().unwrap(), Amount::All);
+    }
+
+    #[test]
+    fn amount_rejects_garbage() {
+        let err = "1.5x".parse::<Amount>().unwrap_err();
+        assert!(err.contains("'1.5x'"), "got: {err}");
+        assert!("".parse::<Amount>().is_err());
+    }
+
+    /// The full clap pipeline accepts both forms of `--amount` on `transfer`.
+    #[test]
+    fn transfer_accepts_amount_all_and_numeric() {
+        for (raw, expected) in [("ALL", Amount::All), ("2.5", Amount::Sphr(2.5))] {
+            let cli = Cli::try_parse_from([
+                "spherenet-admin",
+                "transfer",
+                "--to",
+                "11111111111111111111111111111111",
+                "--amount",
+                raw,
+                "--from",
+                "keypair.json",
+            ])
+            .unwrap();
+            match cli.command {
+                Commands::Transfer { amount, .. } => assert_eq!(amount, expected),
+                _ => panic!("expected Transfer"),
+            }
+        }
+    }
 }
