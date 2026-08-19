@@ -136,11 +136,15 @@ pub fn transfer(
     let destination =
         crate::authority::resolve_target(&rpc_client, to, to_multisig, "--to", "--to-multisig")?;
 
-    // Convert SPHR to lamports, resolving ALL to balance − fee.
-    let lamports = match (amount, &from) {
-        (Amount::Sphr(sphr), _) => (sphr * LAMPORTS_PER_SOL as f64) as u64,
+    // Convert SPHR to lamports, resolving ALL to balance − fee. The drain
+    // path also returns the blockhash its fee quote was computed against;
+    // the final transaction signs with it so the quote and the charge refer
+    // to the same fee state.
+    let (lamports, fee_blockhash) = match (amount, &from) {
+        (Amount::Sphr(sphr), _) => ((sphr * LAMPORTS_PER_SOL as f64) as u64, None),
         (Amount::All, Authority::SingleSig { signer }) => {
-            drain_lamports(&rpc_client, signer, &destination)?
+            let (lamports, blockhash) = drain_lamports(&rpc_client, signer, &destination)?;
+            (lamports, Some(blockhash))
         }
         (Amount::All, Authority::MultiSig { .. }) => eyre::bail!(
             "--amount ALL is not supported with --multisig: the amount would be fixed at \
@@ -181,7 +185,12 @@ pub fn transfer(
     let instruction = system_instruction::transfer(&from_pubkey, &destination, lamports);
 
     let description = format!("Transfer {} SPHR to {}", amount_sphr, destination);
-    let result = from.execute_instruction(&rpc_client, instruction, &description)?;
+    let result = from.execute_instruction_with_blockhash(
+        &rpc_client,
+        instruction,
+        fee_blockhash,
+        &description,
+    )?;
 
     emit(&result, mode)
 }
@@ -190,11 +199,15 @@ pub fn transfer(
 /// the fee of the transfer transaction itself. The fee is queried from the RPC
 /// node for the exact message that will be sent (the fee does not depend on
 /// the lamport amount), so this works for any signer and signature count.
+///
+/// Also returns the blockhash the fee was quoted against — the caller must
+/// sign the final transaction with it, so that a fee-parameter change between
+/// quote and submission cannot invalidate the drained amount.
 fn drain_lamports(
     rpc_client: &RpcClient,
     signer: &crate::authority::signer::AdminSigner,
     destination: &Pubkey,
-) -> eyre::Result<u64> {
+) -> eyre::Result<(u64, solana_sdk::hash::Hash)> {
     let balance = rpc_client.get_balance(&signer.pubkey())?;
 
     // Fee-probe with a placeholder amount; only the message shape matters.
@@ -212,5 +225,5 @@ fn drain_lamports(
             fee as f64 / LAMPORTS_PER_SOL as f64
         ));
     }
-    Ok(lamports)
+    Ok((lamports, blockhash))
 }
