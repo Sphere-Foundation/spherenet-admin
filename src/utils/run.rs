@@ -136,12 +136,12 @@ pub fn transfer(
     let destination =
         crate::authority::resolve_target(&rpc_client, to, to_multisig, "--to", "--to-multisig")?;
 
-    // Convert SPHR to lamports, resolving ALL to balance − fee. The drain
-    // path also returns the blockhash its fee quote was computed against;
-    // the final transaction signs with it so the quote and the charge refer
-    // to the same fee state.
+    // Numeric amounts were converted to lamports exactly at parse time; ALL
+    // resolves here to balance − fee. The drain path also returns the
+    // blockhash its fee quote was computed against; the final transaction
+    // signs with it so the quote and the charge refer to the same fee state.
     let (lamports, fee_blockhash) = match (amount, &from) {
-        (Amount::Sphr(sphr), _) => ((sphr * LAMPORTS_PER_SOL as f64) as u64, None),
+        (Amount::Lamports(lamports), _) => (lamports, None),
         (Amount::All, Authority::SingleSig { signer }) => {
             let (lamports, blockhash) = drain_lamports(&rpc_client, signer, &destination)?;
             (lamports, Some(blockhash))
