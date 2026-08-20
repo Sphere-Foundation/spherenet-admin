@@ -152,7 +152,7 @@ pub fn transfer(
              executes. Pass an explicit --amount instead."
         ),
     };
-    let amount_sphr = lamports as f64 / LAMPORTS_PER_SOL as f64;
+    let amount_sphr = sphr_string(lamports);
 
     progress(format!(
         "Transferring {} SPHR to {}",
@@ -219,11 +219,40 @@ fn drain_lamports(
     let lamports = balance.saturating_sub(fee);
     if lamports == 0 {
         return Err(eyre::eyre!(
-            "Nothing to transfer: balance {:.9} SPHR does not exceed the transaction fee \
-             of {:.9} SPHR",
-            balance as f64 / LAMPORTS_PER_SOL as f64,
-            fee as f64 / LAMPORTS_PER_SOL as f64
+            "Nothing to transfer: balance {} SPHR does not exceed the transaction fee \
+             of {} SPHR",
+            sphr_string(balance),
+            sphr_string(fee)
         ));
     }
     Ok((lamports, blockhash))
+}
+
+/// Format lamports as the exact SPHR decimal (trailing fractional zeros
+/// trimmed). Large lamport counts are not representable in f64, so a float
+/// round-trip would misreport amounts near u64::MAX by ~1000 lamports.
+fn sphr_string(lamports: u64) -> String {
+    let int = lamports / LAMPORTS_PER_SOL;
+    let frac = lamports % LAMPORTS_PER_SOL;
+    if frac == 0 {
+        int.to_string()
+    } else {
+        let frac = format!("{frac:09}");
+        format!("{int}.{}", frac.trim_end_matches('0'))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sphr_string;
+
+    #[test]
+    fn sphr_string_is_exact() {
+        assert_eq!(sphr_string(0), "0");
+        assert_eq!(sphr_string(1), "0.000000001");
+        assert_eq!(sphr_string(1_500_000_000), "1.5");
+        assert_eq!(sphr_string(5_000_000_000), "5");
+        // f64 would print 18446744073.709553 (off by ~1145 lamports).
+        assert_eq!(sphr_string(u64::MAX), "18446744073.709551615");
+    }
 }

@@ -16,17 +16,19 @@
 
 use crate::cli::output::OutputMode;
 use clap::{Parser, Subcommand};
-use solana_sdk::native_token::LAMPORTS_PER_SOL;
 
 /// A `--amount` value: a numeric SPHR amount, or `ALL` to drain the source
 /// account. `ALL` is resolved at send time to the source balance minus the
 /// actual transaction fee (see [`crate::utils::run::transfer`]), so it works
 /// for any signer — keypair file or `kms://`.
 ///
-/// Plain decimal amounts are converted to lamports digit by digit at parse
-/// time — going through `f64` would silently round (an f64 carries ~15–16
-/// significant decimal digits; a full-precision amount needs up to 19) and
-/// saturate near `u64::MAX`.
+/// Numeric amounts — plain decimals and scientific notation alike — are
+/// converted to lamports digit by digit at parse time; no floating point is
+/// involved anywhere. Going through `f64` would silently round (an f64
+/// carries ~15–16 significant decimal digits; a full-precision amount needs
+/// up to 19) and saturate near `u64::MAX`. Values that are not a whole,
+/// in-range number of lamports are rejected: negatives, amounts above
+/// `u64::MAX` lamports, and sub-lamport precision.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Amount {
     /// A fixed amount in lamports, converted exactly from the SPHR decimal.
@@ -39,35 +41,107 @@ pub enum Amount {
 const MAX_SPHR_TEXT: &str = "18446744073.709551615";
 
 impl Amount {
-    /// Exact decimal-SPHR → lamports conversion for a string of digits with
-    /// at most one `.` (validated by the caller). No floating point involved.
-    fn lamports_of_decimal(s: &str) -> Result<u64, String> {
+    /// Exact SPHR → lamports conversion. Accepts the finite decimal forms
+    /// `f64` parsing accepts — optional sign, optional fraction, optional
+    /// `e`/`E` base-10 exponent — but converts with pure digit-position
+    /// arithmetic: for mantissa digits `D`, fraction length `f`, and exponent
+    /// `e`, the exact lamport count is `D × 10^(e + 9 − f)` (`−f` places the
+    /// decimal point, `e` applies the exponent, `+9` converts SPHR to
+    /// lamports).
+    fn lamports_of_sphr(s: &str) -> Result<u64, String> {
+        let not_a_number = || format!("'{s}' is not a number of SPHR or the keyword ALL");
+        let all_digits = |p: &str| p.bytes().all(|b| b.is_ascii_digit());
+
+        // Optional sign (a single-byte ASCII prefix, so slicing is safe).
+        let (negative, unsigned) = match s.as_bytes().first() {
+            Some(b'-') => (true, &s[1..]),
+            Some(b'+') => (false, &s[1..]),
+            _ => (false, s),
+        };
+
+        // Split off an `e`/`E` exponent, then the mantissa around its `.`.
+        // A second `e` or `.` lands in the right-hand part and fails the
+        // digit checks below.
+        let (mantissa, exponent) = match unsigned.split_once(['e', 'E']) {
+            Some((m, e)) => (m, Some(e)),
+            None => (unsigned, None),
+        };
+        let (int_part, frac_part) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+        if (int_part.is_empty() && frac_part.is_empty())
+            || !all_digits(int_part)
+            || !all_digits(frac_part)
+        {
+            return Err(not_a_number());
+        }
+
+        // Exponent: optional sign + at least one digit. Parsed exactly when
+        // it has ≤ 10 significant digits; beyond that ±10^15 classifies
+        // identically (the mantissa cannot carry anywhere near 10^10 digits,
+        // so such values are unconditionally overflow / sub-lamport / zero).
+        let exp: i64 = match exponent {
+            None => 0,
+            Some(e) => {
+                let (esign, edigits) = match e.as_bytes().first() {
+                    Some(b'-') => (-1i64, &e[1..]),
+                    Some(b'+') => (1i64, &e[1..]),
+                    _ => (1, e),
+                };
+                if edigits.is_empty() || !all_digits(edigits) {
+                    return Err(not_a_number());
+                }
+                match edigits.trim_start_matches('0') {
+                    "" => 0,
+                    sig if sig.len() > 10 => esign * 1_000_000_000_000_000,
+                    sig => esign * sig.parse::<i64>().map_err(|_| not_a_number())?,
+                }
+            }
+        };
+
+        // Syntax is valid from here on; judge the value. An exact zero is 0
+        // lamports whatever the sign or exponent ("-0.0" stays accepted, as
+        // it was under f64 parsing).
+        let nonzero = int_part.bytes().chain(frac_part.bytes()).any(|b| b != b'0');
+        if !nonzero {
+            return Ok(0);
+        }
+        if negative {
+            return Err(format!("'{s}' is not a non-negative number of SPHR"));
+        }
+
+        // lamports = D × 10^k, exactly.
+        let digits = format!("{int_part}{frac_part}");
+        let digits = digits.trim_start_matches('0'); // nonzero ⇒ non-empty
+        let k = exp + 9 - frac_part.len() as i64;
+
         let overflow =
             || format!("'{s}' exceeds the maximum representable amount of {MAX_SPHR_TEXT} SPHR");
-        let (int_part, frac_part) = s.split_once('.').unwrap_or((s, ""));
-        let int: u64 = if int_part.is_empty() {
-            0
+        let lamports: u128 = if k >= 0 {
+            // u64::MAX has 20 digits: 21+ digits of shifted value always
+            // overflow, and at most 20 fit losslessly in a u128 product.
+            if digits.len() as i64 + k > 20 {
+                return Err(overflow());
+            }
+            let d: u128 = digits.parse().map_err(|_| overflow())?;
+            d * 10u128.pow(k as u32) // k ≤ 20 − len(digits) ≤ 19
         } else {
-            // Only fails when the integer part alone exceeds u64::MAX.
-            int_part.parse().map_err(|_| overflow())?
+            // The last −k digit positions of D sit below one lamport: they
+            // must all be zero, and the remaining head is the lamport count.
+            let sub_lamport = || format!("'{s}' is more precise than a lamport (10^-9 SPHR)");
+            let below = usize::try_from(-k).unwrap_or(usize::MAX);
+            if below >= digits.len() {
+                // The entire (nonzero) mantissa is below one lamport.
+                return Err(sub_lamport());
+            }
+            let (head, tail) = digits.split_at(digits.len() - below);
+            if tail.bytes().any(|b| b != b'0') {
+                return Err(sub_lamport());
+            }
+            if head.len() > 20 {
+                return Err(overflow());
+            }
+            head.parse().map_err(|_| overflow())?
         };
-        // Digits past the ninth are below one lamport; reject rather than
-        // silently truncate value away.
-        if frac_part.len() > 9 && frac_part[9..].bytes().any(|b| b != b'0') {
-            return Err(format!(
-                "'{s}' is more precise than a lamport (10^-9 SPHR, 9 decimal places)"
-            ));
-        }
-        let frac_digits = &frac_part[..frac_part.len().min(9)];
-        let frac: u64 = if frac_digits.is_empty() {
-            0
-        } else {
-            // ≤ 9 ASCII digits: cannot fail or exceed 999_999_999.
-            frac_digits.parse::<u64>().unwrap() * 10u64.pow(9 - frac_digits.len() as u32)
-        };
-        int.checked_mul(LAMPORTS_PER_SOL)
-            .and_then(|l| l.checked_add(frac))
-            .ok_or_else(overflow)
+        u64::try_from(lamports).map_err(|_| overflow())
     }
 }
 
@@ -78,30 +152,7 @@ impl std::str::FromStr for Amount {
         if s.eq_ignore_ascii_case("all") {
             return Ok(Amount::All);
         }
-        // Plain decimals (the common case) convert exactly, digit by digit.
-        let is_plain_decimal = s.bytes().any(|b| b.is_ascii_digit())
-            && s.bytes().all(|b| b.is_ascii_digit() || b == b'.')
-            && s.bytes().filter(|&b| b == b'.').count() <= 1;
-        if is_plain_decimal {
-            return Self::lamports_of_decimal(s).map(Amount::Lamports);
-        }
-        // Everything else (scientific notation, explicit sign) falls back to
-        // f64, with guards on the values f64 parsing admits but the lamport
-        // cast would silently saturate: NaN and negatives to 0, anything
-        // reaching 2^64 (= u64::MAX as f64) to u64::MAX.
-        let sphr = s
-            .parse::<f64>()
-            .map_err(|_| format!("'{s}' is not a number of SPHR or the keyword ALL"))?;
-        if !sphr.is_finite() || sphr < 0.0 {
-            return Err(format!("'{s}' is not a non-negative number of SPHR"));
-        }
-        let lamports = sphr * LAMPORTS_PER_SOL as f64;
-        if lamports >= u64::MAX as f64 {
-            return Err(format!(
-                "'{s}' exceeds the maximum representable amount of {MAX_SPHR_TEXT} SPHR"
-            ));
-        }
-        Ok(Amount::Lamports(lamports as u64))
+        Self::lamports_of_sphr(s).map(Amount::Lamports)
     }
 }
 
@@ -1223,26 +1274,31 @@ mod tests {
     use super::*;
     use clap::Parser;
 
+    #[track_caller]
+    fn lamports(s: &str) -> u64 {
+        match s.parse::<Amount>() {
+            Ok(Amount::Lamports(l)) => l,
+            other => panic!("'{s}': expected lamports, got {other:?}"),
+        }
+    }
+
+    #[track_caller]
+    fn rejects(s: &str, msg_fragment: &str) {
+        let err = s.parse::<Amount>().unwrap_err();
+        assert!(
+            err.contains(msg_fragment) && err.contains(&format!("'{s}'")),
+            "'{s}': expected error containing {msg_fragment:?} and the input, got: {err}"
+        );
+    }
+
     #[test]
     fn amount_parses_numeric() {
-        assert_eq!(
-            "1.5".parse::<Amount>().unwrap(),
-            Amount::Lamports(1_500_000_000)
-        );
-        assert_eq!("0".parse::<Amount>().unwrap(), Amount::Lamports(0));
-        assert_eq!(
-            ".5".parse::<Amount>().unwrap(),
-            Amount::Lamports(500_000_000)
-        );
-        assert_eq!(
-            "5.".parse::<Amount>().unwrap(),
-            Amount::Lamports(5_000_000_000)
-        );
-        // Scientific notation goes through the f64 fallback.
-        assert_eq!(
-            "1e2".parse::<Amount>().unwrap(),
-            Amount::Lamports(100_000_000_000)
-        );
+        assert_eq!(lamports("1.5"), 1_500_000_000);
+        assert_eq!(lamports("0"), 0);
+        assert_eq!(lamports(".5"), 500_000_000);
+        assert_eq!(lamports("5."), 5_000_000_000);
+        assert_eq!(lamports("+2.5"), 2_500_000_000);
+        assert_eq!(lamports("007"), 7_000_000_000);
     }
 
     /// The decimal → lamport conversion is exact — a round-trip through f64
@@ -1250,7 +1306,7 @@ mod tests {
     /// full-precision 19-digit amounts.
     #[test]
     fn amount_converts_decimals_exactly() {
-        for (s, lamports) in [
+        for (s, expected) in [
             ("0.000000001", 1),
             ("1.000000001", 1_000_000_001),
             ("0.1", 100_000_000),
@@ -1259,19 +1315,58 @@ mod tests {
             // Trailing zeros past 9 decimal places carry no value; accepted.
             ("1.5000000000", 1_500_000_000),
         ] {
-            assert_eq!(
-                s.parse::<Amount>().unwrap(),
-                Amount::Lamports(lamports),
-                "{s}"
-            );
+            assert_eq!(lamports(s), expected, "{s}");
         }
     }
 
-    /// Sub-lamport precision is rejected rather than silently truncated.
+    /// Scientific notation converts exactly too — the same digit-position
+    /// arithmetic, never f64 (which truncated `1e-10` to 0 lamports and
+    /// `1.0000000001e0` to exactly 1 SPHR).
+    #[test]
+    fn amount_converts_scientific_notation_exactly() {
+        for (s, expected) in [
+            ("1e2", 100_000_000_000),
+            ("1.5e2", 150_000_000_000),
+            ("1E2", 100_000_000_000),
+            ("1e+2", 100_000_000_000),
+            ("1e-9", 1),
+            ("0.000000001e0", 1),
+            (".5e1", 5_000_000_000),
+            ("5.e1", 50_000_000_000),
+            // One lamport above 10 SPHR, exact (f64 loses the final digit).
+            ("1.0000000001e1", 10_000_000_001),
+            ("1.000000001e0", 1_000_000_001),
+            // The exact u64::MAX limit, expressed three ways.
+            ("1.8446744073709551615e10", u64::MAX),
+            ("18446744073709551615e-9", u64::MAX),
+            ("0.18446744073709551615e11", u64::MAX),
+            // Exponents with redundant leading zeros.
+            ("1e02", 100_000_000_000),
+            ("1e-09", 1),
+            // A zero mantissa is zero for any exponent, however extreme.
+            ("0e999999999999999999999", 0),
+            ("0.0e-999999999999999999999", 0),
+        ] {
+            assert_eq!(lamports(s), expected, "{s}");
+        }
+    }
+
+    /// Sub-lamport precision is rejected rather than silently truncated, in
+    /// both plain and scientific notation.
     #[test]
     fn amount_rejects_sub_lamport_precision() {
-        let err = "1.0000000001".parse::<Amount>().unwrap_err();
-        assert!(err.contains("more precise than a lamport"), "got: {err}");
+        for bad in [
+            "1.0000000001",
+            "0.0000000001",
+            "1e-10",
+            "1.0000000001e0",
+            "0.00000000001e1",
+            "1.5e-9",
+            // Far below one lamport via a huge negative exponent.
+            "1e-999999999999999999999",
+        ] {
+            rejects(bad, "more precise than a lamport");
+        }
     }
 
     #[test]
@@ -1281,53 +1376,64 @@ mod tests {
         assert_eq!("All".parse::<Amount>().unwrap(), Amount::All);
     }
 
+    /// Anything that is not a finite decimal number is rejected outright —
+    /// including the non-finite spellings f64 parsing accepts (NaN, inf) and
+    /// malformed exponents.
     #[test]
     fn amount_rejects_garbage() {
-        let err = "1.5x".parse::<Amount>().unwrap_err();
-        assert!(err.contains("'1.5x'"), "got: {err}");
-        assert!("".parse::<Amount>().is_err());
-    }
-
-    /// f64 parsing alone would accept these; the lamport cast would then
-    /// saturate NaN/negatives to 0 and +inf to u64::MAX.
-    #[test]
-    fn amount_rejects_negative_and_non_finite() {
-        for bad in ["-1.5", "-0.000000001", "NaN", "inf", "-inf", "infinity"] {
+        for bad in [
+            "1.5x", "", ".", "+", "-", "+.", "1.2.3", "1e", "e5", "1e2e3", "1e+", "1e-", "1e5.5",
+            "--1", "++1", "+-1", "1_000", "0x10", " 1", "1 ", "NaN", "nan", "inf", "-inf",
+            "infinity", "0e+", "٥", "ALLL",
+        ] {
             let err = bad.parse::<Amount>().unwrap_err();
-            assert!(err.contains("non-negative"), "'{bad}' got: {err}");
+            assert!(
+                err.contains("is not a number of SPHR"),
+                "'{bad}' got: {err}"
+            );
         }
-        // -0.0 compares equal to 0.0 and converts to 0 lamports; accepting it is harmless.
-        assert_eq!("-0.0".parse::<Amount>().unwrap(), Amount::Lamports(0));
     }
 
-    /// Values above u64::MAX lamports are rejected on both parse paths; the
-    /// old f64 conversion would saturate the cast to u64::MAX instead.
+    /// Negative amounts are rejected; an exact negative zero is 0 lamports
+    /// and stays accepted (as it was under f64 parsing).
+    #[test]
+    fn amount_rejects_negative() {
+        for bad in ["-1.5", "-0.000000001", "-1e-10", "-1e300", "-18446744074"] {
+            rejects(bad, "non-negative");
+        }
+        for zero in ["-0.0", "-0", "-.0", "-0e5", "-0.000e-999999999999999999999"] {
+            assert_eq!(lamports(zero), 0, "{zero}");
+        }
+    }
+
+    /// Values above u64::MAX lamports are rejected; the old f64 conversion
+    /// saturated the cast to u64::MAX instead.
     #[test]
     fn amount_rejects_lamport_overflow() {
         for bad in [
             "1e20",
             "18446744074",
             "1e308",
-            // One lamport above the limit.
+            // One lamport above the limit, in several notations.
             "18446744073.709551616",
-            // In the f64 rounding gap: <= u64::MAX as f64 / 1e9 (which rounds
-            // UP past the true limit), but above u64::MAX lamports. The old
-            // float-based bound check accepted these and the cast saturated.
+            "1.8446744073709551616e10",
+            "18446744073709551616e-9",
+            // In the old f64 rounding gap: <= u64::MAX as f64 / 1e9 (which
+            // rounds UP past the true limit), but above u64::MAX lamports.
+            // The float-based bound check accepted these and the cast
+            // saturated.
             "18446744073.7095527",
             "1.84467440737095528e10",
+            // 21 digits and beyond, and a huge positive exponent.
+            "999999999999999999999",
+            "1e999999999999999999999",
+            "0.000000000000000000001e40",
         ] {
-            let err = bad.parse::<Amount>().unwrap_err();
-            assert!(err.contains("exceeds the maximum"), "'{bad}' got: {err}");
+            rejects(bad, "exceeds the maximum");
         }
         // The exact limit and a round number just below it are accepted.
-        assert_eq!(
-            "18446744073.709551615".parse::<Amount>().unwrap(),
-            Amount::Lamports(u64::MAX)
-        );
-        assert_eq!(
-            "18446744073".parse::<Amount>().unwrap(),
-            Amount::Lamports(18_446_744_073_000_000_000)
-        );
+        assert_eq!(lamports("18446744073.709551615"), u64::MAX);
+        assert_eq!(lamports("18446744073"), 18_446_744_073_000_000_000);
     }
 
     /// The full clap pipeline accepts both forms of `--amount` on `transfer`.
