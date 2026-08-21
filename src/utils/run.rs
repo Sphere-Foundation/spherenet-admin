@@ -2,6 +2,7 @@
 
 use crate::authority::Authority;
 use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
+use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
@@ -152,11 +153,14 @@ pub fn transfer(
         crate::authority::Authority::MultiSig { multisig, member } => {
             progress(format!("Proposer: {}", member.pubkey()));
             progress(format!("Multisig: {}", multisig));
-            // Funds come from the vault PDA (== from_pubkey), not the config account.
-            let vault_balance = rpc_client.get_balance(&from_pubkey).unwrap_or(0);
+            // Funds come from the vault PDA, not the config account.
+            let program_id =
+                squads::types::SQUADS_PROGRAM_ID.parse::<solana_sdk::pubkey::Pubkey>()?;
+            let (vault_pda, _) = squads::types::get_vault_pda(multisig, 0, &program_id);
+            let vault_balance = rpc_client.get_balance(&vault_pda).unwrap_or(0);
             progress(format!(
                 "Vault:    {} ({:.9} SPHR)",
-                from_pubkey,
+                vault_pda,
                 vault_balance as f64 / LAMPORTS_PER_SOL as f64
             ));
         }
