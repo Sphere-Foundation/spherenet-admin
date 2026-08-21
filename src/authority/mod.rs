@@ -12,7 +12,7 @@ use crate::cli::output::{progress, TxOutputView};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
-    hash::Hash, instruction::Instruction, pubkey::Pubkey, signer::Signer, transaction::Transaction,
+    instruction::Instruction, pubkey::Pubkey, signer::Signer, transaction::Transaction,
 };
 
 /// Authority that can execute instructions
@@ -62,26 +62,6 @@ impl Authority {
         instruction: Instruction,
         description: &str,
     ) -> eyre::Result<TxOutputView> {
-        self.execute_instruction_with_blockhash(rpc, instruction, None, description)
-    }
-
-    /// [`Self::execute_instruction`], but signing with a caller-supplied
-    /// blockhash instead of fetching a fresh one. For instructions whose
-    /// content was derived from RPC state tied to a blockhash — e.g. a
-    /// `--amount ALL` transfer, where the drained amount is balance minus a
-    /// fee quoted via `get_fee_for_message` — signing with that same
-    /// blockhash keeps the quote and the charge on the same fee state.
-    ///
-    /// Single-sig only affects the transaction's blockhash; a multisig
-    /// proposal ignores `blockhash` (the proposal transaction has its own
-    /// lifecycle and the vault does not pay the fee).
-    pub fn execute_instruction_with_blockhash(
-        &self,
-        rpc: &RpcClient,
-        instruction: Instruction,
-        blockhash: Option<Hash>,
-        description: &str,
-    ) -> eyre::Result<TxOutputView> {
         match self {
             Authority::SingleSig { signer } => {
                 progress(format!("Executing: {}", description));
@@ -89,10 +69,7 @@ impl Authority {
                 // Build and send transaction directly. try_sign, not sign: a
                 // KMS signer does a network round-trip, so failure is a normal
                 // condition, not a panic.
-                let recent_blockhash = match blockhash {
-                    Some(hash) => hash,
-                    None => rpc.get_latest_blockhash()?,
-                };
+                let recent_blockhash = rpc.get_latest_blockhash()?;
                 let mut tx = Transaction::new_with_payer(&[instruction], Some(&signer.pubkey()));
                 tx.try_sign(&[signer.as_ref()], recent_blockhash)
                     .map_err(|e| eyre::eyre!("Failed to sign transaction: {}", e))?;

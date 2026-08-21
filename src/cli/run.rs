@@ -481,12 +481,13 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             to,
             to_multisig,
             amount,
+            all,
             from,
             multisig,
             multisig_authority,
         } => {
             let auth = Authority::from_args(&cli.url, from, multisig, multisig_authority)?;
-            utils::run::transfer(&cli.url, auth, to, to_multisig, amount, mode)?
+            utils::run::transfer(&cli.url, auth, to, to_multisig, amount, all, mode)?
         }
     }
 

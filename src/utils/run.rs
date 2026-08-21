@@ -1,7 +1,6 @@
 //! Utility actions: airdrop and transfer.
 
 use crate::authority::Authority;
-use crate::cli::commands::Amount;
 use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::squads;
 use solana_client::rpc_client::RpcClient;
@@ -115,17 +114,19 @@ pub fn airdrop(
 /// by create-key). Exactly one destination must be given; a multisig create-key
 /// is resolved + validated so funds land in the vault, never the config account.
 ///
-/// `--amount ALL` drains the source: single-sig only, resolved to the source
-/// balance minus the actual fee of the transfer transaction (queried from the
-/// RPC node, so it is correct for any signer). Rejected for multisig — the
-/// amount would be baked into the proposal at creation time, but the vault
-/// balance can change before the proposal executes.
+/// `--all` drains the source. Single-sig: the source balance minus the actual
+/// fee of the transfer transaction (queried from the RPC node, so it works for
+/// any signer). Multisig: the full vault balance — the vault never pays the
+/// fee (the executing member does), so nothing is subtracted; like any
+/// proposal, the amount is fixed at creation, so re-propose if the balance
+/// drifts before execution.
 pub fn transfer(
     rpc_url: &str,
     from: Authority,
     to: Option<String>,
     to_multisig: Option<String>,
-    amount: Amount,
+    amount: Option<f64>,
+    all: bool,
     mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client =
@@ -136,23 +137,15 @@ pub fn transfer(
     let destination =
         crate::authority::resolve_target(&rpc_client, to, to_multisig, "--to", "--to-multisig")?;
 
-    // Numeric amounts were converted to lamports exactly at parse time; ALL
-    // resolves here to balance − fee. The drain path also returns the
-    // blockhash its fee quote was computed against; the final transaction
-    // signs with it so the quote and the charge refer to the same fee state.
-    let (lamports, fee_blockhash) = match (amount, &from) {
-        (Amount::Lamports(lamports), _) => (lamports, None),
-        (Amount::All, Authority::SingleSig { signer }) => {
-            let (lamports, blockhash) = drain_lamports(&rpc_client, signer, &destination)?;
-            (lamports, Some(blockhash))
-        }
-        (Amount::All, Authority::MultiSig { .. }) => eyre::bail!(
-            "--amount ALL is not supported with --multisig: the amount would be fixed at \
-             proposal creation, but the vault balance can change before the proposal \
-             executes. Pass an explicit --amount instead."
-        ),
+    let lamports = if all {
+        drain_lamports(&rpc_client, &from, &destination)?
+    } else {
+        // clap: --amount is required unless --all is present.
+        let amount =
+            amount.ok_or_else(|| eyre::eyre!("Provide either --amount <SPHR> or --all"))?;
+        (amount * LAMPORTS_PER_SOL as f64) as u64
     };
-    let amount_sphr = sphr_string(lamports);
+    let amount_sphr = lamports as f64 / LAMPORTS_PER_SOL as f64;
 
     progress(format!(
         "Transferring {} SPHR to {}",
@@ -185,74 +178,50 @@ pub fn transfer(
     let instruction = system_instruction::transfer(&from_pubkey, &destination, lamports);
 
     let description = format!("Transfer {} SPHR to {}", amount_sphr, destination);
-    let result = from.execute_instruction_with_blockhash(
-        &rpc_client,
-        instruction,
-        fee_blockhash,
-        &description,
-    )?;
+    let result = from.execute_instruction(&rpc_client, instruction, &description)?;
 
     emit(&result, mode)
 }
 
-/// Resolve `--amount ALL` for a single-sig transfer: the source balance minus
-/// the fee of the transfer transaction itself. The fee is queried from the RPC
-/// node for the exact message that will be sent (the fee does not depend on
-/// the lamport amount), so this works for any signer and signature count.
+/// Resolve `--all` to a lamport amount.
 ///
-/// Also returns the blockhash the fee was quoted against — the caller must
-/// sign the final transaction with it, so that a fee-parameter change between
-/// quote and submission cannot invalidate the drained amount.
+/// Single-sig: the source balance minus the fee of the transfer transaction
+/// itself, probed with a placeholder amount — the fee depends on the message
+/// shape (signature count), not the lamports, so the quote is exact for any
+/// signer. Multisig: the full vault balance; the vault never pays the fee
+/// (the executing member does), so nothing is subtracted.
 fn drain_lamports(
     rpc_client: &RpcClient,
-    signer: &crate::authority::signer::AdminSigner,
+    from: &Authority,
     destination: &Pubkey,
-) -> eyre::Result<(u64, solana_sdk::hash::Hash)> {
-    let balance = rpc_client.get_balance(&signer.pubkey())?;
+) -> eyre::Result<u64> {
+    match from {
+        Authority::SingleSig { signer } => {
+            let balance = rpc_client.get_balance(&signer.pubkey())?;
 
-    // Fee-probe with a placeholder amount; only the message shape matters.
-    let probe = system_instruction::transfer(&signer.pubkey(), destination, 0);
-    let blockhash = rpc_client.get_latest_blockhash()?;
-    let message = Message::new_with_blockhash(&[probe], Some(&signer.pubkey()), &blockhash);
-    let fee = rpc_client.get_fee_for_message(&message)?;
+            let probe = system_instruction::transfer(&signer.pubkey(), destination, 0);
+            let blockhash = rpc_client.get_latest_blockhash()?;
+            let message = Message::new_with_blockhash(&[probe], Some(&signer.pubkey()), &blockhash);
+            let fee = rpc_client.get_fee_for_message(&message)?;
 
-    let lamports = balance.saturating_sub(fee);
-    if lamports == 0 {
-        return Err(eyre::eyre!(
-            "Nothing to transfer: balance {} SPHR does not exceed the transaction fee \
-             of {} SPHR",
-            sphr_string(balance),
-            sphr_string(fee)
-        ));
-    }
-    Ok((lamports, blockhash))
-}
-
-/// Format lamports as the exact SPHR decimal (trailing fractional zeros
-/// trimmed). Large lamport counts are not representable in f64, so a float
-/// round-trip would misreport amounts near u64::MAX by ~1000 lamports.
-fn sphr_string(lamports: u64) -> String {
-    let int = lamports / LAMPORTS_PER_SOL;
-    let frac = lamports % LAMPORTS_PER_SOL;
-    if frac == 0 {
-        int.to_string()
-    } else {
-        let frac = format!("{frac:09}");
-        format!("{int}.{}", frac.trim_end_matches('0'))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::sphr_string;
-
-    #[test]
-    fn sphr_string_is_exact() {
-        assert_eq!(sphr_string(0), "0");
-        assert_eq!(sphr_string(1), "0.000000001");
-        assert_eq!(sphr_string(1_500_000_000), "1.5");
-        assert_eq!(sphr_string(5_000_000_000), "5");
-        // f64 would print 18446744073.709553 (off by ~1145 lamports).
-        assert_eq!(sphr_string(u64::MAX), "18446744073.709551615");
+            let lamports = balance.saturating_sub(fee);
+            if lamports == 0 {
+                return Err(eyre::eyre!(
+                    "Nothing to transfer: balance {:.9} SPHR does not exceed the transaction \
+                     fee of {:.9} SPHR",
+                    balance as f64 / LAMPORTS_PER_SOL as f64,
+                    fee as f64 / LAMPORTS_PER_SOL as f64
+                ));
+            }
+            Ok(lamports)
+        }
+        Authority::MultiSig { .. } => {
+            let vault = from.instruction_authority_pubkey()?;
+            let balance = rpc_client.get_balance(&vault)?;
+            if balance == 0 {
+                return Err(eyre::eyre!("Nothing to transfer: vault {} is empty", vault));
+            }
+            Ok(balance)
+        }
     }
 }
