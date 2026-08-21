@@ -2,10 +2,11 @@
 
 use crate::authority::Authority;
 use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
-use crate::squads;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signer::Signer};
+use solana_sdk::{
+    message::Message, native_token::LAMPORTS_PER_SOL, pubkey::Pubkey, signer::Signer,
+};
 use solana_system_interface::instruction as system_instruction;
 use std::str::FromStr;
 
@@ -116,7 +117,8 @@ pub fn transfer(
     from: Authority,
     to: Option<String>,
     to_multisig: Option<String>,
-    amount: f64,
+    amount: Option<f64>,
+    all: bool,
     mode: OutputMode,
 ) -> eyre::Result<()> {
     let rpc_client =
@@ -127,10 +129,20 @@ pub fn transfer(
     let destination =
         crate::authority::resolve_target(&rpc_client, to, to_multisig, "--to", "--to-multisig")?;
 
-    // Convert SPHR to lamports
-    let lamports = (amount * LAMPORTS_PER_SOL as f64) as u64;
+    // Source funding the transfer: the signer for single-sig, the vault PDA for
+    // a multisig.
+    let from_pubkey = from.instruction_authority_pubkey()?;
 
-    progress(format!("Transferring {} SPHR to {}", amount, destination));
+    // Resolve the amount: an explicit SPHR value, or --all to drain the source.
+    let lamports = if all {
+        drain_lamports(&rpc_client, &from, &from_pubkey, &destination)?
+    } else {
+        let sphr = amount.expect("clap requires --amount unless --all is set");
+        (sphr * LAMPORTS_PER_SOL as f64) as u64
+    };
+    let amount_sphr = lamports as f64 / LAMPORTS_PER_SOL as f64;
+
+    progress(format!("Transferring {} SPHR to {}", amount_sphr, destination));
 
     // Show the source (progress → stderr).
     match &from {
@@ -140,25 +152,57 @@ pub fn transfer(
         crate::authority::Authority::MultiSig { multisig, member } => {
             progress(format!("Proposer: {}", member.pubkey()));
             progress(format!("Multisig: {}", multisig));
-            // Funds come from the vault PDA, not the config account.
-            let program_id =
-                squads::types::SQUADS_PROGRAM_ID.parse::<solana_sdk::pubkey::Pubkey>()?;
-            let (vault_pda, _) = squads::types::get_vault_pda(multisig, 0, &program_id);
-            let vault_balance = rpc_client.get_balance(&vault_pda).unwrap_or(0);
+            // Funds come from the vault PDA (== from_pubkey), not the config account.
+            let vault_balance = rpc_client.get_balance(&from_pubkey).unwrap_or(0);
             progress(format!(
                 "Vault:    {} ({:.9} SPHR)",
-                vault_pda,
+                from_pubkey,
                 vault_balance as f64 / LAMPORTS_PER_SOL as f64
             ));
         }
     }
 
     // Build system transfer instruction (from = vault PDA for multisig).
-    let from_pubkey = from.instruction_authority_pubkey()?;
     let instruction = system_instruction::transfer(&from_pubkey, &destination, lamports);
 
-    let description = format!("Transfer {} SPHR to {}", amount, destination);
+    let description = format!("Transfer {} SPHR to {}", amount_sphr, destination);
     let result = from.execute_instruction(&rpc_client, instruction, &description)?;
 
     emit(&result, mode)
+}
+
+/// Resolve `--all`: the amount to drain from the source. A single-sig source
+/// pays the transaction fee, so it drains to balance minus the fee; a multisig
+/// vault does not pay the fee (the executing member does), so it drains the
+/// full balance. The full-balance amount is fixed here at proposal-creation
+/// time for multisig; re-propose if the vault balance changes before execute.
+fn drain_lamports(
+    rpc_client: &RpcClient,
+    from: &Authority,
+    from_pubkey: &Pubkey,
+    destination: &Pubkey,
+) -> eyre::Result<u64> {
+    let balance = rpc_client.get_balance(from_pubkey)?;
+
+    let lamports = match from {
+        // The vault does not pay the transaction fee, so drain the whole balance.
+        Authority::MultiSig { .. } => balance,
+        // The signer pays the fee; drain balance minus the fee for the exact
+        // message we will send (fee is independent of the lamport amount).
+        Authority::SingleSig { .. } => {
+            let probe = system_instruction::transfer(from_pubkey, destination, 0);
+            let blockhash = rpc_client.get_latest_blockhash()?;
+            let message = Message::new_with_blockhash(&[probe], Some(from_pubkey), &blockhash);
+            let fee = rpc_client.get_fee_for_message(&message)?;
+            balance.saturating_sub(fee)
+        }
+    };
+
+    if lamports == 0 {
+        eyre::bail!(
+            "Nothing to transfer: source balance of {:.9} SPHR does not exceed the transaction fee",
+            balance as f64 / LAMPORTS_PER_SOL as f64
+        );
+    }
+    Ok(lamports)
 }

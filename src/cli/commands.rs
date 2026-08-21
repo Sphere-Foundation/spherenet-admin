@@ -127,9 +127,13 @@ pub enum Commands {
         /// (mutually exclusive with --to)
         #[arg(long, conflicts_with = "to", value_name = "MULTISIG_CREATE_KEY")]
         to_multisig: Option<String>,
-        /// Amount in SPHR to transfer
-        #[arg(long, value_name = "SPHR")]
-        amount: f64,
+        /// Amount in SPHR to transfer (mutually exclusive with --all)
+        #[arg(long, conflicts_with = "all", required_unless_present = "all")]
+        amount: Option<f64>,
+        /// Drain the source: transfer the full balance (minus the fee for a
+        /// single-sig source; a multisig vault pays no fee, so the whole balance)
+        #[arg(long, conflicts_with = "amount")]
+        all: bool,
         /// Single-sig: path to source keypair, or kms:// URI (mutually exclusive with --multisig)
         #[arg(long, conflicts_with = "multisig", value_name = "FROM_KEYPAIR")]
         from: Option<String>,
