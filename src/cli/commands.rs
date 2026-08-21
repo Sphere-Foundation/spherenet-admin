@@ -128,7 +128,7 @@ pub enum Commands {
         #[arg(long, conflicts_with = "to", value_name = "MULTISIG_CREATE_KEY")]
         to_multisig: Option<String>,
         /// Amount in SPHR to transfer (mutually exclusive with --all)
-        #[arg(long, conflicts_with = "all", required_unless_present = "all")]
+        #[arg(long, conflicts_with = "all", required_unless_present = "all", value_name = "SPHR")]
         amount: Option<f64>,
         /// Drain the source: transfer the full balance (minus the fee for a
         /// single-sig source; a multisig vault pays no fee, so the whole balance)
