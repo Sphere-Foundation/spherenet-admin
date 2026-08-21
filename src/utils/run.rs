@@ -136,7 +136,7 @@ pub fn transfer(
 
     // Resolve the amount: an explicit SPHR value, or --all to drain the source.
     let lamports = if all {
-        drain_lamports(&rpc_client, &from, &from_pubkey, &destination)?
+        drain_lamports(&rpc_client, &from, &destination)?
     } else {
         let sphr = amount.expect("clap requires --amount unless --all is set");
         (sphr * LAMPORTS_PER_SOL as f64) as u64
@@ -183,10 +183,10 @@ pub fn transfer(
 fn drain_lamports(
     rpc_client: &RpcClient,
     from: &Authority,
-    from_pubkey: &Pubkey,
     destination: &Pubkey,
 ) -> eyre::Result<u64> {
-    let balance = rpc_client.get_balance(from_pubkey)?;
+    let from_pubkey = from.instruction_authority_pubkey()?;
+    let balance = rpc_client.get_balance(&from_pubkey)?;
 
     let lamports = match from {
         // The vault does not pay the transaction fee, so drain the whole balance.
@@ -194,9 +194,9 @@ fn drain_lamports(
         // The signer pays the fee; drain balance minus the fee for the exact
         // message we will send (fee is independent of the lamport amount).
         Authority::SingleSig { .. } => {
-            let probe = system_instruction::transfer(from_pubkey, destination, 0);
+            let probe = system_instruction::transfer(&from_pubkey, destination, 0);
             let blockhash = rpc_client.get_latest_blockhash()?;
-            let message = Message::new_with_blockhash(&[probe], Some(from_pubkey), &blockhash);
+            let message = Message::new_with_blockhash(&[probe], Some(&from_pubkey), &blockhash);
             let fee = rpc_client.get_fee_for_message(&message)?;
             balance.saturating_sub(fee)
         }
