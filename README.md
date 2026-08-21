@@ -95,6 +95,7 @@ spherenet-admin multisig execute --multisig <CREATE_KEY> --transaction-index <N>
 
 ```bash
 spherenet-admin transfer --amount 1.5 --to <PK> --from ./keypair.json     # or --to-multisig <CREATE_KEY>
+spherenet-admin transfer --all --to <PK> --from ./keypair.json            # drain the source (single-sig: balance - fee; multisig vault: full balance)
 spherenet-admin airdrop  --pubkey <PK> --amount 5.0                        # testnet faucet
 spherenet-admin balance  <PK>
 spherenet-admin epoch
