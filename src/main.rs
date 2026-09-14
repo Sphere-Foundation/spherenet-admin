@@ -1,5 +1,6 @@
 mod authority;
 mod cli;
+mod feature;
 mod loader;
 mod mp;
 mod pw;
