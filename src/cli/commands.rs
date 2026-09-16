@@ -86,6 +86,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: StakeAction,
     },
+    /// Feature gate commands (activate / revoke / status)
+    Feature {
+        #[command(subcommand)]
+        action: FeatureAction,
+    },
     /// GCP Cloud KMS utilities
     Kms {
         #[command(subcommand)]
@@ -1128,6 +1133,37 @@ pub enum StakeAction {
         #[arg(long, value_name = "WITHDRAW_AUTHORITY_KEYPAIR")]
         withdraw_authority: String,
         /// Path to keypair that pays transaction fees
+        #[arg(long, alias = "fee-payer", value_name = "PAYER_KEYPAIR")]
+        payer: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum FeatureAction {
+    /// Show a feature gate's activation status (absent / pending / active)
+    Status {
+        /// Feature gate pubkey (a kms:// URI is also accepted — its ?pubkey= is read)
+        #[arg(value_name = "GATE_PUBKEY")]
+        gate: String,
+    },
+    /// Stage (activate) a feature gate; the runtime activates it at the next
+    /// epoch boundary (staging is not immediate)
+    Activate {
+        /// Path to the feature gate keypair, or a kms:// URI — signs its own
+        /// account creation
+        #[arg(long, value_name = "GATE_KEYPAIR")]
+        gate: String,
+        /// Path to the keypair (or kms:// URI) that funds rent and pays fees
+        #[arg(long, alias = "fee-payer", value_name = "PAYER_KEYPAIR")]
+        payer: String,
+    },
+    /// Revoke a still-pending feature gate (closes the account; only works
+    /// before it activates)
+    Revoke {
+        /// Path to the feature gate keypair, or a kms:// URI — signs the revocation
+        #[arg(long, value_name = "GATE_KEYPAIR")]
+        gate: String,
+        /// Path to the keypair (or kms:// URI) that pays fees
         #[arg(long, alias = "fee-payer", value_name = "PAYER_KEYPAIR")]
         payer: String,
     },

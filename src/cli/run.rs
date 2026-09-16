@@ -4,7 +4,7 @@
 
 use crate::authority::Authority;
 use crate::cli::output::OutputMode;
-use crate::{cli, loader, mp, pw, server, stake, utils, vote, vw};
+use crate::{cli, feature, loader, mp, pw, server, stake, utils, vote, vw};
 use clap::Parser;
 
 use crate::squads;
@@ -465,6 +465,15 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 payer,
                 mode,
             )?,
+        },
+        Commands::Feature { action } => match action {
+            FeatureAction::Status { gate } => feature::show::show(&cli.url, gate, mode)?,
+            FeatureAction::Activate { gate, payer } => {
+                feature::run::activate(&cli.url, gate, payer, mode)?
+            }
+            FeatureAction::Revoke { gate, payer } => {
+                feature::run::revoke(&cli.url, gate, payer, mode)?
+            }
         },
         Commands::Kms { action } => match action {
             KmsAction::Address { pubkey_pem } => {
