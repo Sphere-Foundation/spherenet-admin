@@ -221,9 +221,7 @@ pub fn deploy(
     // Warn if no max-data-len specified (important for multisig scenarios)
     if !max_data_len_provided {
         progress("⚠️  WARNING: No --max-data-len specified, using program size as capacity.");
-        progress(
-            "   If you plan to transfer upgrade authority to multisig, you CANNOT extend later!",
-        );
+        progress("   Extending later is possible via `spherenet-admin program extend`.");
         progress(
             "   Consider deploying with generous --max-data-len (e.g., --max-data-len 500000)",
         );
