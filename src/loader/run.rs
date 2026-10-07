@@ -5,11 +5,12 @@ use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
 use crate::pw::run::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
+use sha2::{Digest, Sha256};
 use solana_sdk::{
     account::Account,
     instruction::Instruction,
     pubkey::Pubkey,
-    signature::{Keypair, Signature, Signer},
+    signature::{read_keypair_file, Keypair, Signature, Signer},
     transaction::Transaction,
 };
 use solana_sdk_ids::bpf_loader_upgradeable;
@@ -40,6 +41,28 @@ impl Render for DeployedProgramView {
         out.push_str(&subfield("Program ID", &self.program_id));
         out.push_str(&subfield("Upgrade Authority", &self.upgrade_authority));
         out.push_str(&subfield("Signature", &self.signature));
+        out
+    }
+}
+
+/// Result of `program write-buffer` — the staged buffer and a hash of the bytes
+/// it holds, so the operator can verify the buffer against the released `.so`
+/// before a feature-gated upgrade consumes it (there is no on-chain bytes pin).
+#[derive(serde::Serialize)]
+pub struct StagedBufferView {
+    buffer: String,
+    buffer_authority: String,
+    byte_len: usize,
+    sha256: String,
+}
+
+impl Render for StagedBufferView {
+    fn to_text(&self) -> String {
+        let mut out = String::from("✅ Buffer staged\n");
+        out.push_str(&subfield("Buffer", &self.buffer));
+        out.push_str(&subfield("Buffer Authority", &self.buffer_authority));
+        out.push_str(&subfield("Bytes", &self.byte_len.to_string()));
+        out.push_str(&subfield("SHA-256", &self.sha256));
         out
     }
 }
@@ -119,20 +142,156 @@ fn try_get_account(rpc_client: &RpcClient, pubkey: &Pubkey) -> Option<Option<Acc
         .map(|response| response.value)
 }
 
+/// Stage program bytes into a Loader-v3 buffer and leave it under `buffer_authority`.
+///
+/// This is the first half of a deploy/upgrade — create the buffer, write the
+/// ELF, hand the buffer to its final authority — factored out so it can also be
+/// driven on its own (`program write-buffer`) to pre-stage a buffer for a later
+/// feature-gated program upgrade that consumes it at runtime.
+///
+/// `buffer`:
+/// - `None` → generate an ephemeral keypair (the `deploy`/`upgrade` case; the
+///   address is used once and then drained by the deploy, so it never matters).
+/// - `Some(kp)` → write to a caller-chosen address (its pubkey is baked into the
+///   client as the upgrade's source-buffer `declare_id!`, so it must be known in
+///   advance). Re-running against an already-created buffer resumes the writes.
+///
+/// The payer is the buffer's authority during the writes (it signs every chunk);
+/// afterwards the buffer is transferred to `buffer_authority` (skipped when the
+/// payer already is it). A Loader-v3 buffer cannot be made immutable — the loader
+/// rejects a `None` buffer authority ("Buffer authority is not optional") — so
+/// `buffer_authority` is where custody rests until the upgrade consumes it.
+///
+/// Returns the buffer's address.
+fn write_buffer(
+    rpc_client: &RpcClient,
+    payer: &dyn Signer,
+    program_data: &[u8],
+    buffer: Option<Keypair>,
+    buffer_authority: Pubkey,
+) -> eyre::Result<Pubkey> {
+    let buffer_keypair = buffer.unwrap_or_else(Keypair::new);
+    let buffer_pubkey = buffer_keypair.pubkey();
+    let buffer_size = UpgradeableLoaderState::size_of_buffer(program_data.len());
+    let buffer_lamports = rpc_client.get_minimum_balance_for_rent_exemption(buffer_size)?;
+
+    progress(format!("Buffer size: {} bytes", buffer_size));
+    progress(format!("Buffer rent: {} lamports", buffer_lamports));
+
+    // Reusable fixed-address buffers (Some) may already exist from a prior run:
+    // - authority already == buffer_authority → a prior run finished the whole
+    //   stage (transfer is the terminal step, only reached after every chunk
+    //   landed), so there is nothing left to do.
+    // - authority still == payer → creation landed but the stage was interrupted;
+    //   skip creation and resume the (idempotent) chunk writes.
+    // An ephemeral (None) buffer is a fresh random key, so this never fires.
+    let existing_authority = match try_get_account(rpc_client, &buffer_pubkey) {
+        Some(Some(account)) => match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
+            Ok(UpgradeableLoaderState::Buffer { authority_address }) => Some(authority_address),
+            _ => {
+                return Err(eyre::eyre!(
+                    "Account {} already exists and is not a Loader-v3 buffer",
+                    buffer_pubkey
+                ))
+            }
+        },
+        _ => None,
+    };
+
+    if existing_authority == Some(Some(buffer_authority)) {
+        progress(format!(
+            "✅ Buffer {} already staged under {}; nothing to do",
+            buffer_pubkey, buffer_authority
+        ));
+        return Ok(buffer_pubkey);
+    }
+
+    if existing_authority.is_some() {
+        progress(format!(
+            "ℹ️  Buffer {} already created; resuming writes",
+            buffer_pubkey
+        ));
+    } else {
+        // Create the buffer with the PAYER as authority for the writes; the final
+        // authority takes over afterwards. The on-chain deploy/upgrade only
+        // requires the buffer's authority to match AT CONSUME TIME.
+        progress("📝 Creating buffer account...");
+        let create_buffer_instructions = create_buffer(
+            &payer.pubkey(),
+            &buffer_pubkey,
+            &payer.pubkey(), // payer is buffer authority for writes
+            buffer_lamports,
+            program_data.len(),
+        )?;
+        // Landed-check: a just-created buffer existing at all proves our create
+        // landed (fresh keypair, or the resume branch above already ruled out a
+        // prior create).
+        let buffer_created = || matches!(try_get_account(rpc_client, &buffer_pubkey), Some(Some(_)));
+        send_with_retry(
+            rpc_client,
+            "Buffer creation",
+            &create_buffer_instructions,
+            &payer.pubkey(),
+            &[payer, &buffer_keypair],
+            Some(&buffer_created),
+        )?;
+        progress(format!("✅ Buffer account created: {}", buffer_pubkey));
+    }
+
+    // Write program data to buffer in chunks (payer signs buffer writes)
+    progress("📤 Writing program data to buffer...");
+    write_buffer_chunks(rpc_client, payer, &buffer_pubkey, program_data)?;
+
+    // Transfer buffer authority to its final custodian. Skipped when the payer
+    // IS that authority: the buffer is already theirs, and the no-op transfer
+    // would cost a fee (and, for a KMS payer, a KMS round-trip).
+    if payer.pubkey() == buffer_authority {
+        progress("🔐 Payer is the buffer authority; already correct");
+    } else {
+        progress("🔐 Transferring buffer authority...");
+        let set_buffer_authority_ix =
+            set_buffer_authority(&buffer_pubkey, &payer.pubkey(), &buffer_authority);
+
+        // Landed-check: once the transfer lands the payer is no longer the
+        // buffer authority, so a blind re-send would fail on-chain — read the
+        // buffer's recorded authority instead.
+        let authority_transferred = || {
+            let Some(Some(account)) = try_get_account(rpc_client, &buffer_pubkey) else {
+                return false;
+            };
+            matches!(
+                bincode::deserialize::<UpgradeableLoaderState>(&account.data),
+                Ok(UpgradeableLoaderState::Buffer {
+                    authority_address: Some(authority),
+                }) if authority == buffer_authority
+            )
+        };
+        send_with_retry(
+            rpc_client,
+            "Buffer authority transfer",
+            &[set_buffer_authority_ix],
+            &payer.pubkey(),
+            &[payer],
+            Some(&authority_transferred),
+        )?;
+        progress("✅ Buffer authority transferred");
+    }
+
+    Ok(buffer_pubkey)
+}
+
 /// Writes program data to a buffer account in chunks.
 ///
 /// Program data is split into MAX_WRITE_SIZE chunks (900 bytes) to avoid
 /// hitting transaction size limits. The payer is the buffer's authority during
-/// the writes and signs each chunk transaction alone; the real upgrade
-/// authority takes over the buffer afterwards via `set_buffer_authority`
-/// (unless the payer already is that authority).
+/// the writes and signs each chunk transaction alone.
 ///
 /// Each chunk goes through [`send_with_retry`]: hundreds of sequential sends
 /// should not abort on one blip (a KMS payer adds a network round-trip per
 /// signature on top of the RPC ones). No landed-check is needed — re-sending
 /// a chunk that actually landed is safe, `write` puts the same bytes at the
 /// same offset.
-fn write_buffer(
+fn write_buffer_chunks(
     rpc_client: &RpcClient,
     payer: &dyn Signer,
     buffer: &Pubkey,
@@ -230,83 +389,15 @@ pub fn deploy(
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
     let whitelist_entry = require_whitelist_entry(&rpc_client, upgrade_authority)?;
 
-    // Create and write buffer
-    progress("📝 Creating buffer account...");
-    let buffer_keypair = Keypair::new();
-    let buffer_pubkey = buffer_keypair.pubkey();
-    let buffer_size = UpgradeableLoaderState::size_of_buffer(program_data.len());
-    let buffer_lamports = rpc_client.get_minimum_balance_for_rent_exemption(buffer_size)?;
-
-    progress(format!("Buffer size: {} bytes", buffer_size));
-    progress(format!("Buffer rent: {} lamports", buffer_lamports));
-
-    // Create and initialize buffer account with PAYER as buffer authority —
-    // the same shape as `upgrade_program`: the payer signs the chunk writes,
-    // then hands the buffer to the upgrade authority, which signs exactly
-    // once regardless of program size. The on-chain deploy only requires the
-    // buffer's authority to match the upgrade authority AT DEPLOY TIME.
-    let create_buffer_instructions = create_buffer(
-        &payer.pubkey(),
-        &buffer_pubkey,
-        &payer.pubkey(), // Payer is buffer authority for writes
-        buffer_lamports,
-        program_data.len(),
-    )?;
-
-    // Landed-check: the buffer keypair is freshly generated, so the account
-    // existing at all proves our create landed.
-    let buffer_created = || matches!(try_get_account(&rpc_client, &buffer_pubkey), Some(Some(_)));
-    send_with_retry(
+    // Create and write the buffer, leaving it under the upgrade authority so the
+    // deploy below can consume it (ephemeral buffer — drained by the deploy).
+    let buffer_pubkey = write_buffer(
         &rpc_client,
-        "Buffer creation",
-        &create_buffer_instructions,
-        &payer.pubkey(),
-        &[payer.as_ref(), &buffer_keypair],
-        Some(&buffer_created),
+        payer.as_ref(),
+        &program_data,
+        None,
+        upgrade_authority,
     )?;
-
-    progress(format!("✅ Buffer account created: {}", buffer_pubkey));
-
-    // Write program data to buffer in chunks (payer signs buffer writes)
-    progress("📤 Writing program data to buffer...");
-    write_buffer(&rpc_client, payer.as_ref(), &buffer_pubkey, &program_data)?;
-
-    // Transfer buffer authority to the upgrade authority (unchecked variant —
-    // the new authority does not sign here; it signs the deploy itself).
-    // Skipped when the payer IS the upgrade authority: the buffer is already
-    // theirs, and the no-op transfer would cost a fee (and, for a KMS payer,
-    // a KMS round-trip).
-    if payer.pubkey() == upgrade_authority {
-        progress("🔐 Payer is the upgrade authority; buffer authority already correct");
-    } else {
-        progress("🔐 Transferring buffer authority...");
-        let set_buffer_authority_ix =
-            set_buffer_authority(&buffer_pubkey, &payer.pubkey(), &upgrade_authority);
-
-        // Landed-check: once the transfer lands the payer is no longer the
-        // buffer authority, so a blind re-send would fail on-chain — read the
-        // buffer's recorded authority instead.
-        let authority_transferred = || {
-            let Some(Some(account)) = try_get_account(&rpc_client, &buffer_pubkey) else {
-                return false;
-            };
-            matches!(
-                bincode::deserialize::<UpgradeableLoaderState>(&account.data),
-                Ok(UpgradeableLoaderState::Buffer {
-                    authority_address: Some(authority),
-                }) if authority == upgrade_authority
-            )
-        };
-        send_with_retry(
-            &rpc_client,
-            "Buffer authority transfer",
-            &[set_buffer_authority_ix],
-            &payer.pubkey(),
-            &[payer.as_ref()],
-            Some(&authority_transferred),
-        )?;
-        progress("✅ Buffer authority transferred to upgrade authority");
-    }
 
     // Deploy program with whitelist validation
     progress("🎯 Deploying program...");
@@ -350,6 +441,82 @@ pub fn deploy(
             program_id: program_id.to_string(),
             upgrade_authority: upgrade_authority.to_string(),
             signature: signature.to_string(),
+        },
+        mode,
+    )
+}
+
+/// Stage a program `.so` into a Loader-v3 buffer and stop (the first half of
+/// `deploy`), for a later feature-gated upgrade that consumes the buffer at
+/// runtime. No program is deployed and no gate is touched here.
+///
+/// `buffer_keypair` is an optional path to a pre-generated buffer keypair — its
+/// pubkey is the buffer address, to be baked into the client as the upgrade's
+/// source-buffer `declare_id!`, so it must be fixed in advance. Omit it to
+/// generate an ephemeral buffer and just print the address. The buffer keypair
+/// signs only the one-time `create_buffer`; it is powerless afterwards.
+///
+/// `buffer_authority` is where custody of the buffer rests until the upgrade
+/// consumes it (a buffer cannot be made immutable — see [`write_buffer`]); use
+/// the program-whitelist KMS authority. The emitted SHA-256 is the integrity
+/// check to run against the released `.so` before activating the upgrade gate.
+pub fn write_program_buffer(
+    url: &str,
+    program_so_path: String,
+    buffer_keypair_path: Option<String>,
+    buffer_authority_str: String,
+    payer_keypair_path: String,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    progress("📦 Staging program buffer on SphereNet...");
+
+    let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
+
+    // Payer may be a keypair file or a kms:// URI (it signs every ~900-byte
+    // chunk). The buffer keypair, when provided, is a plain throwaway keypair
+    // file: it signs the single create and is then powerless, so it needs no
+    // KMS custody.
+    let payer = crate::authority::signer::load_signer(&payer_keypair_path, "--payer")?;
+    let buffer_keypair = buffer_keypair_path
+        .map(|path| {
+            read_keypair_file(&path)
+                .map_err(|e| eyre::eyre!("Failed to read buffer keypair {}: {}", path, e))
+        })
+        .transpose()?;
+    let buffer_authority = Pubkey::from_str(&buffer_authority_str).map_err(|e| {
+        eyre::eyre!(
+            "Failed to parse buffer authority {}: {}",
+            buffer_authority_str,
+            e
+        )
+    })?;
+
+    progress(format!("Payer: {}", payer.pubkey()));
+    progress(format!("Buffer Authority: {}", buffer_authority));
+
+    let program_data = fs::read(&program_so_path)
+        .map_err(|e| eyre::eyre!("Failed to read program file {}: {}", program_so_path, e))?;
+    progress(format!("Program size: {} bytes", program_data.len()));
+
+    let buffer_pubkey = write_buffer(
+        &rpc_client,
+        payer.as_ref(),
+        &program_data,
+        buffer_keypair,
+        buffer_authority,
+    )?;
+
+    let sha256 = Sha256::digest(&program_data)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+
+    emit(
+        &StagedBufferView {
+            buffer: buffer_pubkey.to_string(),
+            buffer_authority: buffer_authority.to_string(),
+            byte_len: program_data.len(),
+            sha256,
         },
         mode,
     )
@@ -484,82 +651,15 @@ pub fn upgrade_program(
     // Verify upgrade authority is whitelisted before spending lamports (fail-fast)
     let whitelist_entry = require_whitelist_entry(&rpc_client, instruction_authority)?;
 
-    // Create and write buffer
-    progress("📝 Creating buffer account...");
-    let buffer_keypair = Keypair::new();
-    let buffer_pubkey = buffer_keypair.pubkey();
-    let buffer_size = UpgradeableLoaderState::size_of_buffer(program_data.len());
-    let buffer_lamports = rpc_client.get_minimum_balance_for_rent_exemption(buffer_size)?;
-
-    progress(format!("Buffer size: {} bytes", buffer_size));
-    progress(format!("Buffer rent: {} lamports", buffer_lamports));
-
-    // Create and initialize buffer account with PAYER as buffer authority
-    // (payer can write to buffer, then upgrade authority authorizes the upgrade)
-    let create_buffer_instructions = create_buffer(
-        &payer.pubkey(),
-        &buffer_pubkey,
-        &payer.pubkey(), // Payer is buffer authority for writes
-        buffer_lamports,
-        program_data.len(),
-    )?;
-
-    // Landed-check: the buffer keypair is freshly generated, so the account
-    // existing at all proves our create landed.
-    let buffer_created = || matches!(try_get_account(&rpc_client, &buffer_pubkey), Some(Some(_)));
-    send_with_retry(
+    // Create and write the buffer, leaving it under the upgrade authority so the
+    // upgrade below can consume it (ephemeral buffer — drained by the upgrade).
+    let buffer_pubkey = write_buffer(
         &rpc_client,
-        "Buffer creation",
-        &create_buffer_instructions,
-        &payer.pubkey(),
-        &[payer.as_ref(), &buffer_keypair],
-        Some(&buffer_created),
+        payer.as_ref(),
+        &program_data,
+        None,
+        instruction_authority,
     )?;
-
-    progress(format!("✅ Buffer account created: {}", buffer_pubkey));
-
-    // Write program data to buffer in chunks (payer signs buffer writes)
-    progress("📤 Writing program data to buffer...");
-    write_buffer(&rpc_client, payer.as_ref(), &buffer_pubkey, &program_data)?;
-
-    // Transfer buffer authority to upgrade authority (required for multisig
-    // upgrades). Skipped when the payer IS the upgrade authority: the buffer
-    // is already theirs, and the no-op transfer would cost a fee (and, for a
-    // KMS payer, a KMS round-trip).
-    if payer.pubkey() == instruction_authority {
-        progress("🔐 Payer is the upgrade authority; buffer authority already correct");
-    } else {
-        progress("🔐 Transferring buffer authority...");
-        let set_buffer_authority_ix = set_buffer_authority(
-            &buffer_pubkey,
-            &payer.pubkey(),        // Current buffer authority (payer)
-            &instruction_authority, // New buffer authority (upgrade authority/vault PDA)
-        );
-
-        // Landed-check: once the transfer lands the payer is no longer the
-        // buffer authority, so a blind re-send would fail on-chain — read the
-        // buffer's recorded authority instead.
-        let authority_transferred = || {
-            let Some(Some(account)) = try_get_account(&rpc_client, &buffer_pubkey) else {
-                return false;
-            };
-            matches!(
-                bincode::deserialize::<UpgradeableLoaderState>(&account.data),
-                Ok(UpgradeableLoaderState::Buffer {
-                    authority_address: Some(authority),
-                }) if authority == instruction_authority
-            )
-        };
-        send_with_retry(
-            &rpc_client,
-            "Buffer authority transfer",
-            &[set_buffer_authority_ix],
-            &payer.pubkey(),
-            &[payer.as_ref()],
-            Some(&authority_transferred),
-        )?;
-        progress("✅ Buffer authority transferred to upgrade authority");
-    }
 
     // Upgrade program with whitelist validation
     progress("🎯 Upgrading program...");

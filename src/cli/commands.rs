@@ -611,6 +611,30 @@ pub enum ProgramAction {
         #[arg(long, value_name = "BYTES")]
         max_data_len: Option<usize>,
     },
+    /// Stage a program .so into a Loader-v3 buffer and stop (the first half of
+    /// deploy) — for a later feature-gated upgrade that consumes the buffer
+    WriteBuffer {
+        /// Path to the program .so file
+        #[arg(long, value_name = "PROGRAM_SO")]
+        program_so: String,
+
+        /// Path to a pre-generated buffer keypair; its pubkey is the buffer
+        /// address (bake it into the client as the upgrade's source buffer).
+        /// Omit to generate an ephemeral buffer and print its address.
+        #[arg(long, value_name = "BUFFER_KEYPAIR")]
+        buffer_keypair: Option<String>,
+
+        /// Pubkey the buffer authority is set to after writing — custody until
+        /// the upgrade consumes it (e.g. the program-whitelist KMS authority).
+        /// A buffer cannot be made immutable, so this must be a real key.
+        #[arg(long, value_name = "BUFFER_AUTHORITY_PUBKEY")]
+        buffer_authority: String,
+
+        /// Payer keypair path, or kms:// URI. Signs every ~900-byte chunk and
+        /// is the buffer's authority during the writes.
+        #[arg(long, value_name = "PAYER_KEYPAIR")]
+        payer: String,
+    },
     /// Upgrade an existing program on SphereNet
     Upgrade {
         /// Program ID of the existing program to upgrade

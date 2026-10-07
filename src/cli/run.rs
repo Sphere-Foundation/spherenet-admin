@@ -278,6 +278,19 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 max_data_len,
                 mode,
             )?,
+            ProgramAction::WriteBuffer {
+                program_so,
+                buffer_keypair,
+                buffer_authority,
+                payer,
+            } => loader::run::write_program_buffer(
+                &cli.url,
+                program_so,
+                buffer_keypair,
+                buffer_authority,
+                payer,
+                mode,
+            )?,
             ProgramAction::Upgrade {
                 program_id,
                 program_so,
