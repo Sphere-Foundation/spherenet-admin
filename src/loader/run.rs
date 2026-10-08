@@ -61,7 +61,7 @@ impl Render for StagedBufferView {
         let mut out = String::from("✅ Buffer staged\n");
         out.push_str(&subfield("Buffer", &self.buffer));
         out.push_str(&subfield("Buffer Authority", &self.buffer_authority));
-        out.push_str(&subfield("Bytes", &self.byte_len.to_string()));
+        out.push_str(&subfield("Bytes", self.byte_len));
         // write_buffer always verifies on-chain before returning, so this hash
         // is proven against what actually landed, not just the local file.
         out.push_str(&subfield("SHA-256 (verified on-chain)", &self.sha256));
@@ -311,9 +311,14 @@ fn verify_buffer_onchain(
             account.data.len()
         )
     })?;
-    let hex = |d: &[u8]| d.iter().map(|b| format!("{b:02x}")).collect::<String>();
-    let expected = hex(Sha256::digest(program_data).as_slice());
-    let actual = hex(Sha256::digest(onchain_elf).as_slice());
+    let expected: String = Sha256::digest(program_data)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let actual: String = Sha256::digest(onchain_elf)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     if actual != expected {
         return Err(eyre::eyre!(
             "❌ On-chain buffer bytes do NOT match the .so\n   buffer:   {}\n   expected: {}\n   on-chain: {}\n   The buffer is still under the payer's authority — re-run to overwrite, or close it.",
