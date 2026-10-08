@@ -1,9 +1,6 @@
 # Build artifacts
 /target
 
-# Local operator tooling & config (kept on-disk, not versioned)
-/scripts/
-
 # Runtime data / fetched artifacts
 /opt/
 

@@ -37,10 +37,12 @@ pub fn derive_whitelist_entry(deployer_authority: &Pubkey) -> (Pubkey, u8) {
 
 /// Step 1 of the two-step flow: **request** a deployer whitelist entry.
 ///
-/// Creates a `Pending` entry the whitelist authority must later `approve`. The
-/// deploy authority must **co-sign** to prove control of the key, so this is
-/// single-sig only (the `authority`/payer keypair signs + pays; the deploy
-/// authority keypair co-signs). A multisig cannot carry the co-signature.
+/// Creates a `Pending` entry the whitelist authority must later `approve`. This
+/// is **unpermissioned** — no whitelist authority is involved; the deploy
+/// authority signs to prove control of its own key, and the `authority` here is
+/// just the fee payer (defaulted by the caller to the deploy authority itself).
+/// Single-sig only: the deploy authority's own signature can't be carried by a
+/// multisig.
 pub fn request(
     rpc_url: &str,
     deploy_authority_keypair: String,
@@ -253,7 +255,7 @@ pub fn require_whitelist_entry(
             }
         }
         Err(_) => Err(eyre::eyre!(
-            "❌ Upgrade authority {} is not whitelisted!\n   The deployer requests, then an authority approves:\n     spherenet-admin pw request <DEPLOY_AUTHORITY_KEYPAIR> --auth <PAYER>\n     spherenet-admin pw approve {} --auth <AUTHORITY>",
+            "❌ Upgrade authority {} is not whitelisted!\n   The deployer requests (unpermissioned), then an authority approves:\n     spherenet-admin pw request <DEPLOY_AUTHORITY_KEYPAIR>\n     spherenet-admin pw approve {} --auth <AUTHORITY>",
             upgrade_authority,
             upgrade_authority
         )),

@@ -121,11 +121,11 @@ impl Authority {
                     signature: signature.to_string(),
                 })
             }
-            Authority::MultiSig { .. } => eyre::bail!(
+            Authority::MultiSig { .. } => Err(eyre::eyre!(
                 "This action requires a single-sig authority: an external account (the vote \
                  account) must co-sign, which a multisig proposal cannot carry atomically. \
                  Use --authority."
-            ),
+            )),
         }
     }
 
@@ -202,14 +202,14 @@ pub fn resolve_target(
                 .parse::<Pubkey>()
                 .map_err(|e| eyre::eyre!("Invalid pubkey '{}': {}", addr, e))?;
             match squads::classify(rpc, &dest)? {
-                Some(squads::MultisigRef::ConfigAccount) => eyre::bail!(
+                Some(squads::MultisigRef::ConfigAccount) => Err(eyre::eyre!(
                     "{dest} is a Squads multisig config account — use {multisig_flag} \
                      <create-key> instead (funds/authority would otherwise be lost)."
-                ),
-                Some(squads::MultisigRef::CreateKey) => eyre::bail!(
+                )),
+                Some(squads::MultisigRef::CreateKey) => Err(eyre::eyre!(
                     "{dest} is a multisig create-key — use {multisig_flag} {dest} to target \
                      its vault, not the create-key account."
-                ),
+                )),
                 None => Ok(dest),
             }
         }
@@ -219,7 +219,7 @@ pub fn resolve_target(
                 .map_err(|e| eyre::eyre!("Invalid create-key '{}': {}", create_key, e))?;
             Ok(squads::resolve(rpc, &create_key)?.vault)
         }
-        _ => eyre::bail!("Must provide either {raw_flag} OR {multisig_flag}"),
+        _ => Err(eyre::eyre!("Must provide either {raw_flag} OR {multisig_flag}")),
     }
 }
 

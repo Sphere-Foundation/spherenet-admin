@@ -409,30 +409,19 @@ pub enum ProgramWhitelistAction {
     /// Show program whitelist account (authority + deployers)
     Show,
     /// Request a deployer whitelist entry (step 1 of 2 — creates a Pending entry
-    /// the authority must approve). The deploy authority co-signs to prove
-    /// control, so this is single-sig only (multisig cannot co-sign).
+    /// the authority must approve). UNPERMISSIONED: the deploy authority signs to
+    /// prove control of its own key and pays — no whitelist authority is involved
+    /// (approval is the permissioned step). Single-sig only (the on-chain request
+    /// requires the deploy authority's own signature, which a multisig can't carry).
     Request {
-        /// Path to the deploy-authority keypair (co-signs to prove control)
+        /// Path to the deploy-authority keypair, or kms:// URI — signs to prove
+        /// control of the key being whitelisted (and pays, unless --payer is given)
         #[arg(value_name = "DEPLOY_AUTHORITY_KEYPAIR")]
         deploy_authority_keypair: String,
-        /// Single-sig: path to authority/payer keypair, or kms:// URI (mutually exclusive with --multisig)
-        #[arg(
-            long = "authority",
-            alias = "auth",
-            conflicts_with = "multisig",
-            value_name = "AUTHORITY_KEYPAIR"
-        )]
-        authority: Option<String>,
-        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(
-            long,
-            requires = "multisig_authority",
-            value_name = "MULTISIG_CREATE_KEY"
-        )]
-        multisig: Option<String>,
-        /// Multi-sig: path to signer keypair that pays for proposal creation
-        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
-        multisig_authority: Option<String>,
+        /// Optional separate fee payer (keypair path or kms:// URI). Defaults to
+        /// the deploy authority — the requester funds its own request.
+        #[arg(long, value_name = "PAYER_KEYPAIR")]
+        payer: Option<String>,
     },
     /// Approve a pending deployer whitelist entry (step 2 of 2 — authority action)
     Approve {
@@ -610,6 +599,30 @@ pub enum ProgramAction {
         /// Maximum program data length (optional, defaults to program size)
         #[arg(long, value_name = "BYTES")]
         max_data_len: Option<usize>,
+    },
+    /// Stage a program .so into a Loader-v3 buffer and stop (the first half of
+    /// deploy) — for a later feature-gated upgrade that consumes the buffer
+    WriteBuffer {
+        /// Path to the program .so file
+        #[arg(long, value_name = "PROGRAM_SO")]
+        program_so: String,
+
+        /// Path to a pre-generated buffer keypair; its pubkey is the buffer
+        /// address (bake it into the client as the upgrade's source buffer).
+        /// Omit to generate an ephemeral buffer and print its address.
+        #[arg(long, value_name = "BUFFER_KEYPAIR")]
+        buffer_keypair: Option<String>,
+
+        /// Pubkey the buffer authority is set to after writing — custody until
+        /// the upgrade consumes it (e.g. the program-whitelist KMS authority).
+        /// A buffer cannot be made immutable, so this must be a real key.
+        #[arg(long, value_name = "BUFFER_AUTHORITY_PUBKEY")]
+        buffer_authority: String,
+
+        /// Payer keypair path, or kms:// URI. Signs every ~900-byte chunk and
+        /// is the buffer's authority during the writes.
+        #[arg(long, value_name = "PAYER_KEYPAIR")]
+        payer: String,
     },
     /// Upgrade an existing program on SphereNet
     Upgrade {
