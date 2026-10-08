@@ -201,11 +201,13 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
             ProgramWhitelistAction::Show => pw::show::show(&cli.url, mode)?,
             ProgramWhitelistAction::Request {
                 deploy_authority_keypair,
-                authority,
-                multisig,
-                multisig_authority,
+                payer,
             } => {
-                let auth = Authority::from_args(&cli.url, authority, multisig, multisig_authority)?;
+                // Unpermissioned: the fee payer defaults to the deploy authority
+                // itself (a single-sig "authority" that signs + pays; the deploy
+                // authority also co-signs to prove control — deduped when equal).
+                let payer_path = payer.unwrap_or_else(|| deploy_authority_keypair.clone());
+                let auth = Authority::from_args(&cli.url, Some(payer_path), None, None)?;
                 pw::run::request(&cli.url, deploy_authority_keypair, auth, mode)?
             }
             ProgramWhitelistAction::Approve {

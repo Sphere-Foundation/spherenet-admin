@@ -409,30 +409,19 @@ pub enum ProgramWhitelistAction {
     /// Show program whitelist account (authority + deployers)
     Show,
     /// Request a deployer whitelist entry (step 1 of 2 — creates a Pending entry
-    /// the authority must approve). The deploy authority co-signs to prove
-    /// control, so this is single-sig only (multisig cannot co-sign).
+    /// the authority must approve). UNPERMISSIONED: the deploy authority signs to
+    /// prove control of its own key and pays — no whitelist authority is involved
+    /// (approval is the permissioned step). Single-sig only (the on-chain request
+    /// requires the deploy authority's own signature, which a multisig can't carry).
     Request {
-        /// Path to the deploy-authority keypair (co-signs to prove control)
+        /// Path to the deploy-authority keypair, or kms:// URI — signs to prove
+        /// control of the key being whitelisted (and pays, unless --payer is given)
         #[arg(value_name = "DEPLOY_AUTHORITY_KEYPAIR")]
         deploy_authority_keypair: String,
-        /// Single-sig: path to authority/payer keypair, or kms:// URI (mutually exclusive with --multisig)
-        #[arg(
-            long = "authority",
-            alias = "auth",
-            conflicts_with = "multisig",
-            value_name = "AUTHORITY_KEYPAIR"
-        )]
-        authority: Option<String>,
-        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
-        #[arg(
-            long,
-            requires = "multisig_authority",
-            value_name = "MULTISIG_CREATE_KEY"
-        )]
-        multisig: Option<String>,
-        /// Multi-sig: path to signer keypair that pays for proposal creation
-        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
-        multisig_authority: Option<String>,
+        /// Optional separate fee payer (keypair path or kms:// URI). Defaults to
+        /// the deploy authority — the requester funds its own request.
+        #[arg(long, value_name = "PAYER_KEYPAIR")]
+        payer: Option<String>,
     },
     /// Approve a pending deployer whitelist entry (step 2 of 2 — authority action)
     Approve {
