@@ -62,7 +62,9 @@ impl Render for StagedBufferView {
         out.push_str(&subfield("Buffer", &self.buffer));
         out.push_str(&subfield("Buffer Authority", &self.buffer_authority));
         out.push_str(&subfield("Bytes", &self.byte_len.to_string()));
-        out.push_str(&subfield("SHA-256", &self.sha256));
+        // write_buffer always verifies on-chain before returning, so this hash
+        // is proven against what actually landed, not just the local file.
+        out.push_str(&subfield("SHA-256 (verified on-chain)", &self.sha256));
         out
     }
 }
@@ -203,6 +205,7 @@ fn write_buffer(
             "✅ Buffer {} already staged under {}; nothing to do",
             buffer_pubkey, buffer_authority
         ));
+        verify_buffer_onchain(rpc_client, &buffer_pubkey, program_data)?;
         return Ok(buffer_pubkey);
     }
 
@@ -242,6 +245,12 @@ fn write_buffer(
     progress("📤 Writing program data to buffer...");
     write_buffer_chunks(rpc_client, payer, &buffer_pubkey, program_data)?;
 
+    // Read the buffer back and confirm its bytes byte-match the .so BEFORE the
+    // hand-off: there is no on-chain bytes pin, and verifying while the payer is
+    // still the authority keeps a bad write recoverable (re-run to overwrite,
+    // or close the buffer).
+    verify_buffer_onchain(rpc_client, &buffer_pubkey, program_data)?;
+
     // Transfer buffer authority to its final custodian. Skipped when the payer
     // IS that authority: the buffer is already theirs, and the no-op transfer
     // would cost a fee (and, for a KMS payer, a KMS round-trip).
@@ -278,6 +287,43 @@ fn write_buffer(
     }
 
     Ok(buffer_pubkey)
+}
+
+/// Read a staged buffer back from chain and assert its ELF payload byte-matches
+/// `program_data`. The buffer's on-chain layout is a metadata prefix followed by
+/// the raw ELF (`size_of_buffer(0)` is exactly that prefix length), so the payload
+/// is `data[prefix..]`. Fails closed on any mismatch — the integrity gate before a
+/// feature-gated upgrade consumes the buffer (there is no on-chain bytes pin).
+fn verify_buffer_onchain(
+    rpc_client: &RpcClient,
+    buffer: &Pubkey,
+    program_data: &[u8],
+) -> eyre::Result<()> {
+    progress("🔎 Verifying on-chain buffer bytes...");
+    let account = rpc_client
+        .get_account(buffer)
+        .map_err(|e| eyre::eyre!("Failed to read buffer {} for verification: {}", buffer, e))?;
+    let prefix = UpgradeableLoaderState::size_of_buffer(0);
+    let onchain_elf = account.data.get(prefix..).ok_or_else(|| {
+        eyre::eyre!(
+            "Buffer {} is too small ({} bytes) to hold a program",
+            buffer,
+            account.data.len()
+        )
+    })?;
+    let hex = |d: &[u8]| d.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let expected = hex(Sha256::digest(program_data).as_slice());
+    let actual = hex(Sha256::digest(onchain_elf).as_slice());
+    if actual != expected {
+        return Err(eyre::eyre!(
+            "❌ On-chain buffer bytes do NOT match the .so\n   buffer:   {}\n   expected: {}\n   on-chain: {}\n   The buffer is still under the payer's authority — re-run to overwrite, or close it.",
+            buffer,
+            expected,
+            actual
+        ));
+    }
+    progress("✅ On-chain buffer bytes match the .so");
+    Ok(())
 }
 
 /// Writes program data to a buffer account in chunks.
