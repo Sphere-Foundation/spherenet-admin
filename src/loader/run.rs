@@ -64,7 +64,7 @@ impl Render for StagedBufferView {
         out.push_str(&subfield("Bytes", self.byte_len));
         // write_buffer always verifies on-chain before returning, so this hash
         // is proven against what actually landed, not just the local file.
-        out.push_str(&subfield("SHA-256 (verified on-chain)", &self.sha256));
+        out.push_str(&subfield("SHA-256", &self.sha256));
         out
     }
 }
