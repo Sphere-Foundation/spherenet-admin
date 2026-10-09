@@ -4,5 +4,8 @@
 # Runtime data / fetched artifacts
 /opt/
 
+# Keypairs never live in scripts/ (they go in /opt/); guard against strays
+scripts/*.json
+
 # macOS
 .DS_Store
