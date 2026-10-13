@@ -160,9 +160,10 @@ fn try_get_account(rpc_client: &RpcClient, pubkey: &Pubkey) -> Option<Option<Acc
 ///
 /// The payer is the buffer's authority during the writes (it signs every chunk);
 /// afterwards the buffer is transferred to `buffer_authority` (skipped when the
-/// payer already is it). A Loader-v3 buffer cannot be made immutable — the loader
-/// rejects a `None` buffer authority ("Buffer authority is not optional") — so
-/// `buffer_authority` is where custody rests until the upgrade consumes it.
+/// payer already is it). The loader rejects a `None` buffer authority ("Buffer
+/// authority is not optional"), so the buffer always has some authority until the
+/// upgrade consumes it; handing it to 1111…1 makes it immutable in practice (see
+/// [`write_program_buffer`] for why feature-gated upgrades need exactly that).
 ///
 /// Returns the buffer's address.
 fn write_buffer(
@@ -507,10 +508,13 @@ pub fn deploy(
 /// generate an ephemeral buffer and just print the address. The buffer keypair
 /// signs only the one-time `create_buffer`; it is powerless afterwards.
 ///
-/// `buffer_authority` is where custody of the buffer rests until the upgrade
-/// consumes it (a buffer cannot be made immutable — see [`write_buffer`]); use
-/// the program-whitelist KMS authority. The emitted SHA-256 is the integrity
-/// check to run against the released `.so` before activating the upgrade gate.
+/// `buffer_authority` must equal the target program's upgrade authority, or
+/// `upgrade_core_bpf_program` fails with `UpgradeAuthorityMismatch` when the
+/// gate activates. Genesis programs deployed with `none` store
+/// `Some(Pubkey::default())`, so pass `11111111111111111111111111111111`;
+/// nobody can sign as it, so the buffer is immutable once written. The emitted
+/// SHA-256 is the integrity check to run against the released `.so` before
+/// activating the upgrade gate.
 pub fn write_program_buffer(
     url: &str,
     program_so_path: String,

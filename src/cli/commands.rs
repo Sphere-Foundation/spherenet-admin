@@ -613,9 +613,12 @@ pub enum ProgramAction {
         #[arg(long, value_name = "BUFFER_KEYPAIR")]
         buffer_keypair: Option<String>,
 
-        /// Pubkey the buffer authority is set to after writing — custody until
-        /// the upgrade consumes it (e.g. the program-whitelist KMS authority).
-        /// A buffer cannot be made immutable, so this must be a real key.
+        /// Pubkey the buffer authority is set to after writing. For a
+        /// feature-gated upgrade (`upgrade_core_bpf_program`) it must equal the
+        /// target program's upgrade authority, or the upgrade fails with
+        /// UpgradeAuthorityMismatch. Genesis programs deployed with `none` store
+        /// Some(11111111111111111111111111111111), so use that; nobody can sign
+        /// as it, so the buffer is immutable once written.
         #[arg(long, value_name = "BUFFER_AUTHORITY_PUBKEY")]
         buffer_authority: String,
 

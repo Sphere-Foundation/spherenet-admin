@@ -94,6 +94,7 @@ if [[ -f "$BUFFER_KEYPAIR" ]]; then
   echo "🔑 Reusing buffer keypair $BUFFER_KEYPAIR"
 else
   echo "🔑 Creating buffer keypair $BUFFER_KEYPAIR"
+  mkdir -p "$(dirname "$BUFFER_KEYPAIR")"
   solana-keygen new --no-bip39-passphrase --silent -o "$BUFFER_KEYPAIR"
   chmod 600 "$BUFFER_KEYPAIR"
 fi
@@ -112,5 +113,4 @@ echo "Target:            $TARGET ($URL)"
 echo "Buffer:            $BUFFER_PK"
 echo "Buffer authority:  $BUFFER_AUTHORITY"
 echo "Program sha256:    $SO_SHA"
-echo "Keep $BUFFER_KEYPAIR. Put the buffer pubkey in the client's"
-echo "spherenet::fix_stake_warmup_cooldown_rate::buffer declare_id!."
+echo "Keypair:           $BUFFER_KEYPAIR (keep it; git-ignored)"
