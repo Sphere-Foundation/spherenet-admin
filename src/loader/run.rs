@@ -1,7 +1,9 @@
 //! Program deployment operations: deploy, upgrade, and extend.
 
 use crate::authority::Authority;
-use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
+use crate::cli::output::{
+    boxed_header, emit, field, newline, progress, subfield, NotFound, OutputMode, Render,
+};
 use crate::pw::run::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
@@ -65,6 +67,41 @@ impl Render for StagedBufferView {
         // write_buffer always verifies on-chain before returning, so this hash
         // is proven against what actually landed, not just the local file.
         out.push_str(&subfield("SHA-256", &self.sha256));
+        out
+    }
+}
+
+/// Result of `program show-buffer` — what a buffer holds right now. Same field
+/// names as [`StagedBufferView`], so the JSON of a `write-buffer` and a later
+/// `show-buffer` compare directly (e.g. `jq -r .sha256` on both).
+#[derive(serde::Serialize)]
+pub struct BufferView {
+    buffer: String,
+    /// The buffer authority. `None` is representable in the loader state but the
+    /// loader never sets it for a buffer; `11111111111111111111111111111111`
+    /// means locked (nobody can sign as it).
+    buffer_authority: Option<String>,
+    /// Length of the program bytes (the payload after the buffer metadata).
+    byte_len: usize,
+    /// SHA-256 of the program bytes — compare against the released `.so`.
+    sha256: String,
+    lamports: u64,
+}
+
+impl Render for BufferView {
+    fn to_text(&self) -> String {
+        let authority = match &self.buffer_authority {
+            Some(a) if *a == Pubkey::default().to_string() => format!("{a} (locked)"),
+            Some(a) => a.clone(),
+            None => "none".to_string(),
+        };
+        let mut out = boxed_header("Program Buffer");
+        out.push_str(newline());
+        out.push_str(&field("Buffer", &self.buffer));
+        out.push_str(&field("Buffer Authority", authority));
+        out.push_str(&field("Bytes", self.byte_len));
+        out.push_str(&field("SHA-256", &self.sha256));
+        out.push_str(&field("Lamports", self.lamports));
         out
     }
 }
@@ -290,10 +327,24 @@ fn write_buffer(
     Ok(buffer_pubkey)
 }
 
+/// Lowercase hex SHA-256 of `bytes`.
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// The program bytes a Loader-v3 buffer account holds. The buffer's on-chain
+/// layout is a metadata prefix followed by the raw ELF (`size_of_buffer(0)` is
+/// exactly that prefix length), so the payload is `data[prefix..]`. `None` if the
+/// account is too small to be a buffer at all.
+fn buffer_payload(data: &[u8]) -> Option<&[u8]> {
+    data.get(UpgradeableLoaderState::size_of_buffer(0)..)
+}
+
 /// Read a staged buffer back from chain and assert its ELF payload byte-matches
-/// `program_data`. The buffer's on-chain layout is a metadata prefix followed by
-/// the raw ELF (`size_of_buffer(0)` is exactly that prefix length), so the payload
-/// is `data[prefix..]`. Fails closed on any mismatch — the integrity gate before a
+/// `program_data`. Fails closed on any mismatch — the integrity gate before a
 /// feature-gated upgrade consumes the buffer (there is no on-chain bytes pin).
 fn verify_buffer_onchain(
     rpc_client: &RpcClient,
@@ -304,22 +355,15 @@ fn verify_buffer_onchain(
     let account = rpc_client
         .get_account(buffer)
         .map_err(|e| eyre::eyre!("Failed to read buffer {} for verification: {}", buffer, e))?;
-    let prefix = UpgradeableLoaderState::size_of_buffer(0);
-    let onchain_elf = account.data.get(prefix..).ok_or_else(|| {
+    let onchain_elf = buffer_payload(&account.data).ok_or_else(|| {
         eyre::eyre!(
             "Buffer {} is too small ({} bytes) to hold a program",
             buffer,
             account.data.len()
         )
     })?;
-    let expected: String = Sha256::digest(program_data)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    let actual: String = Sha256::digest(onchain_elf)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let expected = sha256_hex(program_data);
+    let actual = sha256_hex(onchain_elf);
     if actual != expected {
         return Err(eyre::eyre!(
             "❌ On-chain buffer bytes do NOT match the .so\n   buffer:   {}\n   expected: {}\n   on-chain: {}\n   The buffer is still under the payer's authority — re-run to overwrite, or close it.",
@@ -561,20 +605,73 @@ pub fn write_program_buffer(
         buffer_authority,
     )?;
 
-    let sha256 = Sha256::digest(&program_data)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
-
     emit(
         &StagedBufferView {
             buffer: buffer_pubkey.to_string(),
             buffer_authority: buffer_authority.to_string(),
             byte_len: program_data.len(),
-            sha256,
+            sha256: sha256_hex(&program_data),
         },
         mode,
     )
+}
+
+/// Fetch a Loader-v3 buffer's authority and a hash of the program bytes it
+/// holds. `Ok(None)` if the account doesn't exist (closed, consumed by an
+/// upgrade, or never created); `Err` on a bad pubkey, or an account that exists
+/// but is not a Loader-v3 buffer.
+pub fn fetch_buffer(rpc_url: &str, buffer: &str) -> eyre::Result<Option<BufferView>> {
+    let rpc_client =
+        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
+    let buffer_pubkey = Pubkey::from_str(buffer)
+        .map_err(|e| eyre::eyre!("Invalid buffer pubkey '{}': {}", buffer, e))?;
+
+    let account = match rpc_client.get_account(&buffer_pubkey) {
+        Ok(account) => account,
+        Err(_) => return Ok(None),
+    };
+
+    if account.owner != bpf_loader_upgradeable::id() {
+        return Err(eyre::eyre!(
+            "Account {} is not a Loader-v3 buffer (owner: {}, expected: {})",
+            buffer_pubkey,
+            account.owner,
+            bpf_loader_upgradeable::id()
+        ));
+    }
+    let authority = match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
+        Ok(UpgradeableLoaderState::Buffer { authority_address }) => authority_address,
+        _ => {
+            return Err(eyre::eyre!(
+                "Account {} is owned by the upgradeable loader but is not a buffer",
+                buffer_pubkey
+            ))
+        }
+    };
+    let payload = buffer_payload(&account.data).ok_or_else(|| {
+        eyre::eyre!(
+            "Buffer {} is too small ({} bytes) to hold a program",
+            buffer_pubkey,
+            account.data.len()
+        )
+    })?;
+
+    Ok(Some(BufferView {
+        buffer: buffer_pubkey.to_string(),
+        buffer_authority: authority.map(|a| a.to_string()),
+        byte_len: payload.len(),
+        sha256: sha256_hex(payload),
+        lamports: account.lamports,
+    }))
+}
+
+/// `program show-buffer`: print a buffer's authority and program-bytes hash, or
+/// a not-found result if the account doesn't exist.
+pub fn show_buffer(rpc_url: &str, buffer: String, mode: OutputMode) -> eyre::Result<()> {
+    match fetch_buffer(rpc_url, &buffer)? {
+        Some(view) => emit(&view, mode),
+        None => emit(&NotFound::new("Buffer", buffer), mode),
+    }
 }
 
 /// Upgrade an existing program on SphereNet

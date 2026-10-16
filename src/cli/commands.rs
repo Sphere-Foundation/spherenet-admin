@@ -627,6 +627,13 @@ pub enum ProgramAction {
         #[arg(long, value_name = "PAYER_KEYPAIR")]
         payer: String,
     },
+    /// Show a Loader-v3 buffer: its authority, the length of the program bytes
+    /// it holds, and their SHA-256 (read-only)
+    ShowBuffer {
+        /// Buffer account pubkey
+        #[arg(value_name = "BUFFER_PUBKEY")]
+        buffer: String,
+    },
     /// Upgrade an existing program on SphereNet
     Upgrade {
         /// Program ID of the existing program to upgrade

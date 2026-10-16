@@ -81,6 +81,8 @@ spherenet-admin program deploy --program-so ./p.so --program-keypair ./p-keypair
 - `program upgrade --program-id <ID> --program-so ./p.so …` (single-sig or multisig)
 - `program extend --program-id <ID> --bytes <N>` — grow capacity (permissionless; payer covers the added rent)
 - `program set-upgrade-authority --program-id <ID> [--new-authority <PK> | --new-multisig <CK> | --final]`
+- `program write-buffer --program-so ./p.so --buffer-authority <PK> --payer <KEYPAIR> [--buffer-keypair <KEYPAIR>]` — stage a buffer for a feature-gated upgrade (verifies the on-chain bytes against the `.so`)
+- `program show-buffer <BUFFER>` — a buffer's authority, program-byte length and SHA-256 (read-only; `--output json` compares directly with `write-buffer`'s output)
 
 ### Multisig (`multisig`)
 

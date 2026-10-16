@@ -293,6 +293,7 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 payer,
                 mode,
             )?,
+            ProgramAction::ShowBuffer { buffer } => loader::run::show_buffer(&cli.url, buffer, mode)?,
             ProgramAction::Upgrade {
                 program_id,
                 program_so,
