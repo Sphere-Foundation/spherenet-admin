@@ -607,8 +607,10 @@ pub enum ProgramAction {
         #[arg(long, value_name = "PROGRAM_SO")]
         program_so: String,
 
-        /// Path to a pre-generated buffer keypair; its pubkey is the buffer
-        /// address (bake it into the client as the upgrade's source buffer).
+        /// Pre-generated buffer key: a keypair file path, or kms:// URI (e.g. an
+        /// upstream gate's rotated buffer address, held in the feature-gates
+        /// keyring). Its pubkey is the buffer address (bake it into the client as
+        /// the upgrade's source buffer); it signs only the one-time create.
         /// Omit to generate an ephemeral buffer and print its address.
         #[arg(long, value_name = "BUFFER_KEYPAIR")]
         buffer_keypair: Option<String>,

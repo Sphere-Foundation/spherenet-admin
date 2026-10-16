@@ -12,7 +12,7 @@ use solana_sdk::{
     account::Account,
     instruction::Instruction,
     pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair, Signature, Signer},
+    signature::{Keypair, Signature, Signer},
     transaction::Transaction,
 };
 use solana_sdk_ids::bpf_loader_upgradeable;
@@ -191,9 +191,10 @@ fn try_get_account(rpc_client: &RpcClient, pubkey: &Pubkey) -> Option<Option<Acc
 /// `buffer`:
 /// - `None` → generate an ephemeral keypair (the `deploy`/`upgrade` case; the
 ///   address is used once and then drained by the deploy, so it never matters).
-/// - `Some(kp)` → write to a caller-chosen address (its pubkey is baked into the
-///   client as the upgrade's source-buffer `declare_id!`, so it must be known in
-///   advance). Re-running against an already-created buffer resumes the writes.
+/// - `Some(signer)` → write to a caller-chosen address (its pubkey is baked into
+///   the client as the upgrade's source-buffer `declare_id!`, so it must be known
+///   in advance). The signer may be a keypair file or a KMS key; it signs only the
+///   create. Re-running against an already-created buffer resumes the writes.
 ///
 /// The payer is the buffer's authority during the writes (it signs every chunk);
 /// afterwards the buffer is transferred to `buffer_authority` (skipped when the
@@ -207,11 +208,18 @@ fn write_buffer(
     rpc_client: &RpcClient,
     payer: &dyn Signer,
     program_data: &[u8],
-    buffer: Option<Keypair>,
+    buffer: Option<&dyn Signer>,
     buffer_authority: Pubkey,
 ) -> eyre::Result<Pubkey> {
-    let buffer_keypair = buffer.unwrap_or_else(Keypair::new);
-    let buffer_pubkey = buffer_keypair.pubkey();
+    let ephemeral;
+    let buffer_signer: &dyn Signer = match buffer {
+        Some(signer) => signer,
+        None => {
+            ephemeral = Keypair::new();
+            &ephemeral
+        }
+    };
+    let buffer_pubkey = buffer_signer.pubkey();
     let buffer_size = UpgradeableLoaderState::size_of_buffer(program_data.len());
     let buffer_lamports = rpc_client.get_minimum_balance_for_rent_exemption(buffer_size)?;
 
@@ -273,7 +281,7 @@ fn write_buffer(
             "Buffer creation",
             &create_buffer_instructions,
             &payer.pubkey(),
-            &[payer, &buffer_keypair],
+            &[payer, buffer_signer],
             Some(&buffer_created),
         )?;
         progress(format!("✅ Buffer account created: {}", buffer_pubkey));
@@ -546,11 +554,11 @@ pub fn deploy(
 /// `deploy`), for a later feature-gated upgrade that consumes the buffer at
 /// runtime. No program is deployed and no gate is touched here.
 ///
-/// `buffer_keypair` is an optional path to a pre-generated buffer keypair — its
-/// pubkey is the buffer address, to be baked into the client as the upgrade's
-/// source-buffer `declare_id!`, so it must be fixed in advance. Omit it to
-/// generate an ephemeral buffer and just print the address. The buffer keypair
-/// signs only the one-time `create_buffer`; it is powerless afterwards.
+/// `buffer_keypair_path` is an optional pre-generated buffer key — a keypair file
+/// or a `kms://` URI. Its pubkey is the buffer address, baked into the client as
+/// the upgrade's source-buffer `declare_id!`, so it must be fixed in advance.
+/// Omit it to generate an ephemeral buffer and just print the address. The key
+/// signs only the one-time `create_buffer` (or a re-create after a close).
 ///
 /// `buffer_authority` must equal the target program's upgrade authority, or
 /// `upgrade_core_bpf_program` fails with `UpgradeAuthorityMismatch` when the
@@ -572,15 +580,13 @@ pub fn write_program_buffer(
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Payer may be a keypair file or a kms:// URI (it signs every ~900-byte
-    // chunk). The buffer keypair, when provided, is a plain throwaway keypair
-    // file: it signs the single create and is then powerless, so it needs no
-    // KMS custody.
+    // chunk). The buffer key, when provided, may also be either: it signs only
+    // the one-time create_buffer, so a kms:// key costs a single KMS round-trip.
+    // KMS matters for upstream feature-gated upgrades, whose rotated buffer
+    // address keys live only in the shared feature-gates keyring.
     let payer = crate::authority::signer::load_signer(&payer_keypair_path, "--payer")?;
-    let buffer_keypair = buffer_keypair_path
-        .map(|path| {
-            read_keypair_file(&path)
-                .map_err(|e| eyre::eyre!("Failed to read buffer keypair {}: {}", path, e))
-        })
+    let buffer_signer = buffer_keypair_path
+        .map(|path| crate::authority::signer::load_signer(&path, "--buffer-keypair"))
         .transpose()?;
     let buffer_authority = Pubkey::from_str(&buffer_authority_str).map_err(|e| {
         eyre::eyre!(
@@ -601,7 +607,9 @@ pub fn write_program_buffer(
         &rpc_client,
         payer.as_ref(),
         &program_data,
-        buffer_keypair,
+        buffer_signer
+            .as_ref()
+            .map(crate::authority::signer::AdminSigner::as_ref),
         buffer_authority,
     )?;
 
