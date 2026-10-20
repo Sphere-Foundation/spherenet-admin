@@ -684,6 +684,51 @@ pub enum ProgramAction {
         #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
         multisig_authority: Option<String>,
     },
+    /// Close a buffer and reclaim its rent (the current authority signs). The
+    /// address is free again from the next transaction; re-creating a buffer
+    /// there needs the address key (`write-buffer --buffer-keypair`)
+    CloseBuffer {
+        /// Buffer account pubkey
+        #[arg(long, value_name = "BUFFER_PUBKEY")]
+        buffer: String,
+
+        /// Rent recipient (mutually exclusive with --recipient-multisig).
+        /// Defaults to the buffer's current authority (the signer, or the
+        /// multisig vault)
+        #[arg(
+            long,
+            conflicts_with = "recipient_multisig",
+            value_name = "RECIPIENT_PUBKEY"
+        )]
+        recipient: Option<String>,
+        /// Rent recipient is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --recipient)
+        #[arg(
+            long,
+            conflicts_with = "recipient",
+            value_name = "RECIPIENT_MULTISIG_CREATE_KEY"
+        )]
+        recipient_multisig: Option<String>,
+
+        /// Single-sig: path to the current buffer authority keypair, or kms:// URI (mutually exclusive with --multisig)
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
+        multisig_authority: Option<String>,
+    },
     /// Upgrade an existing program on SphereNet
     Upgrade {
         /// Program ID of the existing program to upgrade

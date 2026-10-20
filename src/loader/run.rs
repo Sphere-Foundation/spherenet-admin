@@ -19,8 +19,9 @@ use solana_sdk_ids::bpf_loader_upgradeable;
 #[allow(deprecated)]
 use spherenet_loader_v3_interface::{
     instruction::{
-        create_buffer, deploy_with_max_program_len, extend_program as extend_program_ix,
-        set_buffer_authority, set_upgrade_authority as set_upgrade_authority_ix, upgrade, write,
+        close as close_ix, create_buffer, deploy_with_max_program_len,
+        extend_program as extend_program_ix, set_buffer_authority,
+        set_upgrade_authority as set_upgrade_authority_ix, upgrade, write,
     },
     state::UpgradeableLoaderState,
 };
@@ -798,6 +799,67 @@ pub fn set_program_buffer_authority(
         format!("Set authority of buffer {} to {}", buffer, new)
     };
     let result = current_authority.execute_instruction(&rpc_client, set_ix, &description)?;
+    emit(&result, mode)
+}
+
+/// Close a buffer and send its rent to `recipient`.
+///
+/// The **current** authority signs (single-sig directly, or a multisig via
+/// proposal). The recipient defaults to that authority (the signer, or the
+/// multisig vault); an explicit `--recipient` / `--recipient-multisig` goes
+/// through the shared multisig-safety gate, like any funds destination.
+///
+/// A locked buffer (authority `11111111111111111111111111111111`) can't be
+/// closed — nobody can sign as its authority — and is refused up front.
+///
+/// The loader zeroes the account, so it is gone once the transaction commits:
+/// from the next transaction the address is free, and re-creating a buffer
+/// there needs the address key (`write-buffer --buffer-keypair`, file or
+/// `kms://`). That is the recovery path for a wrong-size upload before the lock.
+pub fn close_program_buffer(
+    url: &str,
+    buffer_str: String,
+    current_authority: Authority,
+    recipient: Option<String>,
+    recipient_multisig: Option<String>,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    progress("🧹 Closing buffer...");
+
+    let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
+    let buffer = parse_buffer_pubkey(&buffer_str)?;
+    let current = current_authority.instruction_authority_pubkey()?;
+    let account = require_buffer_authority(&rpc_client, &buffer, &current)?;
+
+    let recipient = if recipient.is_none() && recipient_multisig.is_none() {
+        current
+    } else {
+        crate::authority::resolve_target(
+            &rpc_client,
+            recipient,
+            recipient_multisig,
+            "--recipient",
+            "--recipient-multisig",
+        )?
+    };
+    if recipient == buffer {
+        return Err(eyre::eyre!(
+            "The recipient can't be the buffer being closed ({})",
+            buffer
+        ));
+    }
+
+    progress(format!("Buffer:             {}", buffer));
+    progress(format!("Authority:          {}", current));
+    progress(format!("Recipient:          {}", recipient));
+    progress(format!("Rent returned:      {} lamports", account.lamports));
+
+    let close = close_ix(&buffer, &recipient, &current);
+    let description = format!(
+        "Close buffer {} (rent {} lamports to {})",
+        buffer, account.lamports, recipient
+    );
+    let result = current_authority.execute_instruction(&rpc_client, close, &description)?;
     emit(&result, mode)
 }
 

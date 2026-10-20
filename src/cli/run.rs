@@ -314,6 +314,24 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                     mode,
                 )?
             }
+            ProgramAction::CloseBuffer {
+                buffer,
+                recipient,
+                recipient_multisig,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = Authority::from_args(&cli.url, authority, multisig, multisig_authority)?;
+                loader::run::close_program_buffer(
+                    &cli.url,
+                    buffer,
+                    auth,
+                    recipient,
+                    recipient_multisig,
+                    mode,
+                )?
+            }
             ProgramAction::Upgrade {
                 program_id,
                 program_so,
