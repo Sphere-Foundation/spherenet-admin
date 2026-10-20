@@ -636,6 +636,54 @@ pub enum ProgramAction {
         #[arg(value_name = "BUFFER_PUBKEY")]
         buffer: String,
     },
+    /// Transfer a buffer's authority (or lock it with --lock)
+    SetBufferAuthority {
+        /// Buffer account pubkey
+        #[arg(long, value_name = "BUFFER_PUBKEY")]
+        buffer: String,
+
+        /// New authority pubkey (mutually exclusive with --new-multisig / --lock)
+        #[arg(
+            long,
+            conflicts_with = "new_multisig",
+            value_name = "NEW_AUTHORITY_PUBKEY"
+        )]
+        new_authority: Option<String>,
+        /// New authority is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --new-authority / --lock)
+        #[arg(
+            long,
+            conflicts_with = "new_authority",
+            value_name = "NEW_MULTISIG_CREATE_KEY"
+        )]
+        new_multisig: Option<String>,
+        /// Lock the buffer: set its authority to 11111111111111111111111111111111.
+        /// Nobody can sign as it, so the buffer can no longer be written, closed,
+        /// or re-assigned. This is what a feature-gated upgrade of a genesis
+        /// program needs (its upgrade authority is Some(Pubkey::default())).
+        /// Irreversible. Mutually exclusive with --new-authority / --new-multisig.
+        #[arg(long, conflicts_with_all = ["new_authority", "new_multisig"])]
+        lock: bool,
+
+        /// Single-sig: path to the current buffer authority keypair, or kms:// URI (mutually exclusive with --multisig)
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
+        multisig_authority: Option<String>,
+    },
     /// Upgrade an existing program on SphereNet
     Upgrade {
         /// Program ID of the existing program to upgrade

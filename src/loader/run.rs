@@ -624,17 +624,14 @@ pub fn write_program_buffer(
     )
 }
 
-/// Fetch a Loader-v3 buffer's authority and a hash of the program bytes it
-/// holds. `Ok(None)` if the account doesn't exist (closed, consumed by an
-/// upgrade, or never created); `Err` on a bad pubkey, or an account that exists
-/// but is not a Loader-v3 buffer.
-pub fn fetch_buffer(rpc_url: &str, buffer: &str) -> eyre::Result<Option<BufferView>> {
-    let rpc_client =
-        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
-    let buffer_pubkey = Pubkey::from_str(buffer)
-        .map_err(|e| eyre::eyre!("Invalid buffer pubkey '{}': {}", buffer, e))?;
-
-    let account = match rpc_client.get_account(&buffer_pubkey) {
+/// Read a Loader-v3 buffer account and its recorded authority. `Ok(None)` if the
+/// account doesn't exist (closed, consumed by an upgrade, or never created);
+/// `Err` if it exists but is not a Loader-v3 buffer.
+fn load_buffer(
+    rpc_client: &RpcClient,
+    buffer: &Pubkey,
+) -> eyre::Result<Option<(Account, Option<Pubkey>)>> {
+    let account = match rpc_client.get_account(buffer) {
         Ok(account) => account,
         Err(_) => return Ok(None),
     };
@@ -642,19 +639,38 @@ pub fn fetch_buffer(rpc_url: &str, buffer: &str) -> eyre::Result<Option<BufferVi
     if account.owner != bpf_loader_upgradeable::id() {
         return Err(eyre::eyre!(
             "Account {} is not a Loader-v3 buffer (owner: {}, expected: {})",
-            buffer_pubkey,
+            buffer,
             account.owner,
             bpf_loader_upgradeable::id()
         ));
     }
-    let authority = match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
-        Ok(UpgradeableLoaderState::Buffer { authority_address }) => authority_address,
-        _ => {
-            return Err(eyre::eyre!(
-                "Account {} is owned by the upgradeable loader but is not a buffer",
-                buffer_pubkey
-            ))
+    match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
+        Ok(UpgradeableLoaderState::Buffer { authority_address }) => {
+            Ok(Some((account, authority_address)))
         }
+        _ => Err(eyre::eyre!(
+            "Account {} is owned by the upgradeable loader but is not a buffer",
+            buffer
+        )),
+    }
+}
+
+/// Parse a buffer pubkey CLI argument.
+fn parse_buffer_pubkey(buffer: &str) -> eyre::Result<Pubkey> {
+    Pubkey::from_str(buffer).map_err(|e| eyre::eyre!("Invalid buffer pubkey '{}': {}", buffer, e))
+}
+
+/// Fetch a Loader-v3 buffer's authority and a hash of the program bytes it
+/// holds. `Ok(None)` if the account doesn't exist (closed, consumed by an
+/// upgrade, or never created); `Err` on a bad pubkey, or an account that exists
+/// but is not a Loader-v3 buffer.
+pub fn fetch_buffer(rpc_url: &str, buffer: &str) -> eyre::Result<Option<BufferView>> {
+    let rpc_client =
+        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
+    let buffer_pubkey = parse_buffer_pubkey(buffer)?;
+
+    let Some((account, authority)) = load_buffer(&rpc_client, &buffer_pubkey)? else {
+        return Ok(None);
     };
     let payload = buffer_payload(&account.data).ok_or_else(|| {
         eyre::eyre!(
@@ -680,6 +696,109 @@ pub fn show_buffer(rpc_url: &str, buffer: String, mode: OutputMode) -> eyre::Res
         Some(view) => emit(&view, mode),
         None => emit(&NotFound::new("Buffer", buffer), mode),
     }
+}
+
+/// Read a buffer and confirm `signer` is its current authority, before building
+/// an authority-signed buffer instruction. Fails early (with a clear message,
+/// rather than an opaque on-chain error) if the buffer is missing, already
+/// locked to `11111111111111111111111111111111`, or held by someone else.
+fn require_buffer_authority(
+    rpc_client: &RpcClient,
+    buffer: &Pubkey,
+    signer: &Pubkey,
+) -> eyre::Result<Account> {
+    let (account, onchain) = load_buffer(rpc_client, buffer)?
+        .ok_or_else(|| eyre::eyre!("Buffer {} not found", buffer))?;
+    match onchain {
+        Some(authority) if authority == Pubkey::default() => Err(eyre::eyre!(
+            "Buffer {} is locked (authority {}); nobody can sign as it, so it can't be changed",
+            buffer,
+            authority
+        )),
+        Some(authority) if authority != *signer => Err(eyre::eyre!(
+            "Buffer {} is held by {}, not {}",
+            buffer,
+            authority,
+            signer
+        )),
+        Some(_) => Ok(account),
+        None => Err(eyre::eyre!("Buffer {} has no authority", buffer)),
+    }
+}
+
+/// Set (transfer) a buffer's authority, or lock it.
+///
+/// The **current** authority signs (single-sig directly, or a multisig via
+/// proposal). Without `lock`, the new authority is resolved through the shared
+/// multisig-safety gate, like [`set_upgrade_authority`]: a raw pubkey is guarded
+/// against being a config account / create-key, and `--new-multisig <create-key>`
+/// resolves to the multisig's vault.
+///
+/// A buffer's authority can't be `None` (the loader rejects it), so the
+/// irreversible option is `lock`: set it to `11111111111111111111111111111111`,
+/// which nobody can sign as. That is exactly what a feature-gated upgrade of a
+/// genesis program needs (`upgrade_core_bpf_program` requires the buffer's
+/// authority to equal the program's, `Some(Pubkey::default())`). A raw
+/// `--new-authority 1111…1` is refused, so locking is always explicit.
+///
+/// Uses the unchecked `SetAuthority` (the new authority doesn't co-sign — it
+/// can't for a lock or a multisig vault); the guards above provide the safety
+/// `SetAuthorityChecked` would otherwise give.
+pub fn set_program_buffer_authority(
+    url: &str,
+    buffer_str: String,
+    current_authority: Authority,
+    new_authority: Option<String>,
+    new_multisig: Option<String>,
+    lock: bool,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    progress("🔑 Setting buffer authority...");
+
+    let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
+    let buffer = parse_buffer_pubkey(&buffer_str)?;
+    let current = current_authority.instruction_authority_pubkey()?;
+    require_buffer_authority(&rpc_client, &buffer, &current)?;
+
+    let new = if lock {
+        Pubkey::default()
+    } else {
+        let new = crate::authority::resolve_target(
+            &rpc_client,
+            new_authority,
+            new_multisig,
+            "--new-authority",
+            "--new-multisig",
+        )?;
+        if new == Pubkey::default() {
+            return Err(eyre::eyre!(
+                "Setting the authority to {} locks the buffer permanently — use --lock to do that explicitly",
+                new
+            ));
+        }
+        new
+    };
+
+    progress(format!("Buffer:             {}", buffer));
+    progress(format!("Current Authority:  {}", current));
+    if lock {
+        progress(format!(
+            "New Authority:      {} (⚠️  LOCK — irreversible: the buffer can no longer be written, closed, or re-assigned)",
+            new
+        ));
+    } else {
+        progress(format!("New Authority:      {}", new));
+    }
+
+    let set_ix = set_buffer_authority(&buffer, &current, &new);
+
+    let description = if lock {
+        format!("Lock buffer {}", buffer)
+    } else {
+        format!("Set authority of buffer {} to {}", buffer, new)
+    };
+    let result = current_authority.execute_instruction(&rpc_client, set_ix, &description)?;
+    emit(&result, mode)
 }
 
 /// Upgrade an existing program on SphereNet

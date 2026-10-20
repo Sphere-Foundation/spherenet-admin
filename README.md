@@ -83,6 +83,7 @@ spherenet-admin program deploy --program-so ./p.so --program-keypair ./p-keypair
 - `program set-upgrade-authority --program-id <ID> [--new-authority <PK> | --new-multisig <CK> | --final]`
 - `program write-buffer --program-so ./p.so --buffer-authority <PK> --payer <KEYPAIR> [--buffer-keypair <KEYPAIR>]` — stage a buffer for a feature-gated upgrade (verifies the on-chain bytes against the `.so`)
 - `program show-buffer <BUFFER>` — a buffer's authority, program-byte length and SHA-256 (read-only; `--output json` compares directly with `write-buffer`'s output)
+- `program set-buffer-authority --buffer <BUFFER> [--new-authority <PK> | --new-multisig <CK> | --lock]` — the current authority (`--authority`, or a multisig) hands the buffer over; `--lock` sets it to `1111…1` (irreversible; what a feature-gated upgrade of a genesis program needs)
 
 ### Multisig (`multisig`)
 
