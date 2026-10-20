@@ -233,10 +233,15 @@ fn write_buffer(
     //   landed), so there is nothing left to do.
     // - authority still == payer → creation landed but the stage was interrupted;
     //   skip creation and resume the (idempotent) chunk writes.
+    // - anything else (another custodian, a locked 1111…1, or a buffer sized for a
+    //   different program) can't be resumed by this payer: refuse up front rather
+    //   than send ~240 chunk writes the loader would reject one by one.
     // An ephemeral (None) buffer is a fresh random key, so this never fires.
-    let existing_authority = match try_get_account(rpc_client, &buffer_pubkey) {
+    let existing = match try_get_account(rpc_client, &buffer_pubkey) {
         Some(Some(account)) => match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
-            Ok(UpgradeableLoaderState::Buffer { authority_address }) => Some(authority_address),
+            Ok(UpgradeableLoaderState::Buffer { authority_address }) => {
+                Some((authority_address, account.data.len()))
+            }
             _ => {
                 return Err(eyre::eyre!(
                     "Account {} already exists and is not a Loader-v3 buffer",
@@ -247,7 +252,7 @@ fn write_buffer(
         _ => None,
     };
 
-    if existing_authority == Some(Some(buffer_authority)) {
+    if existing.map(|(authority, _)| authority) == Some(Some(buffer_authority)) {
         progress(format!(
             "✅ Buffer {} already staged under {}; nothing to do",
             buffer_pubkey, buffer_authority
@@ -256,7 +261,34 @@ fn write_buffer(
         return Ok(buffer_pubkey);
     }
 
-    if existing_authority.is_some() {
+    if let Some((authority, data_len)) = existing {
+        if authority != Some(payer.pubkey()) {
+            let holder = authority.map_or_else(|| "no authority".to_string(), |a| a.to_string());
+            let locked = authority == Some(Pubkey::default());
+            return Err(eyre::eyre!(
+                "Buffer {} already exists and is held by {}, not the payer {}, so it can't be \
+                 resumed. {}",
+                buffer_pubkey,
+                holder,
+                payer.pubkey(),
+                if locked {
+                    "It is locked: nobody can write to or close it."
+                } else {
+                    "Hand it back with `program set-buffer-authority --new-authority <payer>`, \
+                     or `program close-buffer` it and re-create, before re-writing."
+                }
+            ));
+        }
+        if data_len != buffer_size {
+            return Err(eyre::eyre!(
+                "Buffer {} already exists but is sized for a different program ({} bytes, this \
+                 one needs {}); `program close-buffer` it, then re-run to re-create it at the \
+                 same address",
+                buffer_pubkey,
+                data_len,
+                buffer_size
+            ));
+        }
         progress(format!(
             "ℹ️  Buffer {} already created; resuming writes",
             buffer_pubkey
