@@ -406,11 +406,32 @@ fn verify_buffer_onchain(
     let expected = sha256_hex(program_data);
     let actual = sha256_hex(onchain_elf);
     if actual != expected {
+        // The recovery path depends on who holds the buffer now: this check runs
+        // both right after a write (the payer still holds it) and on the
+        // "already staged" path (the final authority, possibly a locked 1111…1).
+        let hint = match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
+            Ok(UpgradeableLoaderState::Buffer {
+                authority_address: Some(authority),
+            }) if authority == Pubkey::default() => {
+                "It is locked, so it can't be fixed: the upgrade needs a new buffer address."
+                    .to_string()
+            }
+            Ok(UpgradeableLoaderState::Buffer {
+                authority_address: Some(authority),
+            }) => format!(
+                "Fix it while its authority {authority} can still sign: overwrite it (re-run \
+                 `write-buffer` with that key as payer — hand it back with \
+                 `set-buffer-authority` first if needed), or `close-buffer` it and re-create."
+            ),
+            _ => "Its authority can't be read, so check it with `show-buffer` before retrying."
+                .to_string(),
+        };
         return Err(eyre::eyre!(
-            "❌ On-chain buffer bytes do NOT match the .so\n   buffer:   {}\n   expected: {}\n   on-chain: {}\n   The buffer is still under the payer's authority — re-run to overwrite, or close it.",
+            "❌ On-chain buffer bytes do NOT match the .so\n   buffer:   {}\n   expected: {}\n   on-chain: {}\n   {}",
             buffer,
             expected,
-            actual
+            actual,
+            hint
         ));
     }
     progress("✅ On-chain buffer bytes match the .so");
