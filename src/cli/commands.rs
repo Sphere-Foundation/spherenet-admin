@@ -615,14 +615,29 @@ pub enum ProgramAction {
         #[arg(long, value_name = "BUFFER_KEYPAIR")]
         buffer_keypair: Option<String>,
 
-        /// Pubkey the buffer authority is set to after writing. For a
-        /// feature-gated upgrade (`upgrade_core_bpf_program`) it must equal the
-        /// target program's upgrade authority, or the upgrade fails with
-        /// UpgradeAuthorityMismatch. Genesis programs deployed with `none` store
+        /// Pubkey the buffer authority is set to after writing (mutually
+        /// exclusive with --buffer-multisig). For a feature-gated upgrade
+        /// (`upgrade_core_bpf_program`) it must equal the target program's
+        /// upgrade authority, or the upgrade fails with UpgradeAuthorityMismatch.
+        /// Genesis programs deployed with `none` store
         /// Some(11111111111111111111111111111111), so use that; nobody can sign
-        /// as it, so the buffer is immutable once written.
-        #[arg(long, value_name = "BUFFER_AUTHORITY_PUBKEY")]
-        buffer_authority: String,
+        /// as it, so the buffer is immutable once written. A Squads create-key or
+        /// config account is refused (use --buffer-multisig).
+        #[arg(
+            long,
+            conflicts_with = "buffer_multisig",
+            value_name = "BUFFER_AUTHORITY_PUBKEY"
+        )]
+        buffer_authority: Option<String>,
+        /// Buffer authority is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --buffer-authority). The vault doesn't sign:
+        /// the payer hands the buffer over at the end of the write.
+        #[arg(
+            long,
+            conflicts_with = "buffer_authority",
+            value_name = "BUFFER_MULTISIG_CREATE_KEY"
+        )]
+        buffer_multisig: Option<String>,
 
         /// Payer keypair path, or kms:// URI. Signs every ~900-byte chunk and
         /// is the buffer's authority during the writes.

@@ -561,7 +561,14 @@ pub fn deploy(
 /// Omit it to generate an ephemeral buffer and just print the address. The key
 /// signs only the one-time `create_buffer` (or a re-create after a close).
 ///
-/// `buffer_authority` must equal the target program's upgrade authority, or
+/// The buffer authority (`--buffer-authority <pubkey>` or `--buffer-multisig
+/// <create-key>`) goes through the shared multisig-safety gate, like every other
+/// authority / funds target: a Squads create-key or config account is refused
+/// (it can't sign, so the buffer could never be written, closed or re-assigned
+/// again), and a create-key resolves to the multisig's vault. The vault never
+/// signs here — the payer hands the buffer over with the unchecked `SetAuthority`.
+///
+/// The authority must equal the target program's upgrade authority, or
 /// `upgrade_core_bpf_program` fails with `UpgradeAuthorityMismatch` when the
 /// gate activates. Genesis programs deployed with `none` store
 /// `Some(Pubkey::default())`, so pass `11111111111111111111111111111111`;
@@ -572,7 +579,8 @@ pub fn write_program_buffer(
     url: &str,
     program_so_path: String,
     buffer_keypair_path: Option<String>,
-    buffer_authority_str: String,
+    buffer_authority: Option<String>,
+    buffer_multisig: Option<String>,
     payer_keypair_path: String,
     mode: OutputMode,
 ) -> eyre::Result<()> {
@@ -589,13 +597,13 @@ pub fn write_program_buffer(
     let buffer_signer = buffer_keypair_path
         .map(|path| crate::authority::signer::load_signer(&path, "--buffer-keypair"))
         .transpose()?;
-    let buffer_authority = Pubkey::from_str(&buffer_authority_str).map_err(|e| {
-        eyre::eyre!(
-            "Failed to parse buffer authority {}: {}",
-            buffer_authority_str,
-            e
-        )
-    })?;
+    let buffer_authority = crate::authority::resolve_target(
+        &rpc_client,
+        buffer_authority,
+        buffer_multisig,
+        "--buffer-authority",
+        "--buffer-multisig",
+    )?;
 
     progress(format!("Payer: {}", payer.pubkey()));
     progress(format!("Buffer Authority: {}", buffer_authority));
