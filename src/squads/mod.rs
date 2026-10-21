@@ -26,6 +26,7 @@ pub mod types;
 // Re-export commonly used types
 pub use types::{Member, Multisig, Permissions};
 
+use crate::utils::rpc::get_account_opt;
 use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
@@ -50,19 +51,32 @@ pub struct ResolvedMultisig {
 /// silently deriving addresses for a nonexistent multisig) when the create-key
 /// is bogus — so downstream commands can trust the returned PDAs.
 pub fn resolve(rpc: &RpcClient, create_key: &Pubkey) -> eyre::Result<ResolvedMultisig> {
+    find(rpc, create_key)?.ok_or_else(|| {
+        let multisig = types::SQUADS_PROGRAM_ID
+            .parse::<Pubkey>()
+            .map(|program_id| types::get_multisig_pda(create_key, &program_id).0.to_string())
+            .unwrap_or_default();
+        eyre::eyre!("No multisig found for create-key {create_key} (derived PDA {multisig})")
+    })
+}
+
+/// Look up the multisig for a create-key, keeping "there is none" apart from
+/// "the lookup failed":
+/// - `Ok(None)`: no Squads multisig for this create-key (its derived PDA is
+///   absent, or exists but isn't Squads-owned — e.g. someone sent it lamports).
+/// - `Err`: an RPC failure, or a Squads-owned account that doesn't parse as this
+///   multisig. Both fail closed, so a guard built on this can't be bypassed by
+///   an outage.
+fn find(rpc: &RpcClient, create_key: &Pubkey) -> eyre::Result<Option<ResolvedMultisig>> {
     let program_id = types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
     let (multisig, _) = types::get_multisig_pda(create_key, &program_id);
     let (vault, _) = types::get_vault_pda(&multisig, 0, &program_id);
 
-    let account = rpc.get_account(&multisig).map_err(|_| {
-        eyre::eyre!("No multisig found for create-key {create_key} (derived PDA {multisig})")
-    })?;
-
+    let Some(account) = get_account_opt(rpc, &multisig)? else {
+        return Ok(None);
+    };
     if account.owner != program_id {
-        return Err(eyre::eyre!(
-            "Account {multisig} is not a Squads multisig (owner {})",
-            account.owner
-        ));
+        return Ok(None);
     }
 
     // Deserialize (skip the 8-byte Anchor discriminator; tolerate extra space).
@@ -81,11 +95,11 @@ pub fn resolve(rpc: &RpcClient, create_key: &Pubkey) -> eyre::Result<ResolvedMul
         ));
     }
 
-    Ok(ResolvedMultisig {
+    Ok(Some(ResolvedMultisig {
         multisig,
         vault,
         account: parsed,
-    })
+    }))
 }
 
 /// How a pubkey relates to Squads — for callers that must avoid mis-sending
@@ -102,18 +116,22 @@ pub enum MultisigRef {
 
 /// Classify a pubkey's relationship to Squads, if any. The detection lives here
 /// (squads domain knowledge); callers decide the policy.
+///
+/// Fails closed: an RPC error is returned, never read as "not multisig-related"
+/// — otherwise an outage would let a create-key or config account through the
+/// target guard (`crate::authority::resolve_target`).
 pub fn classify(rpc: &RpcClient, pubkey: &Pubkey) -> eyre::Result<Option<MultisigRef>> {
     let program_id = types::SQUADS_PROGRAM_ID.parse::<Pubkey>()?;
 
     // A Squads-owned account (config/state) — never a plain wallet or vault.
-    if let Ok(account) = rpc.get_account(pubkey) {
+    if let Some(account) = get_account_opt(rpc, pubkey)? {
         if account.owner == program_id {
             return Ok(Some(MultisigRef::ConfigAccount));
         }
     }
 
     // Resolves as a create-key → it identifies a real multisig.
-    if resolve(rpc, pubkey).is_ok() {
+    if find(rpc, pubkey)?.is_some() {
         return Ok(Some(MultisigRef::CreateKey));
     }
 

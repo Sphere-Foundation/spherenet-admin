@@ -98,9 +98,8 @@ pub fn fetch(rpc_url: &str, stake_account: &str) -> eyre::Result<Option<StakeVie
     let stake_pubkey = Pubkey::from_str(stake_account)
         .map_err(|e| eyre::eyre!("Invalid stake account pubkey '{}': {}", stake_account, e))?;
 
-    let account = match rpc_client.get_account(&stake_pubkey) {
-        Ok(account) => account,
-        Err(_) => return Ok(None),
+    let Some(account) = crate::utils::rpc::get_account_opt(&rpc_client, &stake_pubkey)? else {
+        return Ok(None);
     };
 
     let stake_program = Pubkey::from(spherenet_stake_interface::program::id().to_bytes());

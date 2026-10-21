@@ -754,9 +754,8 @@ fn load_buffer(
     rpc_client: &RpcClient,
     buffer: &Pubkey,
 ) -> eyre::Result<Option<(Account, Option<Pubkey>)>> {
-    let account = match rpc_client.get_account(buffer) {
-        Ok(account) => account,
-        Err(_) => return Ok(None),
+    let Some(account) = crate::utils::rpc::get_account_opt(rpc_client, buffer)? else {
+        return Ok(None);
     };
 
     if account.owner != bpf_loader_upgradeable::id() {
@@ -1024,15 +1023,13 @@ pub fn upgrade_program(
     progress(format!("Spill Account: {}", spill_address));
 
     // Verify program exists
-    match rpc_client.get_account(&program_id) {
-        Ok(_) => progress("✅ Program exists"),
-        Err(_) => {
-            return Err(eyre::eyre!(
-                "❌ Program {} does not exist! Use 'program deploy' to deploy a new program.",
-                program_id
-            ));
-        }
+    if crate::utils::rpc::get_account_opt(&rpc_client, &program_id)?.is_none() {
+        return Err(eyre::eyre!(
+            "❌ Program {} does not exist! Use 'program deploy' to deploy a new program.",
+            program_id
+        ));
     }
+    progress("✅ Program exists");
 
     // Read program .so file
     let program_data = fs::read(&program_so_path)

@@ -87,9 +87,8 @@ pub fn fetch(rpc_url: &str, vote_account: &str) -> eyre::Result<Option<VoteView>
     let vote_pubkey = Pubkey::from_str(vote_account)
         .map_err(|e| eyre::eyre!("Invalid vote account pubkey '{}': {}", vote_account, e))?;
 
-    let account = match rpc_client.get_account(&vote_pubkey) {
-        Ok(account) => account,
-        Err(_) => return Ok(None),
+    let Some(account) = crate::utils::rpc::get_account_opt(&rpc_client, &vote_pubkey)? else {
+        return Ok(None);
     };
 
     let vote_program = Pubkey::from(solana_vote_interface::program::id().to_bytes());

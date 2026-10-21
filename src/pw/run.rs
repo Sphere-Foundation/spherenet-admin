@@ -234,8 +234,8 @@ pub fn require_whitelist_entry(
     // Verify the whitelist entry exists AND is Approved. Under the two-step flow
     // a `Pending` entry also exists on-chain (created at request time) but is NOT
     // valid for deployment — the loader gates on Approved, so fail-fast here too.
-    match rpc_client.get_account(&whitelist_entry_pda) {
-        Ok(account) => {
+    match crate::utils::rpc::get_account_opt(rpc_client, &whitelist_entry_pda)? {
+        Some(account) => {
             let entry = load::<ProgramWhitelistEntry>(&account.data).map_err(|e| {
                 eyre::eyre!(
                     "Failed to read whitelist entry {}: {:?}",
@@ -254,7 +254,7 @@ pub fn require_whitelist_entry(
                 ))
             }
         }
-        Err(_) => Err(eyre::eyre!(
+        None => Err(eyre::eyre!(
             "❌ Upgrade authority {} is not whitelisted!\n   The deployer requests (unpermissioned), then an authority approves:\n     spherenet-admin pw request <DEPLOY_AUTHORITY_KEYPAIR>\n     spherenet-admin pw approve {} --auth <AUTHORITY>",
             upgrade_authority,
             upgrade_authority

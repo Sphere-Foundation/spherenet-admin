@@ -231,14 +231,14 @@ pub fn delegate(
 /// The vote account must exist and be owned by the vote program.
 fn preflight_vote_account(rpc_client: &RpcClient, vote_pubkey: &Pubkey) -> eyre::Result<()> {
     let vote_program = Pubkey::from(solana_vote_interface::program::id().to_bytes());
-    match rpc_client.get_account(vote_pubkey) {
-        Ok(account) if account.owner == vote_program => Ok(()),
-        Ok(account) => Err(eyre::eyre!(
+    match crate::utils::rpc::get_account_opt(rpc_client, vote_pubkey)? {
+        Some(account) if account.owner == vote_program => Ok(()),
+        Some(account) => Err(eyre::eyre!(
             "{} is not a vote account (owner: {})",
             vote_pubkey,
             account.owner
         )),
-        Err(_) => Err(eyre::eyre!(
+        None => Err(eyre::eyre!(
             "Vote account {} not found — create it first (`vote create`)",
             vote_pubkey
         )),
@@ -252,7 +252,7 @@ fn preflight_whitelisted(
     vote_pubkey: &Pubkey,
     whitelist_entry: &Pubkey,
 ) -> eyre::Result<()> {
-    if rpc_client.get_account(whitelist_entry).is_err() {
+    if crate::utils::rpc::get_account_opt(rpc_client, whitelist_entry)?.is_none() {
         return Err(eyre::eyre!(
             "Vote account {} is not whitelisted (no entry at {}).\n\
              Delegation will be rejected by the stake program. Run:\n  \
@@ -273,7 +273,7 @@ fn preflight_stake_account(
     staker: &Pubkey,
 ) -> eyre::Result<()> {
     let stake_program = Pubkey::from(spherenet_stake_interface::program::id().to_bytes());
-    let account = rpc_client.get_account(stake_pubkey).map_err(|_| {
+    let account = crate::utils::rpc::get_account_opt(rpc_client, stake_pubkey)?.ok_or_else(|| {
         eyre::eyre!(
             "Stake account {} not found — create it first (`stake create`)",
             stake_pubkey
@@ -385,9 +385,8 @@ fn preflight_deactivate(
     staker: &Pubkey,
 ) -> eyre::Result<()> {
     let stake_program = Pubkey::from(spherenet_stake_interface::program::id().to_bytes());
-    let account = rpc_client
-        .get_account(stake_pubkey)
-        .map_err(|_| eyre::eyre!("Stake account {} not found", stake_pubkey))?;
+    let account = crate::utils::rpc::get_account_opt(rpc_client, stake_pubkey)?
+        .ok_or_else(|| eyre::eyre!("Stake account {} not found", stake_pubkey))?;
     if account.owner != stake_program {
         return Err(eyre::eyre!(
             "{} is not a stake account (owner: {})",
@@ -485,9 +484,8 @@ fn preflight_delegated_stake(
     stake_pubkey: &Pubkey,
 ) -> eyre::Result<Pubkey> {
     let stake_program = Pubkey::from(spherenet_stake_interface::program::id().to_bytes());
-    let account = rpc_client
-        .get_account(stake_pubkey)
-        .map_err(|_| eyre::eyre!("Stake account {} not found", stake_pubkey))?;
+    let account = crate::utils::rpc::get_account_opt(rpc_client, stake_pubkey)?
+        .ok_or_else(|| eyre::eyre!("Stake account {} not found", stake_pubkey))?;
     if account.owner != stake_program {
         return Err(eyre::eyre!(
             "{} is not a stake account (owner: {})",
@@ -524,12 +522,12 @@ fn preflight_delisted(
 ) -> eyre::Result<()> {
     let whitelist_program =
         Pubkey::from(spherenet_validator_whitelist_interface::program_solana::id().to_bytes());
-    match rpc_client.get_account(whitelist_entry) {
+    match crate::utils::rpc::get_account_opt(rpc_client, whitelist_entry)? {
         // Entry closed and reaped — validator fully removed.
-        Err(_) => Ok(()),
+        None => Ok(()),
         // Tombstone: emptied and returned to the system program.
-        Ok(account) if account.data.is_empty() && account.owner != whitelist_program => Ok(()),
-        Ok(_) => Err(eyre::eyre!(
+        Some(account) if account.data.is_empty() && account.owner != whitelist_program => Ok(()),
+        Some(_) => Err(eyre::eyre!(
             "Vote account {} is still whitelisted (entry at {}).\n\
              Forced deactivation will be rejected by the stake program. Remove it first:\n  \
              spherenet-admin vw remove {} --authority <whitelist-authority>",
@@ -650,9 +648,8 @@ fn preflight_withdraw(
     withdrawer: &Pubkey,
 ) -> eyre::Result<u64> {
     let stake_program = Pubkey::from(spherenet_stake_interface::program::id().to_bytes());
-    let account = rpc_client
-        .get_account(stake_pubkey)
-        .map_err(|_| eyre::eyre!("Stake account {} not found", stake_pubkey))?;
+    let account = crate::utils::rpc::get_account_opt(rpc_client, stake_pubkey)?
+        .ok_or_else(|| eyre::eyre!("Stake account {} not found", stake_pubkey))?;
     if account.owner != stake_program {
         return Err(eyre::eyre!(
             "{} is not a stake account (owner: {})",
