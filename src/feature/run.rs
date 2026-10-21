@@ -91,9 +91,9 @@ pub fn activate(
 /// The gate account must be absent (never staged). If it exists, report its
 /// precise state (already active / already pending / not a feature account).
 fn preflight_absent(rpc_client: &RpcClient, feature_id: &Pubkey) -> eyre::Result<()> {
-    let account = match rpc_client.get_account(feature_id) {
-        Ok(account) => account,
-        Err(_) => return Ok(()), // absent — good to stage
+    let account = match crate::utils::rpc::get_account_opt(rpc_client, feature_id)? {
+        Some(account) => account,
+        None => return Ok(()), // absent — good to stage
     };
     match parse_feature(&account) {
         Some(Feature {
@@ -161,7 +161,7 @@ pub fn revoke(
 
 /// The gate account must exist and be pending (`activated_at: None`).
 fn preflight_pending(rpc_client: &RpcClient, feature_id: &Pubkey) -> eyre::Result<()> {
-    let account = rpc_client.get_account(feature_id).map_err(|_| {
+    let account = crate::utils::rpc::get_account_opt(rpc_client, feature_id)?.ok_or_else(|| {
         eyre::eyre!(
             "Feature {} has no account — nothing to revoke (it was never staged).",
             feature_id

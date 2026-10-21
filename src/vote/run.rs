@@ -329,7 +329,7 @@ pub fn withdraw(
     // Preflight: the account must exist and be a vote account. The on-chain
     // program enforces the withdraw authority. Also resolves the balance for `--all`.
     let vote_program = Pubkey::from(solana_vote_interface::program::id().to_bytes());
-    let account = rpc_client.get_account(&vote_pubkey).map_err(|_| {
+    let account = crate::utils::rpc::get_account_opt(&rpc_client, &vote_pubkey)?.ok_or_else(|| {
         eyre::eyre!(
             "Vote account {} not found — create it first (`vote create`)",
             vote_pubkey

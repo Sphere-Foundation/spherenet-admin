@@ -46,9 +46,9 @@ pub fn fetch(rpc_url: &str, gate: &str) -> eyre::Result<FeatureView> {
         RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
     let feature_id = resolve_gate_pubkey(gate)?;
 
-    let account = match rpc_client.get_account(&feature_id) {
-        Ok(account) => account,
-        Err(_) => {
+    let account = match crate::utils::rpc::get_account_opt(&rpc_client, &feature_id)? {
+        Some(account) => account,
+        None => {
             return Ok(FeatureView {
                 pubkey: feature_id.to_string(),
                 state: "absent".to_string(),
