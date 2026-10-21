@@ -607,25 +607,142 @@ pub enum ProgramAction {
         #[arg(long, value_name = "PROGRAM_SO")]
         program_so: String,
 
-        /// Path to a pre-generated buffer keypair; its pubkey is the buffer
-        /// address (bake it into the client as the upgrade's source buffer).
+        /// Pre-generated buffer key: a keypair file path, or kms:// URI (e.g. an
+        /// upstream gate's rotated buffer address, held in the feature-gates
+        /// keyring). Its pubkey is the buffer address (bake it into the client as
+        /// the upgrade's source buffer); it signs only the one-time create.
         /// Omit to generate an ephemeral buffer and print its address.
         #[arg(long, value_name = "BUFFER_KEYPAIR")]
         buffer_keypair: Option<String>,
 
-        /// Pubkey the buffer authority is set to after writing. For a
-        /// feature-gated upgrade (`upgrade_core_bpf_program`) it must equal the
-        /// target program's upgrade authority, or the upgrade fails with
-        /// UpgradeAuthorityMismatch. Genesis programs deployed with `none` store
+        /// Pubkey the buffer authority is set to after writing (mutually
+        /// exclusive with --buffer-multisig). For a feature-gated upgrade
+        /// (`upgrade_core_bpf_program`) it must equal the target program's
+        /// upgrade authority, or the upgrade fails with UpgradeAuthorityMismatch.
+        /// Genesis programs deployed with `none` store
         /// Some(11111111111111111111111111111111), so use that; nobody can sign
-        /// as it, so the buffer is immutable once written.
-        #[arg(long, value_name = "BUFFER_AUTHORITY_PUBKEY")]
-        buffer_authority: String,
+        /// as it, so the buffer is immutable once written. A Squads create-key or
+        /// config account is refused (use --buffer-multisig).
+        #[arg(
+            long,
+            conflicts_with = "buffer_multisig",
+            value_name = "BUFFER_AUTHORITY_PUBKEY"
+        )]
+        buffer_authority: Option<String>,
+        /// Buffer authority is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --buffer-authority). The vault doesn't sign:
+        /// the payer hands the buffer over at the end of the write.
+        #[arg(
+            long,
+            conflicts_with = "buffer_authority",
+            value_name = "BUFFER_MULTISIG_CREATE_KEY"
+        )]
+        buffer_multisig: Option<String>,
 
         /// Payer keypair path, or kms:// URI. Signs every ~900-byte chunk and
         /// is the buffer's authority during the writes.
         #[arg(long, value_name = "PAYER_KEYPAIR")]
         payer: String,
+    },
+    /// Show a Loader-v3 buffer: its authority, the length of the program bytes
+    /// it holds, and their SHA-256 (read-only)
+    ShowBuffer {
+        /// Buffer account pubkey
+        #[arg(value_name = "BUFFER_PUBKEY")]
+        buffer: String,
+    },
+    /// Transfer a buffer's authority (or lock it with --lock)
+    SetBufferAuthority {
+        /// Buffer account pubkey
+        #[arg(long, value_name = "BUFFER_PUBKEY")]
+        buffer: String,
+
+        /// New authority pubkey (mutually exclusive with --new-multisig / --lock)
+        #[arg(
+            long,
+            conflicts_with = "new_multisig",
+            value_name = "NEW_AUTHORITY_PUBKEY"
+        )]
+        new_authority: Option<String>,
+        /// New authority is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --new-authority / --lock)
+        #[arg(
+            long,
+            conflicts_with = "new_authority",
+            value_name = "NEW_MULTISIG_CREATE_KEY"
+        )]
+        new_multisig: Option<String>,
+        /// Lock the buffer: set its authority to 11111111111111111111111111111111.
+        /// Nobody can sign as it, so the buffer can no longer be written, closed,
+        /// or re-assigned. This is what a feature-gated upgrade of a genesis
+        /// program needs (its upgrade authority is Some(Pubkey::default())).
+        /// Irreversible. Mutually exclusive with --new-authority / --new-multisig.
+        #[arg(long, conflicts_with_all = ["new_authority", "new_multisig"])]
+        lock: bool,
+
+        /// Single-sig: path to the current buffer authority keypair, or kms:// URI (mutually exclusive with --multisig)
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
+        multisig_authority: Option<String>,
+    },
+    /// Close a buffer and reclaim its rent (the current authority signs). The
+    /// address is free again from the next transaction; re-creating a buffer
+    /// there needs the address key (`write-buffer --buffer-keypair`)
+    CloseBuffer {
+        /// Buffer account pubkey
+        #[arg(long, value_name = "BUFFER_PUBKEY")]
+        buffer: String,
+
+        /// Rent recipient (mutually exclusive with --recipient-multisig).
+        /// Defaults to the buffer's current authority (the signer, or the
+        /// multisig vault)
+        #[arg(
+            long,
+            conflicts_with = "recipient_multisig",
+            value_name = "RECIPIENT_PUBKEY"
+        )]
+        recipient: Option<String>,
+        /// Rent recipient is a multisig, by create-key — resolves to its vault
+        /// (mutually exclusive with --recipient)
+        #[arg(
+            long,
+            conflicts_with = "recipient",
+            value_name = "RECIPIENT_MULTISIG_CREATE_KEY"
+        )]
+        recipient_multisig: Option<String>,
+
+        /// Single-sig: path to the current buffer authority keypair, or kms:// URI (mutually exclusive with --multisig)
+        #[arg(
+            long = "authority",
+            alias = "auth",
+            conflicts_with = "multisig",
+            value_name = "AUTHORITY_KEYPAIR"
+        )]
+        authority: Option<String>,
+        /// Multi-sig: the multisig's create-key (pubkey) (requires --multisig-authority)
+        #[arg(
+            long,
+            requires = "multisig_authority",
+            value_name = "MULTISIG_CREATE_KEY"
+        )]
+        multisig: Option<String>,
+        /// Multi-sig: path to signer keypair that pays for proposal creation
+        #[arg(long, requires = "multisig", value_name = "MEMBER_KEYPAIR")]
+        multisig_authority: Option<String>,
     },
     /// Upgrade an existing program on SphereNet
     Upgrade {

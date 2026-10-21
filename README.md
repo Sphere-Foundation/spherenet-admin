@@ -81,6 +81,10 @@ spherenet-admin program deploy --program-so ./p.so --program-keypair ./p-keypair
 - `program upgrade --program-id <ID> --program-so ./p.so …` (single-sig or multisig)
 - `program extend --program-id <ID> --bytes <N>` — grow capacity (permissionless; payer covers the added rent)
 - `program set-upgrade-authority --program-id <ID> [--new-authority <PK> | --new-multisig <CK> | --final]`
+- `program write-buffer --program-so ./p.so (--buffer-authority <PK> | --buffer-multisig <CK>) --payer <KEYPAIR> [--buffer-keypair <KEYPAIR | kms://>]` — stage a buffer for a feature-gated upgrade (verifies the on-chain bytes against the `.so`; the authority target is multisig-guarded)
+- `program show-buffer <BUFFER>` — a buffer's authority, program-byte length and SHA-256 (read-only; `--output json` compares directly with `write-buffer`'s output)
+- `program set-buffer-authority --buffer <BUFFER> [--new-authority <PK> | --new-multisig <CK> | --lock]` — the current authority (`--authority`, or a multisig) hands the buffer over; `--lock` sets it to `1111…1` (irreversible; what a feature-gated upgrade of a genesis program needs)
+- `program close-buffer --buffer <BUFFER> [--recipient <PK> | --recipient-multisig <CK>]` — the current authority closes the buffer and reclaims its rent (defaults to the authority); a locked buffer can't be closed. Re-create at the same address with `write-buffer --buffer-keypair` (the address key)
 
 ### Multisig (`multisig`)
 

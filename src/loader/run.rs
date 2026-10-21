@@ -1,7 +1,9 @@
 //! Program deployment operations: deploy, upgrade, and extend.
 
 use crate::authority::Authority;
-use crate::cli::output::{emit, progress, subfield, OutputMode, Render};
+use crate::cli::output::{
+    boxed_header, emit, field, newline, progress, subfield, NotFound, OutputMode, Render,
+};
 use crate::pw::run::require_whitelist_entry;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
@@ -10,15 +12,16 @@ use solana_sdk::{
     account::Account,
     instruction::Instruction,
     pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair, Signature, Signer},
+    signature::{Keypair, Signature, Signer},
     transaction::Transaction,
 };
 use solana_sdk_ids::bpf_loader_upgradeable;
 #[allow(deprecated)]
 use spherenet_loader_v3_interface::{
     instruction::{
-        create_buffer, deploy_with_max_program_len, extend_program as extend_program_ix,
-        set_buffer_authority, set_upgrade_authority as set_upgrade_authority_ix, upgrade, write,
+        close as close_ix, create_buffer, deploy_with_max_program_len,
+        extend_program as extend_program_ix, set_buffer_authority,
+        set_upgrade_authority as set_upgrade_authority_ix, upgrade, write,
     },
     state::UpgradeableLoaderState,
 };
@@ -65,6 +68,41 @@ impl Render for StagedBufferView {
         // write_buffer always verifies on-chain before returning, so this hash
         // is proven against what actually landed, not just the local file.
         out.push_str(&subfield("SHA-256", &self.sha256));
+        out
+    }
+}
+
+/// Result of `program show-buffer` — what a buffer holds right now. Same field
+/// names as [`StagedBufferView`], so the JSON of a `write-buffer` and a later
+/// `show-buffer` compare directly (e.g. `jq -r .sha256` on both).
+#[derive(serde::Serialize)]
+pub struct BufferView {
+    buffer: String,
+    /// The buffer authority. `None` is representable in the loader state but the
+    /// loader never sets it for a buffer; `11111111111111111111111111111111`
+    /// means locked (nobody can sign as it).
+    buffer_authority: Option<String>,
+    /// Length of the program bytes (the payload after the buffer metadata).
+    byte_len: usize,
+    /// SHA-256 of the program bytes — compare against the released `.so`.
+    sha256: String,
+    lamports: u64,
+}
+
+impl Render for BufferView {
+    fn to_text(&self) -> String {
+        let authority = match &self.buffer_authority {
+            Some(a) if *a == Pubkey::default().to_string() => format!("{a} (locked)"),
+            Some(a) => a.clone(),
+            None => "none".to_string(),
+        };
+        let mut out = boxed_header("Program Buffer");
+        out.push_str(newline());
+        out.push_str(&field("Buffer", &self.buffer));
+        out.push_str(&field("Buffer Authority", authority));
+        out.push_str(&field("Bytes", self.byte_len));
+        out.push_str(&field("SHA-256", &self.sha256));
+        out.push_str(&field("Lamports", self.lamports));
         out
     }
 }
@@ -154,9 +192,10 @@ fn try_get_account(rpc_client: &RpcClient, pubkey: &Pubkey) -> Option<Option<Acc
 /// `buffer`:
 /// - `None` → generate an ephemeral keypair (the `deploy`/`upgrade` case; the
 ///   address is used once and then drained by the deploy, so it never matters).
-/// - `Some(kp)` → write to a caller-chosen address (its pubkey is baked into the
-///   client as the upgrade's source-buffer `declare_id!`, so it must be known in
-///   advance). Re-running against an already-created buffer resumes the writes.
+/// - `Some(signer)` → write to a caller-chosen address (its pubkey is baked into
+///   the client as the upgrade's source-buffer `declare_id!`, so it must be known
+///   in advance). The signer may be a keypair file or a KMS key; it signs only the
+///   create. Re-running against an already-created buffer resumes the writes.
 ///
 /// The payer is the buffer's authority during the writes (it signs every chunk);
 /// afterwards the buffer is transferred to `buffer_authority` (skipped when the
@@ -170,27 +209,42 @@ fn write_buffer(
     rpc_client: &RpcClient,
     payer: &dyn Signer,
     program_data: &[u8],
-    buffer: Option<Keypair>,
+    buffer: Option<&dyn Signer>,
     buffer_authority: Pubkey,
 ) -> eyre::Result<Pubkey> {
-    let buffer_keypair = buffer.unwrap_or_else(Keypair::new);
-    let buffer_pubkey = buffer_keypair.pubkey();
+    let ephemeral;
+    let buffer_signer: &dyn Signer = match buffer {
+        Some(signer) => signer,
+        None => {
+            ephemeral = Keypair::new();
+            &ephemeral
+        }
+    };
+    let buffer_pubkey = buffer_signer.pubkey();
     let buffer_size = UpgradeableLoaderState::size_of_buffer(program_data.len());
     let buffer_lamports = rpc_client.get_minimum_balance_for_rent_exemption(buffer_size)?;
 
     progress(format!("Buffer size: {} bytes", buffer_size));
     progress(format!("Buffer rent: {} lamports", buffer_lamports));
 
-    // Reusable fixed-address buffers (Some) may already exist from a prior run:
-    // - authority already == buffer_authority → a prior run finished the whole
-    //   stage (transfer is the terminal step, only reached after every chunk
-    //   landed), so there is nothing left to do.
-    // - authority still == payer → creation landed but the stage was interrupted;
-    //   skip creation and resume the (idempotent) chunk writes.
+    // Reusable fixed-address buffers (Some) may already exist from a prior run.
+    // What to do depends on who holds the buffer AND what it already contains:
+    // - held by the final authority, holding exactly this .so → a prior run
+    //   finished the whole stage; nothing to do.
+    // - held by the payer → the stage was interrupted. Resume only if the bytes
+    //   are this program: complete (skip to verify + hand-off) or a partial write
+    //   (every differing byte still zero — resume the idempotent chunk writes).
+    //   A buffer holding a DIFFERENT program is never overwritten.
+    // - anything else (another custodian, a locked 1111…1, the final authority
+    //   holding other bytes, or a buffer sized for a different program) can't be
+    //   resumed by this payer: refuse up front rather than send ~240 chunk writes
+    //   the loader would reject one by one.
     // An ephemeral (None) buffer is a fresh random key, so this never fires.
-    let existing_authority = match try_get_account(rpc_client, &buffer_pubkey) {
+    let existing = match try_get_account(rpc_client, &buffer_pubkey) {
         Some(Some(account)) => match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
-            Ok(UpgradeableLoaderState::Buffer { authority_address }) => Some(authority_address),
+            Ok(UpgradeableLoaderState::Buffer { authority_address }) => {
+                Some((authority_address, account.data))
+            }
             _ => {
                 return Err(eyre::eyre!(
                     "Account {} already exists and is not a Loader-v3 buffer",
@@ -201,20 +255,77 @@ fn write_buffer(
         _ => None,
     };
 
-    if existing_authority == Some(Some(buffer_authority)) {
-        progress(format!(
-            "✅ Buffer {} already staged under {}; nothing to do",
-            buffer_pubkey, buffer_authority
-        ));
-        verify_buffer_onchain(rpc_client, &buffer_pubkey, program_data)?;
-        return Ok(buffer_pubkey);
-    }
+    let mut skip_writes = false;
+    if let Some((authority, data)) = &existing {
+        let contents = buffer_payload(data)
+            .map(|payload| classify_buffer_contents(payload, program_data))
+            .unwrap_or(BufferContents::Different);
 
-    if existing_authority.is_some() {
-        progress(format!(
-            "ℹ️  Buffer {} already created; resuming writes",
-            buffer_pubkey
-        ));
+        if *authority == Some(buffer_authority) && contents == BufferContents::Complete {
+            progress(format!(
+                "✅ Buffer {} already staged under {}; nothing to do",
+                buffer_pubkey, buffer_authority
+            ));
+            verify_buffer_onchain(rpc_client, &buffer_pubkey, program_data)?;
+            return Ok(buffer_pubkey);
+        }
+
+        // Anything else needs writing or the hand-off, which only the payer can
+        // do: it must still hold the buffer. If the final authority (not the
+        // payer) holds other bytes, the verify reports the mismatch with a
+        // recovery hint specific to that holder.
+        if *authority == Some(buffer_authority) && buffer_authority != payer.pubkey() {
+            verify_buffer_onchain(rpc_client, &buffer_pubkey, program_data)?;
+        }
+        let authority = *authority;
+        if authority != Some(payer.pubkey()) {
+            let holder = authority.map_or_else(|| "no authority".to_string(), |a| a.to_string());
+            let locked = authority == Some(Pubkey::default());
+            return Err(eyre::eyre!(
+                "Buffer {} already exists and is held by {}, not the payer {}, so it can't be \
+                 resumed. {}",
+                buffer_pubkey,
+                holder,
+                payer.pubkey(),
+                if locked {
+                    "It is locked: nobody can write to or close it."
+                } else {
+                    "Hand it back with `program set-buffer-authority --new-authority <payer>`, \
+                     or `program close-buffer` it and re-create, before re-writing."
+                }
+            ));
+        }
+        if data.len() != buffer_size {
+            return Err(eyre::eyre!(
+                "Buffer {} already exists but is sized for a different program ({} bytes, this \
+                 one needs {}); `program close-buffer` it, then re-run to re-create it at the \
+                 same address",
+                buffer_pubkey,
+                data.len(),
+                buffer_size
+            ));
+        }
+        match contents {
+            BufferContents::Complete => {
+                progress(format!(
+                    "ℹ️  Buffer {} already holds this program; skipping writes",
+                    buffer_pubkey
+                ));
+                skip_writes = true;
+            }
+            BufferContents::Partial => progress(format!(
+                "ℹ️  Buffer {} holds a partial write of this program; resuming writes",
+                buffer_pubkey
+            )),
+            BufferContents::Different => {
+                return Err(eyre::eyre!(
+                    "Buffer {} already holds a different program (its bytes differ from this .so \
+                     where already written), so it won't be overwritten. Check --program-so, or \
+                     `program close-buffer` it and re-create.",
+                    buffer_pubkey
+                ))
+            }
+        }
     } else {
         // Create the buffer with the PAYER as authority for the writes; the final
         // authority takes over afterwards. The on-chain deploy/upgrade only
@@ -236,15 +347,17 @@ fn write_buffer(
             "Buffer creation",
             &create_buffer_instructions,
             &payer.pubkey(),
-            &[payer, &buffer_keypair],
+            &[payer, buffer_signer],
             Some(&buffer_created),
         )?;
         progress(format!("✅ Buffer account created: {}", buffer_pubkey));
     }
 
     // Write program data to buffer in chunks (payer signs buffer writes)
-    progress("📤 Writing program data to buffer...");
-    write_buffer_chunks(rpc_client, payer, &buffer_pubkey, program_data)?;
+    if !skip_writes {
+        progress("📤 Writing program data to buffer...");
+        write_buffer_chunks(rpc_client, payer, &buffer_pubkey, program_data)?;
+    }
 
     // Read the buffer back and confirm its bytes byte-match the .so BEFORE the
     // hand-off: there is no on-chain bytes pin, and verifying while the payer is
@@ -290,10 +403,50 @@ fn write_buffer(
     Ok(buffer_pubkey)
 }
 
+/// Lowercase hex SHA-256 of `bytes`.
+fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// The program bytes a Loader-v3 buffer account holds. The buffer's on-chain
+/// layout is a metadata prefix followed by the raw ELF (`size_of_buffer(0)` is
+/// exactly that prefix length), so the payload is `data[prefix..]`. `None` if the
+/// account is too small to be a buffer at all.
+fn buffer_payload(data: &[u8]) -> Option<&[u8]> {
+    data.get(UpgradeableLoaderState::size_of_buffer(0)..)
+}
+
+/// How a buffer's existing program bytes relate to the `.so` being written.
+#[derive(Debug, PartialEq, Eq)]
+enum BufferContents {
+    /// Byte-for-byte the `.so`.
+    Complete,
+    /// Every byte either matches the `.so` or is still zero: an interrupted write
+    /// of THIS program (a new buffer starts zeroed and the writes fill it in).
+    Partial,
+    /// A different size, or a non-zero byte that differs: another program.
+    Different,
+}
+
+/// Compare a buffer's program bytes with the `.so`, so a re-run resumes only a
+/// partial write of this program and never overwrites a different one.
+fn classify_buffer_contents(onchain: &[u8], program: &[u8]) -> BufferContents {
+    if onchain.len() != program.len() {
+        BufferContents::Different
+    } else if onchain == program {
+        BufferContents::Complete
+    } else if onchain.iter().zip(program).all(|(o, p)| o == p || *o == 0) {
+        BufferContents::Partial
+    } else {
+        BufferContents::Different
+    }
+}
+
 /// Read a staged buffer back from chain and assert its ELF payload byte-matches
-/// `program_data`. The buffer's on-chain layout is a metadata prefix followed by
-/// the raw ELF (`size_of_buffer(0)` is exactly that prefix length), so the payload
-/// is `data[prefix..]`. Fails closed on any mismatch — the integrity gate before a
+/// `program_data`. Fails closed on any mismatch — the integrity gate before a
 /// feature-gated upgrade consumes the buffer (there is no on-chain bytes pin).
 fn verify_buffer_onchain(
     rpc_client: &RpcClient,
@@ -304,28 +457,42 @@ fn verify_buffer_onchain(
     let account = rpc_client
         .get_account(buffer)
         .map_err(|e| eyre::eyre!("Failed to read buffer {} for verification: {}", buffer, e))?;
-    let prefix = UpgradeableLoaderState::size_of_buffer(0);
-    let onchain_elf = account.data.get(prefix..).ok_or_else(|| {
+    let onchain_elf = buffer_payload(&account.data).ok_or_else(|| {
         eyre::eyre!(
             "Buffer {} is too small ({} bytes) to hold a program",
             buffer,
             account.data.len()
         )
     })?;
-    let expected: String = Sha256::digest(program_data)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    let actual: String = Sha256::digest(onchain_elf)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let expected = sha256_hex(program_data);
+    let actual = sha256_hex(onchain_elf);
     if actual != expected {
+        // The recovery path depends on who holds the buffer now: this check runs
+        // both right after a write (the payer still holds it) and on the
+        // "already staged" path (the final authority, possibly a locked 1111…1).
+        let hint = match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
+            Ok(UpgradeableLoaderState::Buffer {
+                authority_address: Some(authority),
+            }) if authority == Pubkey::default() => {
+                "It is locked, so it can't be fixed: the upgrade needs a new buffer address."
+                    .to_string()
+            }
+            Ok(UpgradeableLoaderState::Buffer {
+                authority_address: Some(authority),
+            }) => format!(
+                "Fix it while its authority {authority} can still sign: overwrite it (re-run \
+                 `write-buffer` with that key as payer — hand it back with \
+                 `set-buffer-authority` first if needed), or `close-buffer` it and re-create."
+            ),
+            _ => "Its authority can't be read, so check it with `show-buffer` before retrying."
+                .to_string(),
+        };
         return Err(eyre::eyre!(
-            "❌ On-chain buffer bytes do NOT match the .so\n   buffer:   {}\n   expected: {}\n   on-chain: {}\n   The buffer is still under the payer's authority — re-run to overwrite, or close it.",
+            "❌ On-chain buffer bytes do NOT match the .so\n   buffer:   {}\n   expected: {}\n   on-chain: {}\n   {}",
             buffer,
             expected,
-            actual
+            actual,
+            hint
         ));
     }
     progress("✅ On-chain buffer bytes match the .so");
@@ -502,13 +669,20 @@ pub fn deploy(
 /// `deploy`), for a later feature-gated upgrade that consumes the buffer at
 /// runtime. No program is deployed and no gate is touched here.
 ///
-/// `buffer_keypair` is an optional path to a pre-generated buffer keypair — its
-/// pubkey is the buffer address, to be baked into the client as the upgrade's
-/// source-buffer `declare_id!`, so it must be fixed in advance. Omit it to
-/// generate an ephemeral buffer and just print the address. The buffer keypair
-/// signs only the one-time `create_buffer`; it is powerless afterwards.
+/// `buffer_keypair_path` is an optional pre-generated buffer key — a keypair file
+/// or a `kms://` URI. Its pubkey is the buffer address, baked into the client as
+/// the upgrade's source-buffer `declare_id!`, so it must be fixed in advance.
+/// Omit it to generate an ephemeral buffer and just print the address. The key
+/// signs only the one-time `create_buffer` (or a re-create after a close).
 ///
-/// `buffer_authority` must equal the target program's upgrade authority, or
+/// The buffer authority (`--buffer-authority <pubkey>` or `--buffer-multisig
+/// <create-key>`) goes through the shared multisig-safety gate, like every other
+/// authority / funds target: a Squads create-key or config account is refused
+/// (it can't sign, so the buffer could never be written, closed or re-assigned
+/// again), and a create-key resolves to the multisig's vault. The vault never
+/// signs here — the payer hands the buffer over with the unchecked `SetAuthority`.
+///
+/// The authority must equal the target program's upgrade authority, or
 /// `upgrade_core_bpf_program` fails with `UpgradeAuthorityMismatch` when the
 /// gate activates. Genesis programs deployed with `none` store
 /// `Some(Pubkey::default())`, so pass `11111111111111111111111111111111`;
@@ -519,7 +693,8 @@ pub fn write_program_buffer(
     url: &str,
     program_so_path: String,
     buffer_keypair_path: Option<String>,
-    buffer_authority_str: String,
+    buffer_authority: Option<String>,
+    buffer_multisig: Option<String>,
     payer_keypair_path: String,
     mode: OutputMode,
 ) -> eyre::Result<()> {
@@ -528,23 +703,21 @@ pub fn write_program_buffer(
     let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
 
     // Payer may be a keypair file or a kms:// URI (it signs every ~900-byte
-    // chunk). The buffer keypair, when provided, is a plain throwaway keypair
-    // file: it signs the single create and is then powerless, so it needs no
-    // KMS custody.
+    // chunk). The buffer key, when provided, may also be either: it signs only
+    // the one-time create_buffer, so a kms:// key costs a single KMS round-trip.
+    // KMS matters for upstream feature-gated upgrades, whose rotated buffer
+    // address keys live only in the shared feature-gates keyring.
     let payer = crate::authority::signer::load_signer(&payer_keypair_path, "--payer")?;
-    let buffer_keypair = buffer_keypair_path
-        .map(|path| {
-            read_keypair_file(&path)
-                .map_err(|e| eyre::eyre!("Failed to read buffer keypair {}: {}", path, e))
-        })
+    let buffer_signer = buffer_keypair_path
+        .map(|path| crate::authority::signer::load_signer(&path, "--buffer-keypair"))
         .transpose()?;
-    let buffer_authority = Pubkey::from_str(&buffer_authority_str).map_err(|e| {
-        eyre::eyre!(
-            "Failed to parse buffer authority {}: {}",
-            buffer_authority_str,
-            e
-        )
-    })?;
+    let buffer_authority = crate::authority::resolve_target(
+        &rpc_client,
+        buffer_authority,
+        buffer_multisig,
+        "--buffer-authority",
+        "--buffer-multisig",
+    )?;
 
     progress(format!("Payer: {}", payer.pubkey()));
     progress(format!("Buffer Authority: {}", buffer_authority));
@@ -557,24 +730,259 @@ pub fn write_program_buffer(
         &rpc_client,
         payer.as_ref(),
         &program_data,
-        buffer_keypair,
+        buffer_signer
+            .as_ref()
+            .map(crate::authority::signer::AdminSigner::as_ref),
         buffer_authority,
     )?;
-
-    let sha256 = Sha256::digest(&program_data)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
 
     emit(
         &StagedBufferView {
             buffer: buffer_pubkey.to_string(),
             buffer_authority: buffer_authority.to_string(),
             byte_len: program_data.len(),
-            sha256,
+            sha256: sha256_hex(&program_data),
         },
         mode,
     )
+}
+
+/// Read a Loader-v3 buffer account and its recorded authority. `Ok(None)` if the
+/// account doesn't exist (closed, consumed by an upgrade, or never created);
+/// `Err` if it exists but is not a Loader-v3 buffer.
+fn load_buffer(
+    rpc_client: &RpcClient,
+    buffer: &Pubkey,
+) -> eyre::Result<Option<(Account, Option<Pubkey>)>> {
+    let account = match rpc_client.get_account(buffer) {
+        Ok(account) => account,
+        Err(_) => return Ok(None),
+    };
+
+    if account.owner != bpf_loader_upgradeable::id() {
+        return Err(eyre::eyre!(
+            "Account {} is not a Loader-v3 buffer (owner: {}, expected: {})",
+            buffer,
+            account.owner,
+            bpf_loader_upgradeable::id()
+        ));
+    }
+    match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
+        Ok(UpgradeableLoaderState::Buffer { authority_address }) => {
+            Ok(Some((account, authority_address)))
+        }
+        _ => Err(eyre::eyre!(
+            "Account {} is owned by the upgradeable loader but is not a buffer",
+            buffer
+        )),
+    }
+}
+
+/// Parse a buffer pubkey CLI argument.
+fn parse_buffer_pubkey(buffer: &str) -> eyre::Result<Pubkey> {
+    Pubkey::from_str(buffer).map_err(|e| eyre::eyre!("Invalid buffer pubkey '{}': {}", buffer, e))
+}
+
+/// Fetch a Loader-v3 buffer's authority and a hash of the program bytes it
+/// holds. `Ok(None)` if the account doesn't exist (closed, consumed by an
+/// upgrade, or never created); `Err` on a bad pubkey, or an account that exists
+/// but is not a Loader-v3 buffer.
+pub fn fetch_buffer(rpc_url: &str, buffer: &str) -> eyre::Result<Option<BufferView>> {
+    let rpc_client =
+        RpcClient::new_with_commitment(rpc_url.to_string(), CommitmentConfig::confirmed());
+    let buffer_pubkey = parse_buffer_pubkey(buffer)?;
+
+    let Some((account, authority)) = load_buffer(&rpc_client, &buffer_pubkey)? else {
+        return Ok(None);
+    };
+    let payload = buffer_payload(&account.data).ok_or_else(|| {
+        eyre::eyre!(
+            "Buffer {} is too small ({} bytes) to hold a program",
+            buffer_pubkey,
+            account.data.len()
+        )
+    })?;
+
+    Ok(Some(BufferView {
+        buffer: buffer_pubkey.to_string(),
+        buffer_authority: authority.map(|a| a.to_string()),
+        byte_len: payload.len(),
+        sha256: sha256_hex(payload),
+        lamports: account.lamports,
+    }))
+}
+
+/// `program show-buffer`: print a buffer's authority and program-bytes hash, or
+/// a not-found result if the account doesn't exist.
+pub fn show_buffer(rpc_url: &str, buffer: String, mode: OutputMode) -> eyre::Result<()> {
+    match fetch_buffer(rpc_url, &buffer)? {
+        Some(view) => emit(&view, mode),
+        None => emit(&NotFound::new("Buffer", buffer), mode),
+    }
+}
+
+/// Read a buffer and confirm `signer` is its current authority, before building
+/// an authority-signed buffer instruction. Fails early (with a clear message,
+/// rather than an opaque on-chain error) if the buffer is missing, already
+/// locked to `11111111111111111111111111111111`, or held by someone else.
+fn require_buffer_authority(
+    rpc_client: &RpcClient,
+    buffer: &Pubkey,
+    signer: &Pubkey,
+) -> eyre::Result<Account> {
+    let (account, onchain) = load_buffer(rpc_client, buffer)?
+        .ok_or_else(|| eyre::eyre!("Buffer {} not found", buffer))?;
+    match onchain {
+        Some(authority) if authority == Pubkey::default() => Err(eyre::eyre!(
+            "Buffer {} is locked (authority {}); nobody can sign as it, so it can't be changed",
+            buffer,
+            authority
+        )),
+        Some(authority) if authority != *signer => Err(eyre::eyre!(
+            "Buffer {} is held by {}, not {}",
+            buffer,
+            authority,
+            signer
+        )),
+        Some(_) => Ok(account),
+        None => Err(eyre::eyre!("Buffer {} has no authority", buffer)),
+    }
+}
+
+/// Set (transfer) a buffer's authority, or lock it.
+///
+/// The **current** authority signs (single-sig directly, or a multisig via
+/// proposal). Without `lock`, the new authority is resolved through the shared
+/// multisig-safety gate, like [`set_upgrade_authority`]: a raw pubkey is guarded
+/// against being a config account / create-key, and `--new-multisig <create-key>`
+/// resolves to the multisig's vault.
+///
+/// A buffer's authority can't be `None` (the loader rejects it), so the
+/// irreversible option is `lock`: set it to `11111111111111111111111111111111`,
+/// which nobody can sign as. That is exactly what a feature-gated upgrade of a
+/// genesis program needs (`upgrade_core_bpf_program` requires the buffer's
+/// authority to equal the program's, `Some(Pubkey::default())`). A raw
+/// `--new-authority 1111…1` is refused, so locking is always explicit.
+///
+/// Uses the unchecked `SetAuthority` (the new authority doesn't co-sign — it
+/// can't for a lock or a multisig vault); the guards above provide the safety
+/// `SetAuthorityChecked` would otherwise give.
+pub fn set_program_buffer_authority(
+    url: &str,
+    buffer_str: String,
+    current_authority: Authority,
+    new_authority: Option<String>,
+    new_multisig: Option<String>,
+    lock: bool,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    progress("🔑 Setting buffer authority...");
+
+    let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
+    let buffer = parse_buffer_pubkey(&buffer_str)?;
+    let current = current_authority.instruction_authority_pubkey()?;
+    require_buffer_authority(&rpc_client, &buffer, &current)?;
+
+    let new = if lock {
+        Pubkey::default()
+    } else {
+        let new = crate::authority::resolve_target(
+            &rpc_client,
+            new_authority,
+            new_multisig,
+            "--new-authority",
+            "--new-multisig",
+        )?;
+        if new == Pubkey::default() {
+            return Err(eyre::eyre!(
+                "Setting the authority to {} locks the buffer permanently — use --lock to do that explicitly",
+                new
+            ));
+        }
+        new
+    };
+
+    progress(format!("Buffer:             {}", buffer));
+    progress(format!("Current Authority:  {}", current));
+    if lock {
+        progress(format!(
+            "New Authority:      {} (⚠️  LOCK — irreversible: the buffer can no longer be written, closed, or re-assigned)",
+            new
+        ));
+    } else {
+        progress(format!("New Authority:      {}", new));
+    }
+
+    let set_ix = set_buffer_authority(&buffer, &current, &new);
+
+    let description = if lock {
+        format!("Lock buffer {}", buffer)
+    } else {
+        format!("Set authority of buffer {} to {}", buffer, new)
+    };
+    let result = current_authority.execute_instruction(&rpc_client, set_ix, &description)?;
+    emit(&result, mode)
+}
+
+/// Close a buffer and send its rent to `recipient`.
+///
+/// The **current** authority signs (single-sig directly, or a multisig via
+/// proposal). The recipient defaults to that authority (the signer, or the
+/// multisig vault); an explicit `--recipient` / `--recipient-multisig` goes
+/// through the shared multisig-safety gate, like any funds destination.
+///
+/// A locked buffer (authority `11111111111111111111111111111111`) can't be
+/// closed — nobody can sign as its authority — and is refused up front.
+///
+/// The loader zeroes the account, so it is gone once the transaction commits:
+/// from the next transaction the address is free, and re-creating a buffer
+/// there needs the address key (`write-buffer --buffer-keypair`, file or
+/// `kms://`). That is the recovery path for a wrong-size upload before the lock.
+pub fn close_program_buffer(
+    url: &str,
+    buffer_str: String,
+    current_authority: Authority,
+    recipient: Option<String>,
+    recipient_multisig: Option<String>,
+    mode: OutputMode,
+) -> eyre::Result<()> {
+    progress("🧹 Closing buffer...");
+
+    let rpc_client = RpcClient::new_with_commitment(url.to_string(), CommitmentConfig::confirmed());
+    let buffer = parse_buffer_pubkey(&buffer_str)?;
+    let current = current_authority.instruction_authority_pubkey()?;
+    let account = require_buffer_authority(&rpc_client, &buffer, &current)?;
+
+    let recipient = if recipient.is_none() && recipient_multisig.is_none() {
+        current
+    } else {
+        crate::authority::resolve_target(
+            &rpc_client,
+            recipient,
+            recipient_multisig,
+            "--recipient",
+            "--recipient-multisig",
+        )?
+    };
+    if recipient == buffer {
+        return Err(eyre::eyre!(
+            "The recipient can't be the buffer being closed ({})",
+            buffer
+        ));
+    }
+
+    progress(format!("Buffer:             {}", buffer));
+    progress(format!("Authority:          {}", current));
+    progress(format!("Recipient:          {}", recipient));
+    progress(format!("Rent returned:      {} lamports", account.lamports));
+
+    let close = close_ix(&buffer, &recipient, &current);
+    let description = format!(
+        "Close buffer {} (rent {} lamports to {})",
+        buffer, account.lamports, recipient
+    );
+    let result = current_authority.execute_instruction(&rpc_client, close, &description)?;
+    emit(&result, mode)
 }
 
 /// Upgrade an existing program on SphereNet
@@ -842,4 +1250,58 @@ pub fn set_upgrade_authority(
     };
     let result = current_authority.execute_instruction(&rpc_client, set_ix, &description)?;
     emit(&result, mode)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_complete_when_identical() {
+        let so = [7u8, 0, 9, 4];
+        assert_eq!(classify_buffer_contents(&so, &so), BufferContents::Complete);
+    }
+
+    #[test]
+    fn classify_partial_when_every_difference_is_still_zero() {
+        // An interrupted write: the first chunk landed, the rest is still zeroed.
+        let so = [1u8, 2, 3, 4];
+        assert_eq!(
+            classify_buffer_contents(&[1, 2, 0, 0], &so),
+            BufferContents::Partial
+        );
+        // Nothing written yet (only the create landed) is also a partial write.
+        assert_eq!(
+            classify_buffer_contents(&[0, 0, 0, 0], &so),
+            BufferContents::Partial
+        );
+    }
+
+    #[test]
+    fn classify_different_on_a_non_zero_mismatch() {
+        // A byte that is set but differs: another program — never overwrite it.
+        let so = [1u8, 2, 3, 4];
+        assert_eq!(
+            classify_buffer_contents(&[1, 9, 0, 0], &so),
+            BufferContents::Different
+        );
+    }
+
+    #[test]
+    fn classify_different_on_a_size_mismatch() {
+        assert_eq!(
+            classify_buffer_contents(&[1, 2, 3], &[1, 2, 3, 4]),
+            BufferContents::Different
+        );
+    }
+
+    #[test]
+    fn buffer_payload_skips_the_metadata_prefix() {
+        let prefix = UpgradeableLoaderState::size_of_buffer(0);
+        let mut data = vec![0u8; prefix];
+        data.extend_from_slice(&[5, 6, 7]);
+        assert_eq!(buffer_payload(&data), Some(&[5u8, 6, 7][..]));
+        assert_eq!(buffer_payload(&data[..prefix]), Some(&[][..]));
+        assert_eq!(buffer_payload(&data[..prefix - 1]), None);
+    }
 }

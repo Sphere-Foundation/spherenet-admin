@@ -284,15 +284,56 @@ fn dispatch(cli: Cli) -> eyre::Result<()> {
                 program_so,
                 buffer_keypair,
                 buffer_authority,
+                buffer_multisig,
                 payer,
             } => loader::run::write_program_buffer(
                 &cli.url,
                 program_so,
                 buffer_keypair,
                 buffer_authority,
+                buffer_multisig,
                 payer,
                 mode,
             )?,
+            ProgramAction::ShowBuffer { buffer } => loader::run::show_buffer(&cli.url, buffer, mode)?,
+            ProgramAction::SetBufferAuthority {
+                buffer,
+                new_authority,
+                new_multisig,
+                lock,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = Authority::from_args(&cli.url, authority, multisig, multisig_authority)?;
+                loader::run::set_program_buffer_authority(
+                    &cli.url,
+                    buffer,
+                    auth,
+                    new_authority,
+                    new_multisig,
+                    lock,
+                    mode,
+                )?
+            }
+            ProgramAction::CloseBuffer {
+                buffer,
+                recipient,
+                recipient_multisig,
+                authority,
+                multisig,
+                multisig_authority,
+            } => {
+                let auth = Authority::from_args(&cli.url, authority, multisig, multisig_authority)?;
+                loader::run::close_program_buffer(
+                    &cli.url,
+                    buffer,
+                    auth,
+                    recipient,
+                    recipient_multisig,
+                    mode,
+                )?
+            }
             ProgramAction::Upgrade {
                 program_id,
                 program_so,
