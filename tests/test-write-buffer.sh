@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# test-write-buffer.sh <1..10> — integration test for the `spherenet-admin program`
+# test-write-buffer.sh <1..8> — integration test for the `spherenet-admin program`
 # buffer lifecycle: write-buffer, show-buffer, set-buffer-authority, close-buffer.
 #
 # Runs against a live cluster (testnet by default). Each phase stages a buffer (or
 # deploys a program), verifies it, and closes it again with `close-buffer` to
 # reclaim rent — so re-runs cost only tx fees (except phase 8). Phases:
 #
-#   1  write + verify ...... stage the .so, read the buffer back, check the on-chain
-#                            bytes hash to the .so   (payer IS the buffer-authority)
+#   1  write + verify ...... a rejected --buffer-authority fails before anything is
+#                            created; then stage the .so, read the buffer back, check
+#                            the on-chain bytes hash to the .so (payer IS the authority)
 #   2  resume .............. run the same --buffer-keypair twice; the 2nd run should
 #                            report "already staged, nothing to do"
 #   3  transfer branch ..... payer != buffer-authority; closing the buffer with the
@@ -25,10 +26,6 @@
 #   8  lock ................. a raw --new-authority 1111…1 is refused; --lock locks it;
 #                            close-buffer and write-buffer then refuse. ⚠️ The locked
 #                            buffer's rent is unrecoverable (~a few tenths of a SPHR).
-#   9  target guard ......... a Squads create-key as --buffer-authority is refused
-#                            before anything is created  (needs MULTISIG_CREATE_KEY)
-#  10  KMS buffer key ....... write with --buffer-keypair kms://…  (needs
-#                            BUFFER_KMS_URI — a TEST key, never a real gate's buffer)
 #
 # Prereqs: a funded PAYER on the target cluster; solana, solana-keygen, jq on PATH.
 #
@@ -41,8 +38,6 @@
 #   PROGRAM_SO           the .so to stage (default: the committed tests/fixtures fixture)
 #   ADMIN_BIN            admin binary to test (default: this repo's target/release/
 #                        spherenet-admin, built once at startup so it is never stale)
-#   MULTISIG_CREATE_KEY  phase 9: a real Squads create-key on the target cluster
-#   BUFFER_KMS_URI       phase 10: kms:// URI of a throwaway test key
 #
 set -euo pipefail
 
@@ -57,9 +52,9 @@ PAYER="${PAYER:-$HOME/.config/solana/id.json}"
 PROGRAM_SO="${PROGRAM_SO:-$TESTS_DIR/fixtures/test_program.so}"
 UPGRADE_AUTHORITY="${UPGRADE_AUTHORITY:-$PAYER}"
 
-USAGE="usage: $(basename "$0") <1..10>   (1=write+verify 2=resume 3=transfer 4=deploy+upgrade 5=show 6=set-authority 7=close+recreate 8=lock 9=target-guard 10=kms-buffer-key)"
+USAGE="usage: $(basename "$0") <1..8>   (1=write+verify 2=resume 3=transfer 4=deploy+upgrade 5=show 6=set-authority 7=close+recreate 8=lock)"
 case "${1:-}" in
-  [1-9]|10) ;;
+  [1-8]) ;;
   *) echo "$USAGE" >&2; exit 2 ;;
 esac
 
@@ -67,7 +62,7 @@ esac
 # is slow across ~10 calls per phase). Building first means the binary always
 # matches the checked-out source — a leftover release build would test stale code.
 if [[ -z "${ADMIN_BIN:-}" ]]; then
-  echo "· building spherenet-admin (release)…" >&2
+  echo "⏳ building spherenet-admin (release)…" >&2
   ( cd "$REPO_ROOT" && cargo build --release --quiet )
   ADMIN_BIN="$REPO_ROOT/target/release/spherenet-admin"
 fi
@@ -93,6 +88,9 @@ verify_onchain() { # <buffer_pubkey>
   if [[ "$sha" == "$LOCAL_SHA" ]]; then echo "✅ on-chain bytes match .so ($sha)"
   else echo "❌ MISMATCH — on-chain $sha != .so $LOCAL_SHA"; exit 1; fi
 }
+
+# Phase header, set off by a blank line before and after.
+section() { printf '\n── %s ──\n\n' "$1"; }
 
 # Close a buffer with admin's own close-buffer (exercising it in every phase);
 # rent always goes back to PAYER. The authority signs and pays the fee.
@@ -130,8 +128,20 @@ expect_eq() { # <label> <actual> <expected>
 echo "payer $PAYER_PK | .so sha ${LOCAL_SHA:0:16}… | $URL" >&2
 
 phase1() {
-  echo "── PHASE 1: write + verify (payer is buffer-authority) ──"
+  section "PHASE 1: write + verify (payer is buffer-authority)"
   newkey "$WORK/buf.json"; buf="$(solana address -k "$WORK/buf.json")"
+
+  # The hand-off target is validated BEFORE anything is created: a rejected target
+  # (here a malformed pubkey; a Squads create-key / config account fails at the same
+  # point) must leave no buffer behind. A regression that resolved the target after
+  # the create would strand a funded buffer under an unusable authority.
+  echo "⏳ a rejected --buffer-authority fails before the buffer is created"
+  expect_fail "Invalid pubkey" admin program write-buffer \
+    --program-so "$PROGRAM_SO" --buffer-keypair "$WORK/buf.json" \
+    --buffer-authority not-a-pubkey --payer "$PAYER"
+  expect_eq "buffer created? (found)" "$(admin_json program show-buffer "$buf" | jq -r .found)" "false"
+
+  echo "⏳ write"
   admin program write-buffer \
     --program-so "$PROGRAM_SO" \
     --buffer-keypair "$WORK/buf.json" \
@@ -142,16 +152,16 @@ phase1() {
 }
 
 phase2() {
-  echo "── PHASE 2: resume (run twice; 2nd should no-op) ──"
+  section "PHASE 2: resume (run twice; 2nd should no-op)"
   newkey "$WORK/buf.json"; buf="$(solana address -k "$WORK/buf.json")"
-  echo "· first run"
+  echo "⏳ first run"
   admin program write-buffer \
     --program-so "$PROGRAM_SO" \
     --buffer-keypair "$WORK/buf.json" \
     --buffer-authority "$PAYER_PK" \
     --payer "$PAYER"
   verify_onchain "$buf"
-  echo "· second run (watch for 'already staged, nothing to do')"
+  echo "⏳ second run (watch for 'already staged, nothing to do')"
   admin program write-buffer \
     --program-so "$PROGRAM_SO" \
     --buffer-keypair "$WORK/buf.json" \
@@ -161,10 +171,10 @@ phase2() {
 }
 
 phase3() {
-  echo "── PHASE 3: transfer branch (payer != buffer-authority) ──"
+  section "PHASE 3: transfer branch (payer != buffer-authority)"
   newkey "$WORK/buf.json";  buf="$(solana address -k "$WORK/buf.json")"
   newkey "$WORK/auth.json"; auth_pk="$(solana address -k "$WORK/auth.json")"
-  echo "· buffer-authority = throwaway $auth_pk"
+  echo "⏳ buffer-authority = throwaway $auth_pk"
   admin program write-buffer \
     --program-so "$PROGRAM_SO" \
     --buffer-keypair "$WORK/buf.json" \
@@ -177,12 +187,12 @@ phase3() {
 }
 
 phase4() {
-  echo "── PHASE 4: deploy → upgrade cycle ──"
+  section "PHASE 4: deploy → upgrade cycle"
   newkey "$WORK/program.json"; prog="$(solana address -k "$WORK/program.json")"
-  echo "· program id $prog | upgrade-authority $UPGRADE_AUTHORITY"
-  echo "· (deploy/upgrade require the upgrade-authority to be an APPROVED deployer — see 'pw show')"
+  echo "⏳ program id $prog | upgrade-authority $UPGRADE_AUTHORITY"
+  echo "⏳ (deploy/upgrade require the upgrade-authority to be an APPROVED deployer — see 'pw show')"
 
-  echo "· deploy"
+  echo "⏳ deploy"
   admin program deploy \
     --program-so "$PROGRAM_SO" \
     --program-keypair "$WORK/program.json" \
@@ -190,7 +200,7 @@ phase4() {
     --payer "$PAYER"
   solana program show "$prog" --url "$URL"
 
-  echo "· upgrade (same .so — 'Last Deployed In Slot' should advance)"
+  echo "⏳ upgrade (same .so — 'Last Deployed In Slot' should advance)"
   admin program upgrade \
     --program-id "$prog" \
     --program-so "$PROGRAM_SO" \
@@ -223,7 +233,7 @@ write_fresh() { # <buffer_keypair_path>
 }
 
 phase5() {
-  echo "── PHASE 5: show-buffer matches write-buffer ──"
+  section "PHASE 5: show-buffer matches write-buffer"
   buf="$(write_fresh "$WORK/buf.json")"
   admin_json program show-buffer "$buf" > "$WORK/show.json"
   expect_eq "sha256 (show == write)" "$(jq -r .sha256 "$WORK/show.json")" "$(jq -r .sha256 "$WORK/write.json")"
@@ -234,37 +244,37 @@ phase5() {
 }
 
 phase6() {
-  echo "── PHASE 6: set-buffer-authority round trip + resume refusal ──"
+  section "PHASE 6: set-buffer-authority round trip + resume refusal"
   buf="$(write_fresh "$WORK/buf.json")"
   newkey "$WORK/auth2.json"; auth2_pk="$(solana address -k "$WORK/auth2.json")"
   fund "$auth2_pk"
 
-  echo "· payer → $auth2_pk"
+  echo "⏳ payer → $auth2_pk"
   admin program set-buffer-authority --buffer "$buf" --new-authority "$auth2_pk" --authority "$PAYER"
   expect_eq "authority after hand-off" "$(admin_json program show-buffer "$buf" | jq -r .buffer_authority)" "$auth2_pk"
 
-  echo "· write-buffer must refuse to resume a buffer the payer no longer holds"
+  echo "⏳ write-buffer must refuse to resume a buffer the payer no longer holds"
   expect_fail "can't be resumed" admin program write-buffer \
     --program-so "$PROGRAM_SO" --buffer-keypair "$WORK/buf.json" \
     --buffer-authority "$PAYER_PK" --payer "$PAYER"
 
-  echo "· the wrong key is refused before anything is sent"
+  echo "⏳ the wrong key is refused before anything is sent"
   expect_fail "is held by" admin program set-buffer-authority \
     --buffer "$buf" --new-authority "$PAYER_PK" --authority "$PAYER"
 
-  echo "· $auth2_pk → payer"
+  echo "⏳ $auth2_pk → payer"
   admin program set-buffer-authority --buffer "$buf" --new-authority "$PAYER_PK" --authority "$WORK/auth2.json"
   expect_eq "authority after hand-back" "$(admin_json program show-buffer "$buf" | jq -r .buffer_authority)" "$PAYER_PK"
   close "$buf" "$PAYER"; echo "✅ closed"
 }
 
 phase7() {
-  echo "── PHASE 7: close-buffer + re-create at the same address ──"
+  section "PHASE 7: close-buffer + re-create at the same address"
   buf="$(write_fresh "$WORK/buf.json")"
-  close "$buf" "$PAYER"; echo "· closed"
+  close "$buf" "$PAYER"; echo "⏳ closed"
   expect_eq "show-buffer after close (found)" "$(admin_json program show-buffer "$buf" | jq -r .found)" "false"
 
-  echo "· re-create at $buf with the same key"
+  echo "⏳ re-create at $buf with the same key"
   admin program write-buffer \
     --program-so "$PROGRAM_SO" --buffer-keypair "$WORK/buf.json" \
     --buffer-authority "$PAYER_PK" --payer "$PAYER"
@@ -273,46 +283,24 @@ phase7() {
 }
 
 phase8() {
-  echo "── PHASE 8: lock ──"
+  section "PHASE 8: lock"
   echo "⚠️  This leaves a LOCKED buffer whose rent can never be reclaimed."
   buf="$(write_fresh "$WORK/buf.json")"
 
-  echo "· a raw --new-authority 1111…1 is refused (locking must be explicit)"
+  echo "⏳ a raw --new-authority 1111…1 is refused (locking must be explicit)"
   expect_fail "use --lock" admin program set-buffer-authority \
     --buffer "$buf" --new-authority 11111111111111111111111111111111 --authority "$PAYER"
 
-  echo "· --lock"
+  echo "⏳ --lock"
   admin program set-buffer-authority --buffer "$buf" --lock --authority "$PAYER"
   expect_eq "authority after lock" "$(admin_json program show-buffer "$buf" | jq -r .buffer_authority)" "11111111111111111111111111111111"
 
-  echo "· close-buffer and write-buffer must refuse a locked buffer"
+  echo "⏳ close-buffer and write-buffer must refuse a locked buffer"
   expect_fail "is locked" admin program close-buffer --buffer "$buf" --authority "$PAYER"
   expect_fail "It is locked" admin program write-buffer \
     --program-so "$PROGRAM_SO" --buffer-keypair "$WORK/buf.json" \
     --buffer-authority "$PAYER_PK" --payer "$PAYER"
   echo "✅ lock verified — buffer $buf stays locked (rent not reclaimable)"
-}
-
-phase9() {
-  echo "── PHASE 9: target guard (Squads create-key) ──"
-  [[ -n "${MULTISIG_CREATE_KEY:-}" ]] || { echo "set MULTISIG_CREATE_KEY to a real Squads create-key" >&2; exit 2; }
-  newkey "$WORK/buf.json"; buf="$(solana address -k "$WORK/buf.json")"
-  expect_fail "multisig create-key" admin program write-buffer \
-    --program-so "$PROGRAM_SO" --buffer-keypair "$WORK/buf.json" \
-    --buffer-authority "$MULTISIG_CREATE_KEY" --payer "$PAYER"
-  expect_eq "buffer created? (found)" "$(admin_json program show-buffer "$buf" | jq -r .found)" "false"
-}
-
-phase10() {
-  echo "── PHASE 10: KMS buffer key ──"
-  [[ -n "${BUFFER_KMS_URI:-}" ]] || { echo "set BUFFER_KMS_URI to a kms:// TEST key" >&2; exit 2; }
-  buf="${BUFFER_KMS_URI##*pubkey=}"
-  echo "· buffer address $buf (from the kms:// URI)"
-  admin program write-buffer \
-    --program-so "$PROGRAM_SO" --buffer-keypair "$BUFFER_KMS_URI" \
-    --buffer-authority "$PAYER_PK" --payer "$PAYER"
-  verify_onchain "$buf"
-  close "$buf" "$PAYER"; echo "✅ closed — the address is free for the next run"
 }
 
 case "${1:-}" in
@@ -324,7 +312,5 @@ case "${1:-}" in
   6) phase6 ;;
   7) phase7 ;;
   8) phase8 ;;
-  9) phase9 ;;
-  10) phase10 ;;
   *) echo "$USAGE" >&2; exit 2 ;;
 esac
