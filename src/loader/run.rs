@@ -227,20 +227,23 @@ fn write_buffer(
     progress(format!("Buffer size: {} bytes", buffer_size));
     progress(format!("Buffer rent: {} lamports", buffer_lamports));
 
-    // Reusable fixed-address buffers (Some) may already exist from a prior run:
-    // - authority already == buffer_authority → a prior run finished the whole
-    //   stage (transfer is the terminal step, only reached after every chunk
-    //   landed), so there is nothing left to do.
-    // - authority still == payer → creation landed but the stage was interrupted;
-    //   skip creation and resume the (idempotent) chunk writes.
-    // - anything else (another custodian, a locked 1111…1, or a buffer sized for a
-    //   different program) can't be resumed by this payer: refuse up front rather
-    //   than send ~240 chunk writes the loader would reject one by one.
+    // Reusable fixed-address buffers (Some) may already exist from a prior run.
+    // What to do depends on who holds the buffer AND what it already contains:
+    // - held by the final authority, holding exactly this .so → a prior run
+    //   finished the whole stage; nothing to do.
+    // - held by the payer → the stage was interrupted. Resume only if the bytes
+    //   are this program: complete (skip to verify + hand-off) or a partial write
+    //   (every differing byte still zero — resume the idempotent chunk writes).
+    //   A buffer holding a DIFFERENT program is never overwritten.
+    // - anything else (another custodian, a locked 1111…1, the final authority
+    //   holding other bytes, or a buffer sized for a different program) can't be
+    //   resumed by this payer: refuse up front rather than send ~240 chunk writes
+    //   the loader would reject one by one.
     // An ephemeral (None) buffer is a fresh random key, so this never fires.
     let existing = match try_get_account(rpc_client, &buffer_pubkey) {
         Some(Some(account)) => match bincode::deserialize::<UpgradeableLoaderState>(&account.data) {
             Ok(UpgradeableLoaderState::Buffer { authority_address }) => {
-                Some((authority_address, account.data.len()))
+                Some((authority_address, account.data))
             }
             _ => {
                 return Err(eyre::eyre!(
@@ -252,16 +255,29 @@ fn write_buffer(
         _ => None,
     };
 
-    if existing.map(|(authority, _)| authority) == Some(Some(buffer_authority)) {
-        progress(format!(
-            "✅ Buffer {} already staged under {}; nothing to do",
-            buffer_pubkey, buffer_authority
-        ));
-        verify_buffer_onchain(rpc_client, &buffer_pubkey, program_data)?;
-        return Ok(buffer_pubkey);
-    }
+    let mut skip_writes = false;
+    if let Some((authority, data)) = &existing {
+        let contents = buffer_payload(data)
+            .map(|payload| classify_buffer_contents(payload, program_data))
+            .unwrap_or(BufferContents::Different);
 
-    if let Some((authority, data_len)) = existing {
+        if *authority == Some(buffer_authority) && contents == BufferContents::Complete {
+            progress(format!(
+                "✅ Buffer {} already staged under {}; nothing to do",
+                buffer_pubkey, buffer_authority
+            ));
+            verify_buffer_onchain(rpc_client, &buffer_pubkey, program_data)?;
+            return Ok(buffer_pubkey);
+        }
+
+        // Anything else needs writing or the hand-off, which only the payer can
+        // do: it must still hold the buffer. If the final authority (not the
+        // payer) holds other bytes, the verify reports the mismatch with a
+        // recovery hint specific to that holder.
+        if *authority == Some(buffer_authority) && buffer_authority != payer.pubkey() {
+            verify_buffer_onchain(rpc_client, &buffer_pubkey, program_data)?;
+        }
+        let authority = *authority;
         if authority != Some(payer.pubkey()) {
             let holder = authority.map_or_else(|| "no authority".to_string(), |a| a.to_string());
             let locked = authority == Some(Pubkey::default());
@@ -279,20 +295,37 @@ fn write_buffer(
                 }
             ));
         }
-        if data_len != buffer_size {
+        if data.len() != buffer_size {
             return Err(eyre::eyre!(
                 "Buffer {} already exists but is sized for a different program ({} bytes, this \
                  one needs {}); `program close-buffer` it, then re-run to re-create it at the \
                  same address",
                 buffer_pubkey,
-                data_len,
+                data.len(),
                 buffer_size
             ));
         }
-        progress(format!(
-            "ℹ️  Buffer {} already created; resuming writes",
-            buffer_pubkey
-        ));
+        match contents {
+            BufferContents::Complete => {
+                progress(format!(
+                    "ℹ️  Buffer {} already holds this program; skipping writes",
+                    buffer_pubkey
+                ));
+                skip_writes = true;
+            }
+            BufferContents::Partial => progress(format!(
+                "ℹ️  Buffer {} holds a partial write of this program; resuming writes",
+                buffer_pubkey
+            )),
+            BufferContents::Different => {
+                return Err(eyre::eyre!(
+                    "Buffer {} already holds a different program (its bytes differ from this .so \
+                     where already written), so it won't be overwritten. Check --program-so, or \
+                     `program close-buffer` it and re-create.",
+                    buffer_pubkey
+                ))
+            }
+        }
     } else {
         // Create the buffer with the PAYER as authority for the writes; the final
         // authority takes over afterwards. The on-chain deploy/upgrade only
@@ -321,8 +354,10 @@ fn write_buffer(
     }
 
     // Write program data to buffer in chunks (payer signs buffer writes)
-    progress("📤 Writing program data to buffer...");
-    write_buffer_chunks(rpc_client, payer, &buffer_pubkey, program_data)?;
+    if !skip_writes {
+        progress("📤 Writing program data to buffer...");
+        write_buffer_chunks(rpc_client, payer, &buffer_pubkey, program_data)?;
+    }
 
     // Read the buffer back and confirm its bytes byte-match the .so BEFORE the
     // hand-off: there is no on-chain bytes pin, and verifying while the payer is
@@ -382,6 +417,32 @@ fn sha256_hex(bytes: &[u8]) -> String {
 /// account is too small to be a buffer at all.
 fn buffer_payload(data: &[u8]) -> Option<&[u8]> {
     data.get(UpgradeableLoaderState::size_of_buffer(0)..)
+}
+
+/// How a buffer's existing program bytes relate to the `.so` being written.
+#[derive(Debug, PartialEq, Eq)]
+enum BufferContents {
+    /// Byte-for-byte the `.so`.
+    Complete,
+    /// Every byte either matches the `.so` or is still zero: an interrupted write
+    /// of THIS program (a new buffer starts zeroed and the writes fill it in).
+    Partial,
+    /// A different size, or a non-zero byte that differs: another program.
+    Different,
+}
+
+/// Compare a buffer's program bytes with the `.so`, so a re-run resumes only a
+/// partial write of this program and never overwrites a different one.
+fn classify_buffer_contents(onchain: &[u8], program: &[u8]) -> BufferContents {
+    if onchain.len() != program.len() {
+        BufferContents::Different
+    } else if onchain == program {
+        BufferContents::Complete
+    } else if onchain.iter().zip(program).all(|(o, p)| o == p || *o == 0) {
+        BufferContents::Partial
+    } else {
+        BufferContents::Different
+    }
 }
 
 /// Read a staged buffer back from chain and assert its ELF payload byte-matches
@@ -1189,4 +1250,58 @@ pub fn set_upgrade_authority(
     };
     let result = current_authority.execute_instruction(&rpc_client, set_ix, &description)?;
     emit(&result, mode)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_complete_when_identical() {
+        let so = [7u8, 0, 9, 4];
+        assert_eq!(classify_buffer_contents(&so, &so), BufferContents::Complete);
+    }
+
+    #[test]
+    fn classify_partial_when_every_difference_is_still_zero() {
+        // An interrupted write: the first chunk landed, the rest is still zeroed.
+        let so = [1u8, 2, 3, 4];
+        assert_eq!(
+            classify_buffer_contents(&[1, 2, 0, 0], &so),
+            BufferContents::Partial
+        );
+        // Nothing written yet (only the create landed) is also a partial write.
+        assert_eq!(
+            classify_buffer_contents(&[0, 0, 0, 0], &so),
+            BufferContents::Partial
+        );
+    }
+
+    #[test]
+    fn classify_different_on_a_non_zero_mismatch() {
+        // A byte that is set but differs: another program — never overwrite it.
+        let so = [1u8, 2, 3, 4];
+        assert_eq!(
+            classify_buffer_contents(&[1, 9, 0, 0], &so),
+            BufferContents::Different
+        );
+    }
+
+    #[test]
+    fn classify_different_on_a_size_mismatch() {
+        assert_eq!(
+            classify_buffer_contents(&[1, 2, 3], &[1, 2, 3, 4]),
+            BufferContents::Different
+        );
+    }
+
+    #[test]
+    fn buffer_payload_skips_the_metadata_prefix() {
+        let prefix = UpgradeableLoaderState::size_of_buffer(0);
+        let mut data = vec![0u8; prefix];
+        data.extend_from_slice(&[5, 6, 7]);
+        assert_eq!(buffer_payload(&data), Some(&[5u8, 6, 7][..]));
+        assert_eq!(buffer_payload(&data[..prefix]), Some(&[][..]));
+        assert_eq!(buffer_payload(&data[..prefix - 1]), None);
+    }
 }
