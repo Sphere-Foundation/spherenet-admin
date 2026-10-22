@@ -8,11 +8,11 @@ name: Release
 #
 #   1. preflight       - fmt / clippy / test / `cargo publish --dry-run`, and refuse
 #                        if the Cargo.toml version is already on crates.io (forgot to bump)
-#   2. build           - cross-build + package both binaries (Linux x86_64, macOS arm64).
+#   2. build           - cross-build + package both binaries (Linux x86_64, macOS arm64)
+#                        and attest build provenance for each archive.
 #                        Doubles as the compile gate: publish waits on it.
 #   3. publish         - `cargo publish` to crates.io  (irreversible; only after 1 & 2)
-#   4. github-release  - attest build provenance for each archive, then tag vX.Y.Z at
-#                        the released commit + attach binaries + checksums
+#   4. github-release  - tag vX.Y.Z at the released commit + attach binaries + checksums
 #
 # Version is sourced entirely from Cargo.toml — there is no bump input and no
 # cargo-release. No long-lived credential is involved: crates.io is reached via
@@ -61,8 +61,13 @@ jobs:
       # rehearse from any branch; a real release only from main.
       - name: Refuse to release from another repository or branch
         if: ${{ github.repository != 'Sphere-Foundation/spherenet-admin' || (!inputs.dry_run && github.ref != 'refs/heads/main') }}
+        # Via env, not `${{ }}` in the script: a branch name is attacker-chosen
+        # text and must not be spliced into the shell source.
+        env:
+          RUN_REPO: ${{ github.repository }}
+          RUN_REF: ${{ github.ref }}
         run: |
-          echo "::error::release.yml only releases from Sphere-Foundation/spherenet-admin on refs/heads/main (this run: ${{ github.repository }} @ ${{ github.ref }})"
+          echo "::error::release.yml only releases from Sphere-Foundation/spherenet-admin on refs/heads/main (this run: ${RUN_REPO} @ ${RUN_REF})"
           exit 1
       # Ship gate, not a style gate: fmt/clippy are enforced by ci.yml on every
       # push to main (the exact commit being released), so preflight verifies only
@@ -112,6 +117,10 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read        # checkout
+      id-token: write       # sign the provenance attestation (Sigstore)
+      attestations: write   # store it on the repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install Rust toolchain
@@ -137,8 +146,22 @@ jobs:
           tar -czf "dist/${dist}.tar.gz" -C staging "${dist}"
           # Download-integrity check only (`shasum -c`). It travels with the
           # archive, so it is not a defence against a swapped archive — the
-          # provenance attestation in `github-release` is.
+          # provenance attestation below is.
           ( cd dist && shasum -a 256 "${dist}.tar.gz" > "${dist}.tar.gz.sha256" )
+      # SLSA build provenance for the archive: a signed statement that this
+      # workflow, at this commit, produced an artifact with this digest.
+      # Operators check it with
+      #   gh attestation verify <archive> -R Sphere-Foundation/spherenet-admin
+      # which fails for an archive that was rebuilt elsewhere or swapped after
+      # the release — the case the `.sha256` files cannot catch. Runs here,
+      # before `publish`, so an attestation failure stops the release before
+      # the irreversible crates.io upload. Skipped on dry runs, which ship
+      # nothing.
+      - name: Attest build provenance
+        if: ${{ ! inputs.dry_run }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -184,24 +207,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write       # create the tag + release, upload assets
-      id-token: write       # sign the provenance attestation (Sigstore)
-      attestations: write   # store it on the repository
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true
-      # SLSA build provenance for each archive: a signed statement that this
-      # workflow, at this commit, produced an artifact with this digest.
-      # Operators check it with
-      #   gh attestation verify <archive> -R Sphere-Foundation/spherenet-admin
-      # which fails for an archive that was rebuilt elsewhere or swapped after
-      # the release — the case the `.sha256` files cannot catch.
-      - name: Attest build provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-path: dist/*.tar.gz
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
