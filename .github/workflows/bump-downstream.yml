@@ -1,0 +1,155 @@
+name: Bump downstream pins
+
+# Keeps the spherenet-admin version pinned in downstream repos on par with the
+# latest GitHub Release of this repo. For each downstream repo: read the pin,
+# leave it if it is current, otherwise push `bot/bump-spherenet-admin-vX.Y.Z`
+# and open a PR to main.
+#
+# Source of truth is the latest published GitHub Release (not Cargo.toml), so a
+# dry-run Release run is a no-op here: it publishes nothing, nothing is newer.
+#
+# `workflow_run` and not `on: release`: release.yml creates the release with
+# GITHUB_TOKEN, and GITHUB_TOKEN events do not start new workflow runs.
+#
+# Writes to the downstream repos use the sync GitHub App (installed only on
+# those repos; a ruleset there limits it to bot/* branches). Prerequisites:
+# repo variable SYNC_APP_CLIENT_ID + repo secret SYNC_APP_PRIVATE_KEY.
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report what would change, push nothing, open no PR"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bump-downstream
+  cancel-in-progress: false
+
+jobs:
+  latest:
+    name: Resolve latest release
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.latest.outputs.version }}
+      tag: ${{ steps.latest.outputs.tag }}
+    steps:
+      - name: Read latest GitHub Release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::latest tag '$tag' is not vX.Y.Z"; exit 1; }
+          echo "Latest release: $tag"
+          echo "tag=$tag"          >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}"  >> "$GITHUB_OUTPUT"
+
+  bump:
+    name: Bump ${{ matrix.repo }}
+    needs: latest
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - repo: documentation
+            file: docusaurus.config.ts
+            key: ADMIN_VERSION
+          - repo: validator-onboarding-dashboard
+            file: src/lib/versions.ts
+            key: SPHERENET_ADMIN_VERSION
+    env:
+      VERSION: ${{ needs.latest.outputs.version }}
+      TAG: ${{ needs.latest.outputs.tag }}
+      TARGET: ${{ github.repository_owner }}/${{ matrix.repo }}
+      BRANCH: bot/bump-spherenet-admin-${{ needs.latest.outputs.tag }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
+    steps:
+      - name: Check out this repo (bump script)
+        uses: actions/checkout@v4
+        with:
+          path: admin
+          sparse-checkout: .github/scripts
+
+      - name: Mint app token for ${{ matrix.repo }}
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ matrix.repo }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Check out ${{ matrix.repo }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TARGET }}
+          ref: main
+          path: target
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Bump pin if outdated
+        id: pin
+        working-directory: target
+        run: |
+          set -euo pipefail
+          ../admin/.github/scripts/bump-admin-pin.sh "${{ matrix.file }}" "${{ matrix.key }}" "$VERSION" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Report up to date
+        if: ${{ steps.pin.outputs.changed == 'false' }}
+        run: echo "::notice::${{ matrix.repo }} pins ${{ steps.pin.outputs.current }} (latest $VERSION) — nothing to do"
+
+      - name: Skip if a bump PR is already open
+        id: open-pr
+        if: ${{ steps.pin.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          url="$(gh pr list --repo "$TARGET" --head "$BRANCH" --base main --state open --json url --jq '.[0].url // ""')"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          [[ -z "$url" ]] || echo "::notice::${{ matrix.repo }} bump PR already open: $url"
+
+      - name: Show diff (dry run)
+        if: ${{ steps.pin.outputs.changed == 'true' && env.DRY_RUN == 'true' }}
+        working-directory: target
+        run: |
+          git diff
+          echo "::notice::dry run — would push $BRANCH and open a PR on $TARGET"
+
+      - name: Commit, push and open PR
+        if: ${{ steps.pin.outputs.changed == 'true' && steps.open-pr.outputs.url == '' && env.DRY_RUN != 'true' }}
+        working-directory: target
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          CURRENT: ${{ steps.pin.outputs.current }}
+        run: |
+          set -euo pipefail
+          bot_id="$(gh api "/users/${APP_SLUG}[bot]" --jq .id)"
+          git config user.name  "${APP_SLUG}[bot]"
+          git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+
+          git switch -c "$BRANCH"
+          git commit -am "chore: bump spherenet-admin to ${TAG}"
+          # --force: a branch left by an earlier failed run (no open PR) is ours to replace.
+          git push --force origin "HEAD:refs/heads/${BRANCH}"
+
+          release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          gh pr create --repo "$TARGET" --base main --head "$BRANCH" \
+            --title "chore: bump spherenet-admin to ${TAG}" \
+            --body "$(printf '%s\n\n%s\n\n%s\n' \
+              "Bumps the \`spherenet-admin\` pin in \`${{ matrix.file }}\` from \`${CURRENT}\` to \`${VERSION}\`." \
+              "Release: ${release_url}" \
+              "Opened by [${GITHUB_WORKFLOW}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}).")"
