@@ -7,7 +7,7 @@ cargo install spherenet-admin
 spherenet-admin --help
 ```
 
-Or download a prebuilt binary for Linux (x86_64) or macOS (Apple Silicon) from the [Releases page](https://github.com/Sphere-Foundation/spherenet-admin/releases/latest). Each archive ships the `spherenet-admin` binary plus a `.sha256` checksum — extract it and put it on your `PATH`:
+Or download a prebuilt binary for Linux (x86_64) or macOS (Apple Silicon) from the [Releases page](https://github.com/Sphere-Foundation/spherenet-admin/releases/latest). Each archive ships the `spherenet-admin` binary plus a `.sha256` checksum — [verify it](#verifying-a-downloaded-binary), extract it and put it on your `PATH`:
 
 ```bash
 tar -xzf spherenet-admin-<version>-<target>.tar.gz
@@ -21,6 +21,32 @@ git clone https://github.com/Sphere-Foundation/spherenet-admin
 cd spherenet-admin
 cargo build --release        # binary at target/release/spherenet-admin
 ```
+
+### Verifying a downloaded binary
+
+This binary signs governance transactions, so check where it came from before you run it. Three checks, strongest first:
+
+1. **Build-provenance attestation** (releases after v0.7.0). At release time GitHub Actions signs a statement that `release.yml` in this repository, at the tagged commit, built an archive with exactly this digest. Verify before extracting (needs `gh` 2.49 or later, signed in to GitHub):
+
+   ```bash
+   gh attestation verify spherenet-admin-<version>-<target>.tar.gz \
+     -R Sphere-Foundation/spherenet-admin \
+     --signer-workflow Sphere-Foundation/spherenet-admin/.github/workflows/release.yml
+   ```
+
+   A failure means the archive was not produced by this repository's release workflow — do not run it. Releases up to v0.7.0 predate attestation and fail this check; verify those by digest (next step).
+
+2. **Release digest.** GitHub records a sha256 for every asset independently of the files in the release. Compare, and if you automate installs, pin the digest in your tooling so a later change to the release is caught:
+
+   ```bash
+   gh api repos/Sphere-Foundation/spherenet-admin/releases/tags/v<version> \
+     --jq '.assets[] | select(.name|endswith(".tar.gz")) | "\(.digest)  \(.name)"'
+   shasum -a 256 spherenet-admin-<version>-<target>.tar.gz
+   ```
+
+3. **`.sha256` file.** `shasum -a 256 -c spherenet-admin-<version>-<target>.tar.gz.sha256` catches a corrupt or truncated download. It travels with the archive, so it is an integrity check, not a provenance check — the attestation (step 1) is what ties an archive to this repository's release workflow.
+
+Installing with `cargo install`: the crate is published by the same workflow through crates.io Trusted Publishing (no long-lived token). Use `cargo install --locked spherenet-admin` so you build the audited dependency tree from `Cargo.lock`, not a fresh resolution.
 
 Global flags (all commands): `--url <URL>` (defaults to testnet `https://api.test.sphere.net`) and `--output text|json`. In both modes stdout carries only the result and diagnostics go to stderr, so `… --output json | jq` always sees clean JSON.
 
