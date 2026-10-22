@@ -1,0 +1,21 @@
+# Keeps the SHA-pinned actions in .github/workflows current (Dependabot
+# rewrites the SHA and the trailing `# vX.Y.Z` comment together) and surfaces
+# Cargo advisories as PRs instead of only as alerts.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # Lockfile-only bumps; a semver-major bump of a direct dependency is a
+    # deliberate change, not a Dependabot PR.
+    versioning-strategy: lockfile-only
