@@ -26,7 +26,7 @@ cargo build --release        # binary at target/release/spherenet-admin
 
 This binary signs governance transactions, so check where it came from before you run it. Three checks, strongest first:
 
-1. **Build-provenance attestation** (releases after v0.7.0). At release time GitHub Actions signs a statement that `release.yml` in this repository, at the tagged commit, built an archive with exactly this digest. Verify before extracting (needs `gh` 2.49 or later, signed in to GitHub):
+1. **Build-provenance attestation** (releases after v0.7.0). At release time GitHub Actions signs a statement that `release.yml` in this repository, at the tagged commit, built an archive with exactly this digest. Verify before extracting (needs `gh` 2.102.1 or later, signed in to GitHub — older versions match `--signer-workflow` as a prefix, [GHSA-wjmr-j3rp-mh2g](https://github.com/cli/cli/security/advisories/GHSA-wjmr-j3rp-mh2g), and versions before 2.102.1 were built with a Go release that still trusts the revoked eMudhra intermediates):
 
    ```bash
    gh attestation verify spherenet-admin-<version>-<target>.tar.gz \
@@ -40,7 +40,7 @@ This binary signs governance transactions, so check where it came from before yo
 
    ```bash
    gh api repos/Sphere-Foundation/spherenet-admin/releases/tags/v<version> \
-     --jq '.assets[] | select(.name|endswith(".tar.gz")) | "\(.digest)  \(.name)"'
+     --jq '.assets[] | select(.name|endswith(".tar.gz")) | "\(.digest | ltrimstr("sha256:"))  \(.name)"'
    shasum -a 256 spherenet-admin-<version>-<target>.tar.gz
    ```
 
