@@ -1,6 +1,6 @@
 [package]
 name = "spherenet-admin"
-version = "0.7.0"
+version = "0.7.1"
 edition = "2021"
 repository = "https://github.com/Sphere-Foundation/spherenet-admin"
 license = "Apache-2.0"
@@ -10,9 +10,7 @@ publish = true
 
 [dependencies]
 actix-cors = { version = "0.7" }
-# default features minus `http2`: the API is served over plain HTTP/1.1 (no TLS,
-# so no ALPN, so h2 was never negotiated) and `http2` is what pulls in h2 0.3
-# (RUSTSEC-2026-0258).
+# Default features minus `http2` (server is plain HTTP/1.1; http2 pulls in h2 0.3, RUSTSEC-2026-0258).
 actix-web = { version = "4", default-features = false, features = ["macros", "compress-brotli", "compress-gzip", "compress-zstd", "cookies", "unicode", "compat", "ws"] }
 base64 = { version = "0.22" }
 bincode = { version = "1.3.3" }
