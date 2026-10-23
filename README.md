@@ -34,7 +34,7 @@ This binary signs governance transactions, so check where it came from before yo
      --signer-workflow Sphere-Foundation/spherenet-admin/.github/workflows/release.yml
    ```
 
-   A failure means the archive was not produced by this repository's release workflow — do not run it. Releases up to v0.7.0 predate attestation and fail this check; verify those by digest (next step).
+   Until this succeeds, treat the archive as unverified and do not run it. A failure can mean the archive was not produced by this repository's release workflow, or just that `gh` could not complete the check (not signed in, network error); read the error before retrying. Releases up to v0.7.0 predate attestation and fail this check; verify those by digest (next step).
 
 2. **Release digest.** GitHub records a sha256 for every asset independently of the files in the release. Compare, and if you automate installs, pin the digest in your tooling so a later change to the release is caught:
 
