@@ -7,5 +7,9 @@
 # Keypairs never live in scripts/ (they go in /opt/); guard against strays
 scripts/*.json
 
+# Buffer configs hold local keypair paths / kms:// URIs; only the template is tracked
+scripts/buffers/*.json
+!scripts/buffers/example.json
+
 # macOS
 .DS_Store

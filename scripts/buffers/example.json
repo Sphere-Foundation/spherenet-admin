@@ -1,0 +1,25 @@
+{
+  "name": "stake-vX.Y.Z",
+  "gate": {
+    "name": "the feature gate whose upgrade hook consumes this buffer (agave_feature_set name)",
+    "key": "<gate pubkey>"
+  },
+  "release": {
+    "repo": "Sphere-Foundation/spherenet-stake",
+    "tag": "vX.Y.Z",
+    "asset": "spherenet_stake_program.so",
+    "sha256": "<sha256 of the release .so>"
+  },
+  "buffer": {
+    "keypair": "kms://projects/<project>/locations/<location>/keyRings/<ring>/cryptoKeys/<key>/cryptoKeyVersions/1?pubkey=<buffer address>",
+    "address": "<buffer address baked into the client as the gate's buffer::id()>"
+  },
+  "targets": {
+    "localnet": {
+      "payer": "optional override: keypair path or kms:// URI"
+    },
+    "testnet": {
+      "payer": "optional override: keypair path or kms:// URI"
+    }
+  }
+}
