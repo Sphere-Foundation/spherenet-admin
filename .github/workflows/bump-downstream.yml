@@ -3,7 +3,7 @@ name: Bump downstream pins
 # Keeps the spherenet-admin version pinned in downstream repos on par with the
 # latest GitHub Release of this repo. For each downstream repo: read the pin,
 # leave it if it is current, otherwise push `bot/bump-spherenet-admin-vX.Y.Z`
-# and open a PR to main.
+# and open a PR to the repo's base branch (`dev` for documentation).
 #
 # Source of truth is the latest published GitHub Release (not Cargo.toml), so a
 # dry-run Release run is a no-op here: it publishes nothing, nothing is newer.
@@ -64,9 +64,11 @@ jobs:
           - repo: documentation
             file: docusaurus.config.ts
             key: ADMIN_VERSION
+            base: dev
           - repo: validator-onboarding-dashboard
             file: src/lib/versions.ts
             key: SPHERENET_ADMIN_VERSION
+            base: main
     env:
       VERSION: ${{ needs.latest.outputs.version }}
       TAG: ${{ needs.latest.outputs.tag }}
@@ -95,7 +97,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: ${{ env.TARGET }}
-          ref: main
+          ref: ${{ matrix.base }}
           path: target
           token: ${{ steps.app-token.outputs.token }}
 
@@ -117,7 +119,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
-          url="$(gh pr list --repo "$TARGET" --head "$BRANCH" --base main --state open --json url --jq '.[0].url // ""')"
+          url="$(gh pr list --repo "$TARGET" --head "$BRANCH" --base "${{ matrix.base }}" --state open --json url --jq '.[0].url // ""')"
           echo "url=$url" >> "$GITHUB_OUTPUT"
           [[ -z "$url" ]] || echo "::notice::${{ matrix.repo }} bump PR already open: $url"
 
@@ -147,7 +149,7 @@ jobs:
           git push --force origin "HEAD:refs/heads/${BRANCH}"
 
           release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
-          gh pr create --repo "$TARGET" --base main --head "$BRANCH" \
+          gh pr create --repo "$TARGET" --base "${{ matrix.base }}" --head "$BRANCH" \
             --title "chore: bump spherenet-admin to ${TAG}" \
             --body "$(printf '%s\n\n%s\n\n%s\n' \
               "Bumps the \`spherenet-admin\` pin in \`${{ matrix.file }}\` from \`${CURRENT}\` to \`${VERSION}\`." \
